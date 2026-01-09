@@ -18,7 +18,15 @@ A lot of the UX/UI wi
 
 ## features:
 - less than 2000 loc pure python. No bloat.
-- total customizability. Customize EVERYTHING.
+- total customizability via "plugins."
+
+
+## Plugins:
+"Plugins" are just python files.  
+"Installation?" Nope- just copy paste them into your `.ex6/` folder.  
+All python files inside `.ex6` are loaded automatically.
+
+
 
 
 # DISCLAIMER:
