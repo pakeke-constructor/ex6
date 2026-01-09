@@ -7,24 +7,31 @@ from rich.panel import Panel
 from rich.layout import Layout
 import readchar
 
+
 @dataclass
 class AppState:
+    '''
+    can put ANY kind of objects in here.
+    lists, dicts, anything.
+    
+    We will need custom objects in here in future.
+    '''
     active_tab: int = 0
     input_buffer: str = "hello i am [orange]colored text!!![/orange]! yay."
     llm_output: str = "Streaming starts here..."
     running: bool = True
 
+
 class ThreadSafeState:
     def __init__(self, state):
         self._state = state
         self._lock = threading.Lock()
-    
     def __enter__(self):
         self._lock.acquire()
         return self._state
-    
     def __exit__(self, *args):
         self._lock.release()
+
 
 
 state = ThreadSafeState(AppState())
@@ -54,14 +61,11 @@ def input_thread():
                 s.input_buffer = ""
             elif len(key) == 1:
                 s.input_buffer += key
-            else:
-                print(key)
             
             running = s.running
 
 
-def make_layout():
-    """The 'Render' function."""
+def render():
     with state as s:
         active_tab = tabs[s.active_tab]
         llm_output = s.llm_output
@@ -76,25 +80,28 @@ def make_layout():
     return layout
 
 
-# --- Main Game Loop ---
+
 threading.Thread(target=input_thread, daemon=True).start()
 
-with Live(make_layout(), screen=True, auto_refresh=False) as live:
+
+
+# main "render" loop:
+with Live(render(), screen=True, auto_refresh=False) as live:
     with state as s:
         running = s.running
     
     while running:
         # Simulate LLM Streaming
-        if time.time() % 1 > 0.95:
+        if time.time() % 1 > 0.98:
             with state as s:
                 s.llm_output += " ."
 
         # Draw the frame
-        live.update(make_layout(), refresh=True)
+        live.update(render(), refresh=True)
         
         with state as s:
             running = s.running
         
-        time.sleep(0.05)
+        time.sleep(0.01)
 
 
