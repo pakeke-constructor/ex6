@@ -1,3 +1,4 @@
+
 import threading
 import time
 import shlex
@@ -10,17 +11,11 @@ from rich.layout import Layout
 import readchar
 
 
-# =============================================================================
-# REGISTRIES
-# =============================================================================
 
 _hooks = {"on_startup": [], "on_key": [], "on_submit": [], "on_tick": [], "on_render_status": []}
 _commands = {}
 
 
-# =============================================================================
-# DECORATORS
-# =============================================================================
 
 class _HookNamespace:
     def _make(self, name):
@@ -51,9 +46,6 @@ def command(name, args=None):
     return dec
 
 
-# =============================================================================
-# STATE
-# =============================================================================
 
 @dataclass
 class AppState:
@@ -61,6 +53,8 @@ class AppState:
     console: list = field(default_factory=list)  # list of strings
     current_window: list = field(default_factory=list)
     running: bool = True
+    keys_this_frame: list = field(default_factory=list)  # keys pressed since last tick
+    input_ui: object = None  # Rich renderable for custom input UI, or None
 
 
 class ThreadSafeState:
@@ -76,9 +70,6 @@ class ThreadSafeState:
 state = ThreadSafeState(AppState())
 
 
-# =============================================================================
-# DISPATCH
-# =============================================================================
 
 def dispatch(event, *args):
     for fn in _hooks.get(event, []):
@@ -120,9 +111,6 @@ def dispatch_command(text):
     return fn(*parsed)
 
 
-# =============================================================================
-# PLUGIN LOADER
-# =============================================================================
 
 def load_plugins():
     plugin_dir = os.path.join(os.path.dirname(__file__) or ".", ".ex6")
@@ -133,16 +121,17 @@ def load_plugins():
             exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
 
 
-# =============================================================================
-# INPUT THREAD
-# =============================================================================
 
 def input_thread():
     while True:
         key = readchar.readkey()
         with state as s:
+            s.keys_this_frame.append(key)  # Always collect keys
+
             if key == readchar.key.CTRL_C:
                 s.running = False
+            elif s.input_ui is not None:
+                pass  # Plugin handles keys in on_tick
             elif key == readchar.key.BACKSPACE:
                 s.input_buffer = s.input_buffer[:-1]
             elif key == readchar.key.ENTER:
@@ -163,14 +152,12 @@ def input_thread():
                 break
 
 
-# =============================================================================
-# RENDER
-# =============================================================================
 
 def render():
     with state as s:
         console_text = "\n".join(s.console) or " "
         input_buffer = s.input_buffer
+        input_ui = s.input_ui
 
         status_parts = [fn(s) for fn in _hooks["on_render_status"]]
 
@@ -180,14 +167,14 @@ def render():
     parts = [Layout(Panel(console_text, title="Console", border_style="dim"), name="console")]
     if status:
         parts.append(Layout(Panel(status, border_style="yellow"), name="status", size=3))
-    parts.append(Layout(Panel(f"> {input_buffer}█", title="Input", border_style="blue"), name="input", size=3))
+    if input_ui is not None:
+        parts.append(Layout(input_ui, name="input"))  # Dynamic size
+    else:
+        parts.append(Layout(Panel(f"> {input_buffer}█", title="Input", border_style="blue"), name="input", size=3))
     layout.split_column(*parts)
     return layout
 
 
-# =============================================================================
-# MAIN
-# =============================================================================
 
 if __name__ == "__main__":
     load_plugins()
@@ -197,8 +184,10 @@ if __name__ == "__main__":
     with Live(render(), screen=True, auto_refresh=False) as live:
         while True:
             with state as s:
+                s.keys_this_frame.clear()  # Clear at start of tick
+            time.sleep(0.016)  # Allow keys to accumulate
+            with state as s:
                 dispatch("on_tick", s)
                 if not s.running:
                     break
             live.update(render(), refresh=True)
-            time.sleep(0.016)
