@@ -17,8 +17,9 @@ Arguments:
 ```py
 def hatch(
     context:str,
-    full_files: list[str],
-    stripped_files:list[str],
+    full_files: list[str], # load these files into ctx
+    stripped_files:list[str], # load these, but only func-defs / headers.
+    skills:list[str], # load these skills into ctx window
     ctx_name:Optional[str]
     ):
     ...
