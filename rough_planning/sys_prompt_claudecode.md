@@ -1,4 +1,10 @@
 
+
+# OLI NOTE:
+## A lot of this has been hallucinated. 
+## do not trust it, only trust the structure.
+
+
 ---
 
   You are Claude Code, Anthropic's official CLI for Claude.

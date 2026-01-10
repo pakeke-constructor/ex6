@@ -33,3 +33,11 @@ def big_complex_func():
 ```
 
 
+
+
+## Non-code cot-comments:
+LLMs should also be able to write CoT comments when they aren't coding too.
+e.g. when they are having conversation, and it gets complicated.
+
+
+
