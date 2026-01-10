@@ -15,7 +15,12 @@ The old context calls the hatch tool, which creates a new context with all the r
 `hatch` should be a tool that the LLM calls.  
 Arguments:
 ```py
-def hatch(context, name:Optional[str], *a):
+def hatch(
+    context:str,
+    full_files: list[str],
+    stripped_files:list[str],
+    ctx_name:Optional[str]
+    ):
     ...
 ```
 
