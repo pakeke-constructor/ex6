@@ -180,7 +180,7 @@ def input_thread():
         key = readchar.readkey()
         state.keys.append(key)
 
-def push_input(draw_fn):
+def push_ui(draw_fn):
     state.input_stack.append(draw_fn)
 
 

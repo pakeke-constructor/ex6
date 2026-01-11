@@ -58,7 +58,7 @@ assistant (300)
 Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)
 User may be prompted to answer questions / clarifications by the LLM. Such questions should be isolated in the context that asked them.
 
-**Command-input:**
+**User-Input:**
 Both work-mode AND selection-mode have a command-input at the bottom.
 The user may choose to type commands, (and/or talk to the LLM if in work-mode)
 

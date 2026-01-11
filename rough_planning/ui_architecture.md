@@ -39,17 +39,8 @@ def question_tool(ctx: Ctx, inpt: Inputs, *args):
             ...
         ])
 
-    
-    ## TODO: how should the addition of the element work?
-    # idea-1: just set it:
-    ctx.input_element = draw_ui # PROBLEM: overwriting old stuff.
-
-    # idea-2: stack-based:
-    ctx.push_input(draw_ui)
-    # PROBLEM: fragile-state? Feels ugly and complicated?
-
-    # ^^^ i think this one is the best tho.
-    # its actually really robust with the `return None` stuff
+    # pushes to the top of the stack.
+    ctx.push_ui(draw_ui)
 
 
 
