@@ -59,12 +59,12 @@ Prompt LLMs, run commands, see the entire conversation history for this context 
 User may be prompted to answer questions / clarifications by the LLM. Such questions should be isolated in the context that asked them.
 
 **User-Input:**
-Both work-mode AND selection-mode have a command-input at the bottom.
+Both work-mode AND selection-mode have a command-input-box at the bottom.
 The user may choose to type commands, (and/or talk to the LLM if in work-mode)
-
-**Custom UI:**
 ex6 is intended to be highly-customizable when it comes to workflow.  
-As such, we should have question dialogs that are defined AS PLUGINS, but become part of the UI when
+As such, we should have question dialogs that are defined AS PLUGINS, but become part of the UI when appropriate.
+E.g. when question-dialog appears, it REPLACES the command-input-box.
+
 
 </ui-description>
 

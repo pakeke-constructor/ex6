@@ -46,6 +46,13 @@ class ContextInfo:
     children: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
 
+    def __init__(self, *a, **ka):
+        super().__init__(*a,**ka)
+        def console_input():
+            # TODO draw terminal here, (self is ctx closure)
+            return Text("[red]TERMINAL[/red]")
+        self.input_stack = [console_input]
+
     def push_ui(self, draw_fn):
         self.input_stack.append(draw_fn)
 
@@ -233,11 +240,25 @@ def render_right_panel():
     return Panel(info, title="Info")
 
 
+def render_input_box(inpt):
+    # TODO: implement user-input system
+    # - render input_buffer as editable text
+    # - if current_context has input_stack, top item replaces this
+    # - handle backspace, typing, enter to submit
+    # - commands start with "/", else LLM chat (work-mode only)
+    return Panel(f"> {state.input_buffer}_", style="dim")
+
+
 def _render(inpt):
-    layout = Layout()
-    layout.split_row(
+    main = Layout()
+    main.split_row(
         Layout(render_left_panel(inpt), name="left"),
         Layout(render_right_panel(), name="right"),
+    )
+    layout = Layout()
+    layout.split_column(
+        Layout(main, name="main"),
+        Layout(render_input_box(inpt), name="input", size=3),
     )
     return layout
 
