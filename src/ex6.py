@@ -5,6 +5,7 @@ import threading
 import time
 import glob
 import os
+import inspect
 from dataclasses import dataclass, field
 from rich.live import Live
 from rich.panel import Panel
@@ -15,7 +16,12 @@ import readchar
 
 _commands = {}
 
+_tools = {}
 
+
+
+def get_fn_name(fn):
+    return fn.__name__
 
 @dataclass
 class AppState:
@@ -34,11 +40,14 @@ def command(fn):
 
     @ex6.command
     def my_command(arg1, arg2): pass
-        
+
     now, `/command a b` should be valid command
     '''
     name = get_fn_name(fn)
-    _commands[name] = fn
+    sig = inspect.signature(fn)
+    spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
+            for p in sig.parameters.values()]
+    _commands[name] = (fn, spec)
     return fn
 
 
@@ -47,11 +56,14 @@ def tool(fn):
     @ex6.tool
     def my_llm_tool(arg1, arg2):
         pass
-        
+
     can be included in ctx windows for LLMs.
     '''
     name = get_fn_name(fn)
-    _commands[name] = fn
+    sig = inspect.signature(fn)
+    spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
+            for p in sig.parameters.values()]
+    _tools[name] = (fn, spec)
     return fn
 
 
