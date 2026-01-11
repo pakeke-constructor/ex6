@@ -20,9 +20,6 @@ _tools = {}
 
 
 
-def get_fn_name(fn):
-    return fn.__name__
-
 class LockedValue:
     def __init__(self, val):
         self._val = val
@@ -40,12 +37,16 @@ class LockedValue:
 class AppState:
     input_buffer: str = ""
     console: list = field(default_factory=list)
-    current_window: list = field(default_factory=list)
     keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     input_stack: list = field(default_factory=list)
+    current_context: Optional['Context'] = None
 
 state = AppState()
 
+
+
+def get_fn_name(fn):
+    return fn.__name__
 
 
 def command(fn):
@@ -151,12 +152,6 @@ class Context:
     def __init__(self, name, messages):
         self.name = name
         self.messages = messages
-
-
-_current_ctx: Optional[Context] = None
-
-def set_context(ctx): _current_ctx = ctx
-def get_context(): return _current_ctx
 
 
 
