@@ -12,38 +12,7 @@ import readchar
 
 
 
-_hooks = {"on_startup": [], "on_key": [], "on_submit": [], "on_tick": [], "on_render_status": []}
 _commands = {}
-
-
-
-class _HookNamespace:
-    def _make(self, name):
-        def dec(fn):
-            _hooks[name].append(fn)
-            return fn
-        return dec
-
-    @property
-    def on_startup(self): return self._make("on_startup")
-    @property
-    def on_key(self): return self._make("on_key")
-    @property
-    def on_submit(self): return self._make("on_submit")
-    @property
-    def on_tick(self): return self._make("on_tick")
-    @property
-    def on_render_status(self): return self._make("on_render_status")
-
-hook = _HookNamespace()
-
-
-def command(name, args=None):
-    args = args or []
-    def dec(fn):
-        _commands[name] = (fn, args)
-        return fn
-    return dec
 
 
 
@@ -55,6 +24,78 @@ class AppState:
     running: bool = True
     keys_this_frame: list = field(default_factory=list)  # keys pressed since last tick
     input_ui: object = None  # Rich renderable for custom input UI, or None
+
+
+
+def command(fn):
+    '''
+    used like:
+
+    @ex6.command
+    def my_command(arg1, arg2): pass
+        
+    now, `/command a b` should be valid command
+    '''
+    name = get_fn_name(fn)
+    _commands[name] = fn
+    return fn
+
+
+def tool(fn):
+    '''
+    @ex6.tool
+    def my_llm_tool(arg1, arg2):
+        pass
+        
+    can be included in ctx windows for LLMs.
+    '''
+    name = get_fn_name(fn)
+    _commands[name] = fn
+    return fn
+
+
+class InputPass:
+    '''
+    A new InputPass object is created every frame.
+    records keyboard activity.
+    '''
+    def __init__(self):
+        pass# TODO.
+
+    def consume(self, key: str) -> bool:
+        # TODO: consumes `key` for this frame.
+        # returns True iff this key was pressed.
+        # False if this key wasnt pressed.
+        # (When consumed, future calls of `consume` will return false for this frame)
+        return True
+
+    def consume_text(self) -> str:
+        # TODO: consumes any text for this frame.
+        # future calls of `consume_text` and consume(?) will return False for this frame
+
+        txt = "a" # the current key that is pressed
+        return txt
+
+    def emit_keypress(self, key):
+        # TODO: consumes key-press for this frame.
+        # future calls of `consume` will return false
+        pass 
+
+    def consume_enter(self) -> bool:
+        return self.consume(readchar.key.ENTER)
+
+    def consume_backspace(self) -> bool:
+        return self.consume(readchar.key.BACKSPACE)
+
+    def consume_left(self) -> int:
+        return self.consume(readchar.key.LEFT)
+    def consume_right(self) -> int:
+        return self.consume(readchar.key.RIGHT)
+    def consume_up(self) -> int:
+        return self.consume(readchar.key.UP)
+    def consume_down(self) -> int:
+        return self.consume(readchar.key.DOWN)
+
 
 
 class ThreadSafeState:
@@ -71,44 +112,16 @@ state = ThreadSafeState(AppState())
 
 
 
-def dispatch(event, *args):
-    for fn in _hooks.get(event, []):
-        if fn(*args) is True:
-            return True
-    return False
-
-
 def dispatch_command(text):
-    if not text.startswith("/"):
-        return False
-    try:
-        parts = shlex.split(text[1:])
-    except:
-        parts = text[1:].split()
-    if not parts:
-        return False
-
-    name, raw = parts[0], parts[1:]
-    if name not in _commands:
-        with state as s:
-            s.console.append(f"Unknown command: /{name}")
-        return True
-
+    if not text.startswith("/"): return False
+    parts = text[1:].split()
+    if not parts: return False
+    
+    name, args = parts[0], parts[1:]
+    if name not in _commands: return True
+    
     fn, spec = _commands[name]
-    parsed = []
-    for i, (arg_name, arg_type) in enumerate(spec):
-        if i < len(raw):
-            try:
-                parsed.append(arg_type(raw[i]))
-            except:
-                with state as s:
-                    s.console.append(f"Invalid arg {arg_name}")
-                return True
-        else:
-            with state as s:
-                s.console.append(f"Missing arg: {arg_name}")
-            return True
-    return fn(*parsed)
+    return fn(*[typ(args[i]) for i, (_, typ) in enumerate(spec)])
 
 
 
@@ -140,13 +153,8 @@ def input_thread():
                 if text:
                     if text.startswith("/"):
                         dispatch_command(text)
-                    else:
-                        dispatch("on_submit", text, s)
-            elif len(key) == 1 and ord(key) >= 32:
-                if not dispatch("on_key", key, s):
-                    s.input_buffer += key
             else:
-                dispatch("on_key", key, s)
+                pass # send to 
 
             if not s.running:
                 break
@@ -154,31 +162,11 @@ def input_thread():
 
 
 def render():
-    with state as s:
-        console_text = "\n".join(s.console) or " "
-        input_buffer = s.input_buffer
-        input_ui = s.input_ui
-
-        status_parts = [fn(s) for fn in _hooks["on_render_status"]]
-
-    status = " | ".join(p for p in status_parts if p)
-
-    layout = Layout()
-    parts = [Layout(Panel(console_text, title="Console", border_style="dim"), name="console")]
-    if status:
-        parts.append(Layout(Panel(status, border_style="yellow"), name="status", size=3))
-    if input_ui is not None:
-        parts.append(Layout(input_ui, name="input"))  # Dynamic size
-    else:
-        parts.append(Layout(Panel(f"> {input_buffer}█", title="Input", border_style="blue"), name="input", size=3))
-    layout.split_column(*parts)
-    return layout
-
+    pass
 
 
 if __name__ == "__main__":
     load_plugins()
-    dispatch("on_startup")
     threading.Thread(target=input_thread, daemon=True).start()
 
     with Live(render(), screen=True, auto_refresh=False) as live:
@@ -186,9 +174,7 @@ if __name__ == "__main__":
             with state as s:
                 s.keys_this_frame.clear()  # Clear at start of tick
             time.sleep(0.016)  # Allow keys to accumulate
-            with state as s:
-                dispatch("on_tick", s)
-                if not s.running:
-                    break
             live.update(render(), refresh=True)
+
+
 
