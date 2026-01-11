@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from rich.live import Live
 from rich.panel import Panel
 from rich.layout import Layout
+from rich.text import Text
 import readchar
 
 
@@ -34,12 +35,46 @@ class LockedValue:
             self._val.append(x)
 
 @dataclass
+class ContextInfo:
+    name: str
+    model: str = "opus-4.5"
+    tokens: int = 32000
+    max_tokens: int = 200000
+    cost: float = 0.15
+    messages: list = field(default_factory=list)
+    children: list = field(default_factory=list)
+
+# Dummy data
+DUMMY_CONTEXTS = [
+    ContextInfo("ctx1", messages=[("sys-prompt-1", 12000), ("user", 400)]),
+    ContextInfo("ctx2", children=[
+        ContextInfo("ctx2_child", tokens=8000),
+        ContextInfo("blah_second_child", children=[
+            ContextInfo("nested_child", tokens=2000)
+        ])
+    ]),
+    ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08),
+    ContextInfo("debug_ctx", tokens=5000, messages=[("sys", 4000), ("user", 1000)]),
+]
+
+def flatten_contexts(ctxs, depth=0):
+    """Flatten context tree into (ctx, depth) pairs."""
+    result = []
+    for c in ctxs:
+        result.append((c, depth))
+        result.extend(flatten_contexts(c.children, depth + 1))
+    return result
+
+@dataclass
 class AppState:
     input_buffer: str = ""
     console: list = field(default_factory=list)
     keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     input_stack: list = field(default_factory=list)
     current_context: Optional['Context'] = None
+    mode: str = "selection"
+    hover_idx: int = 0
+    contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
 
 state = AppState()
 
@@ -155,31 +190,73 @@ class Context:
 
 
 
-def _render():
-    # TODO: do layout properly.
-    return Layout()
+def render_left_panel(inpt):
+    flat = flatten_contexts(state.contexts)
 
+    # Handle navigation
+    if inpt.consume_up():
+        state.hover_idx = max(0, state.hover_idx - 1)
+    if inpt.consume_down():
+        state.hover_idx = min(len(flat) - 1, state.hover_idx + 1)
+    if inpt.consume_enter() and flat:
+        state.current_context, _ = flat[state.hover_idx]
+        state.mode = "work"
 
-def tick() -> bool:
-    inpt = InputPass(state.keys.take())
+    lines = Text()
+    for i, (ctx, depth) in enumerate(flat):
+        indent = "    " * depth
+        prefix = ">> " if i == state.hover_idx else "   "
+        style = "bold cyan" if i == state.hover_idx else ""
+        lines.append(f"{prefix}{indent}{ctx.name}\n", style=style)
+    return Panel(lines, title="Contexts")
 
-    if inpt.consume(readchar.key.CTRL_C):
-        return False
+def render_right_panel():
+    flat = flatten_contexts(state.contexts)
+    if not flat:
+        return Panel("No contexts", title="Info")
+    ctx, _ = flat[state.hover_idx]
 
-    if state.input_stack:
-        if state.input_stack[-1](inpt) is None:
-            state.input_stack.pop()
-    return True
+    # Token bar
+    ratio = ctx.tokens / ctx.max_tokens
+    bar_len = 20
+    filled = int(ratio * bar_len)
+    bar = "[" + "X" * filled + "-" * (bar_len - filled) + "]"
+
+    info = Text()
+    info.append(f"{ctx.name}    ", style="bold")
+    info.append(f"{ctx.model}\n", style="dim")
+    info.append(f"{bar}\n")
+    info.append(f"{ctx.tokens//1000}k / {ctx.max_tokens//1000}k tokens, ${ctx.cost:.2f}\n")
+    info.append("─" * 20 + "\n")
+
+    if ctx.messages:
+        for name, toks in ctx.messages:
+            info.append(f"{name} ({toks//1000}k)\n")
+    else:
+        info.append("(no messages)\n", style="dim")
+
+    return Panel(info, title="Info")
+
+def _render(inpt):
+    layout = Layout()
+    layout.split_row(
+        Layout(render_left_panel(inpt), name="left"),
+        Layout(render_right_panel(), name="right"),
+    )
+    return layout
 
 
 if __name__ == "__main__":
     load_plugins()
     threading.Thread(target=input_thread, daemon=True).start()
 
-    with Live(_render(), screen=True, auto_refresh=False) as live:
-        while tick():
+    with Live(Layout(), screen=True, auto_refresh=False) as live:
+        while True:
+            inpt = InputPass(state.keys.take())
+            if inpt.consume(readchar.key.CTRL_C):
+                break
+            live.update(_render(inpt), refresh=True)
             time.sleep(1/60)
-            live.update(_render(), refresh=True)
 
 
 
