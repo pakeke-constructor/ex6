@@ -44,6 +44,10 @@ class ContextInfo:
     cost: float = 0.15
     messages: list = field(default_factory=list)
     children: list = field(default_factory=list)
+    input_stack: list = field(default_factory=list)
+
+    def push_ui(self, draw_fn):
+        self.input_stack.append(draw_fn)
 
 # Dummy data
 DUMMY_CONTEXTS = [
@@ -71,7 +75,6 @@ class AppState:
     input_buffer: str = ""
     console: list = field(default_factory=list)
     keys: LockedValue = field(default_factory=lambda: LockedValue([]))
-    input_stack: list = field(default_factory=list)
     current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
     hover_idx: int = 0
@@ -180,8 +183,6 @@ def input_thread():
         key = readchar.readkey()
         state.keys.append(key)
 
-def push_ui(draw_fn):
-    state.input_stack.append(draw_fn)
 
 
 
