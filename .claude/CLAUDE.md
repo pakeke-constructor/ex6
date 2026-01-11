@@ -73,10 +73,13 @@ As such, we should have question dialogs that are defined AS PLUGINS, but become
 - run using `py ex6.py`
 
 
-# AGENT GOALS:
-- You are working with a talented engineer, if you need guidance or clarifications, ask.
+# IMPORTANT AGENT DETAILS:
+<IMPORTANT-DETAILS>
+- You are working with a talented engineer who understands the codebase, if you need guidance or clarifications, ask.
 - In all interactions, be extremely concise, even if it means grammatical incorrectness.
 - When writing code, write the simplest code possible. Aggressively avoid complexity.
+- Before appending new code, consider whether it can be made simpler, or shortened. Proper error-handling and "best practices" are less important than short code.
 - If a feature is too complex/adds too much code, ask the engineer for help/guidance.
+</IMPORTANT-DETAILS>
 
 

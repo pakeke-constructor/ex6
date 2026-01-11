@@ -1,7 +1,8 @@
 
+from typing import Optional
+
 import threading
 import time
-import shlex
 import glob
 import os
 from dataclasses import dataclass, field
@@ -161,20 +162,35 @@ def input_thread():
 
 
 
-def render():
-    pass
+class Context:
+    def __init__(self, name, messages):
+        self.name = name
+        self.messages = messages
+
+
+_current_ctx: Optional[Context] = None
+
+def set_context(ctx): _current_ctx = ctx
+def get_context(): return _current_ctx
+
+
+
+def _render():
+    # TODO: do layout properly.
+    return Layout()
 
 
 if __name__ == "__main__":
     load_plugins()
     threading.Thread(target=input_thread, daemon=True).start()
 
-    with Live(render(), screen=True, auto_refresh=False) as live:
+    with Live(_render(), screen=True, auto_refresh=False) as live:
         while True:
+            inpt = InputPass()
             with state as s:
                 s.keys_this_frame.clear()  # Clear at start of tick
-            time.sleep(0.016)  # Allow keys to accumulate
-            live.update(render(), refresh=True)
+            time.sleep(1/60) # 60 fps
+            live.update(_render(), refresh=True)
 
 
 
