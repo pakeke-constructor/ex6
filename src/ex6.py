@@ -34,6 +34,7 @@ class LockedValue:
         with self._lock:
             self._val.append(x)
 
+
 @dataclass
 class ContextInfo:
     name: str
@@ -71,7 +72,7 @@ class AppState:
     console: list = field(default_factory=list)
     keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     input_stack: list = field(default_factory=list)
-    current_context: Optional['Context'] = None
+    current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
     hover_idx: int = 0
     contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
@@ -183,17 +184,10 @@ def push_input(draw_fn):
     state.input_stack.append(draw_fn)
 
 
-class Context:
-    def __init__(self, name, messages):
-        self.name = name
-        self.messages = messages
-
-
 
 def render_left_panel(inpt):
     flat = flatten_contexts(state.contexts)
 
-    # Handle navigation
     if inpt.consume_up():
         state.hover_idx = max(0, state.hover_idx - 1)
     if inpt.consume_down():
@@ -210,13 +204,13 @@ def render_left_panel(inpt):
         lines.append(f"{prefix}{indent}{ctx.name}\n", style=style)
     return Panel(lines, title="Contexts")
 
+
 def render_right_panel():
     flat = flatten_contexts(state.contexts)
     if not flat:
         return Panel("No contexts", title="Info")
     ctx, _ = flat[state.hover_idx]
 
-    # Token bar
     ratio = ctx.tokens / ctx.max_tokens
     bar_len = 20
     filled = int(ratio * bar_len)
@@ -237,6 +231,7 @@ def render_right_panel():
 
     return Panel(info, title="Info")
 
+
 def _render(inpt):
     layout = Layout()
     layout.split_row(
@@ -244,6 +239,8 @@ def _render(inpt):
         Layout(render_right_panel(), name="right"),
     )
     return layout
+
+
 
 
 if __name__ == "__main__":
