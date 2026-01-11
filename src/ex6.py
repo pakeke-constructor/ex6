@@ -23,13 +23,28 @@ _tools = {}
 def get_fn_name(fn):
     return fn.__name__
 
+class LockedValue:
+    def __init__(self, val):
+        self._val = val
+        self._lock = threading.Lock()
+    def take(self):
+        with self._lock:
+            v = self._val
+            self._val = []
+            return v
+    def append(self, x):
+        with self._lock:
+            self._val.append(x)
+
 @dataclass
 class AppState:
     input_buffer: str = ""
     console: list = field(default_factory=list)
     current_window: list = field(default_factory=list)
-    keys_this_frame: list = field(default_factory=list)
+    keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     input_stack: list = field(default_factory=list)
+
+state = AppState()
 
 
 
@@ -100,21 +115,6 @@ class InputPass:
         return self.consume(readchar.key.DOWN)
 
 
-
-class ThreadSafeState:
-    def __init__(self, state):
-        self._state = state
-        self._lock = threading.Lock()
-    def __enter__(self):
-        self._lock.acquire()
-        return self._state
-    def __exit__(self, *a):
-        self._lock.release()
-
-state = ThreadSafeState(AppState())
-
-
-
 def dispatch_command(text):
     if not text.startswith("/"): return False
     parts = text[1:].split()
@@ -141,12 +141,10 @@ def load_plugins():
 def input_thread():
     while True:
         key = readchar.readkey()
-        with state as s:
-            s.keys_this_frame.append(key)
+        state.keys.append(key)
 
 def push_input(draw_fn):
-    with state as s:
-        s.input_stack.append(draw_fn)
+    state.input_stack.append(draw_fn)
 
 
 class Context:
@@ -168,19 +166,14 @@ def _render():
 
 
 def tick() -> bool:
-    with state as s:
-        keys = list(s.keys_this_frame)
-        s.keys_this_frame.clear()
-
-    inpt = InputPass(keys)
+    inpt = InputPass(state.keys.take())
 
     if inpt.consume(readchar.key.CTRL_C):
         return False
 
-    with state as s:
-        if s.input_stack:
-            if s.input_stack[-1](inpt) is None:
-                s.input_stack.pop()
+    if state.input_stack:
+        if state.input_stack[-1](inpt) is None:
+            state.input_stack.pop()
     return True
 
 
