@@ -26,11 +26,10 @@ def get_fn_name(fn):
 @dataclass
 class AppState:
     input_buffer: str = ""
-    console: list = field(default_factory=list)  # list of strings
+    console: list = field(default_factory=list)
     current_window: list = field(default_factory=list)
-    running: bool = True
-    keys_this_frame: list = field(default_factory=list)  # keys pressed since last tick
-    input_ui: object = None  # Rich renderable for custom input UI, or None
+    keys_this_frame: list = field(default_factory=list)
+    input_stack: list = field(default_factory=list)
 
 
 
@@ -68,45 +67,36 @@ def tool(fn):
 
 
 class InputPass:
-    '''
-    A new InputPass object is created every frame.
-    records keyboard activity.
-    '''
-    def __init__(self):
-        pass# TODO.
+    '''Created every frame with keys pressed that frame.'''
+    def __init__(self, keys: list):
+        self._keys = set(keys)
+        self._consumed = set()
 
     def consume(self, key: str) -> bool:
-        # TODO: consumes `key` for this frame.
-        # returns True iff this key was pressed.
-        # False if this key wasnt pressed.
-        # (When consumed, future calls of `consume` will return false for this frame)
-        return True
+        if key in self._keys and key not in self._consumed:
+            self._consumed.add(key)
+            return True
+        return False
 
     def consume_text(self) -> str:
-        # TODO: consumes any text for this frame.
-        # future calls of `consume_text` and consume(?) will return False for this frame
-
-        txt = "a" # the current key that is pressed
-        return txt
-
-    def emit_keypress(self, key):
-        # TODO: consumes key-press for this frame.
-        # future calls of `consume` will return false
-        pass 
+        text = ""
+        for k in list(self._keys - self._consumed):
+            if len(k) == 1 and k.isprintable():
+                self._consumed.add(k)
+                text += k
+        return text
 
     def consume_enter(self) -> bool:
         return self.consume(readchar.key.ENTER)
-
     def consume_backspace(self) -> bool:
         return self.consume(readchar.key.BACKSPACE)
-
-    def consume_left(self) -> int:
+    def consume_left(self) -> bool:
         return self.consume(readchar.key.LEFT)
-    def consume_right(self) -> int:
+    def consume_right(self) -> bool:
         return self.consume(readchar.key.RIGHT)
-    def consume_up(self) -> int:
+    def consume_up(self) -> bool:
         return self.consume(readchar.key.UP)
-    def consume_down(self) -> int:
+    def consume_down(self) -> bool:
         return self.consume(readchar.key.DOWN)
 
 
@@ -152,26 +142,11 @@ def input_thread():
     while True:
         key = readchar.readkey()
         with state as s:
-            s.keys_this_frame.append(key)  # Always collect keys
+            s.keys_this_frame.append(key)
 
-            if key == readchar.key.CTRL_C:
-                s.running = False
-            elif s.input_ui is not None:
-                pass  # Plugin handles keys in on_tick
-            elif key == readchar.key.BACKSPACE:
-                s.input_buffer = s.input_buffer[:-1]
-            elif key == readchar.key.ENTER:
-                text = s.input_buffer.strip()
-                s.input_buffer = ""
-                if text:
-                    if text.startswith("/"):
-                        dispatch_command(text)
-            else:
-                pass # send to 
-
-            if not s.running:
-                break
-
+def push_input(draw_fn):
+    with state as s:
+        s.input_stack.append(draw_fn)
 
 
 class Context:
@@ -192,16 +167,30 @@ def _render():
     return Layout()
 
 
+def tick() -> bool:
+    with state as s:
+        keys = list(s.keys_this_frame)
+        s.keys_this_frame.clear()
+
+    inpt = InputPass(keys)
+
+    if inpt.consume(readchar.key.CTRL_C):
+        return False
+
+    with state as s:
+        if s.input_stack:
+            if s.input_stack[-1](inpt) is None:
+                s.input_stack.pop()
+    return True
+
+
 if __name__ == "__main__":
     load_plugins()
     threading.Thread(target=input_thread, daemon=True).start()
 
     with Live(_render(), screen=True, auto_refresh=False) as live:
-        while True:
-            inpt = InputPass()
-            with state as s:
-                s.keys_this_frame.clear()  # Clear at start of tick
-            time.sleep(1/60) # 60 fps
+        while tick():
+            time.sleep(1/60)
             live.update(_render(), refresh=True)
 
 
