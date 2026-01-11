@@ -24,7 +24,7 @@ def question_tool(ctx: Ctx, inpt: Inputs, *args):
     usr_i = 0 # the tab the user is on
     usr_inpt = "" # text input
 
-    def draw_ui():
+    def draw_ui(inpt: Input):
         if inpt.consume("right"):
             user_selection_index += 1
         elif inpt.consume("left"):
