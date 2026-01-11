@@ -19,13 +19,63 @@ This project, `ex6`, serves as a thin, simple alternative to claude-code.
 Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add even define what terminal-UI is.
 
 
+## UI layout / UX:
+ex6 has two modes: selection-mode, and work-mode.
+<ui-description>
+**Selection-mode:**  
+Displays list of named context-windows, user chooses what one to work in.
+This UI has 2 panels, split horizontally:
+
+- SelectionMode-Left-panel:
+Displays a list of LLM contexts. Each context has a name, and they are layed out in a tree-like structure, with children/forked contexts as "child nodes".
+eg:
+```
+ctx1
+ctx2
+    ctx2_child
+    blah_second_child
+        nested_child
+>> foobar  (the '>>' means that foobar is hovered)
+debug_ctx
+```
+User can hover over contexts via up/down arrow keys, and select a context with enter. (selecting a context will go to work-mode.)
+
+- SelectionMode-Right-panel: 
+Displays information about the currently hovered context window.
+Example:
+```
+my-context    opus-4.5
+[XXX-------------]
+32k / 200k tokens, $0.15
+------------
+sys-prompt-1 (12k)
+sys-prompt-2 (8k)
+user-prompt (400)
+assistant (300)
+```
+
+**Work-mode:**  
+Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)
+User may be prompted to answer questions / clarifications by the LLM. Such questions should be isolated in the context that asked them.
+
+**Command-input:**
+Both work-mode AND selection-mode have a command-input at the bottom.
+The user may choose to type commands, (and/or talk to the LLM if in work-mode)
+
+**Custom UI:**
+ex6 is intended to be highly-customizable when it comes to workflow.  
+As such, we should have question dialogs that are defined AS PLUGINS, but become part of the UI when
+
+</ui-description>
+
+
 ## Running:
 - run using `py ex6.py`
 
 
 # AGENT GOALS:
 - You are working with a talented engineer, if you need guidance or clarifications, ask.
-- In all interactions, be extremely concise.
+- In all interactions, be extremely concise, even if it means grammatical incorrectness.
 - When writing code, write the simplest code possible. Aggressively avoid complexity.
 - If a feature is too complex/adds too much code, ask the engineer for help/guidance.
 

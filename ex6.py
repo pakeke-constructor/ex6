@@ -191,3 +191,4 @@ if __name__ == "__main__":
                 if not s.running:
                     break
             live.update(render(), refresh=True)
+

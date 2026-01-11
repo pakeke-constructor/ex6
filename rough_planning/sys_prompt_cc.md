@@ -1,7 +1,7 @@
 
 
 # OLI NOTE:
-## A lot of this has been hallucinated. 
+## Most of this has been hallucinated. 
 ## do not trust it, only trust the structure.
 
 
