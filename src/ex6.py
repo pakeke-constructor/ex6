@@ -46,8 +46,7 @@ class ContextInfo:
     children: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
 
-    def __init__(self, *a, **ka):
-        super().__init__(*a,**ka)
+    def __post_init__(self):
         def console_input():
             # TODO draw terminal here, (self is ctx closure)
             return Text("[red]TERMINAL[/red]")
@@ -207,7 +206,7 @@ def render_left_panel(inpt):
     lines = Text()
     for i, (ctx, depth) in enumerate(flat):
         indent = "    " * depth
-        prefix = ">> " if i == state.hover_idx else "   "
+        prefix = "> " if i == state.hover_idx else "   "
         style = "bold cyan" if i == state.hover_idx else ""
         lines.append(f"{prefix}{indent}{ctx.name}\n", style=style)
     return Panel(lines, title="Contexts")
@@ -249,7 +248,7 @@ def render_input_box(inpt):
     return Panel(f"> {state.input_buffer}_", style="dim")
 
 
-def _render(inpt):
+def render_selection_mode(inpt: InputPass):
     main = Layout()
     main.split_row(
         Layout(render_left_panel(inpt), name="left"),
@@ -262,6 +261,17 @@ def _render(inpt):
     )
     return layout
 
+
+def render_work_mode(inpt: InputPass) -> Layout:
+    # todo
+    return Layout()
+
+
+def _render(inpt: InputPass):
+    if state.mode == "selection":
+        return render_selection_mode(inpt)
+    else:
+        return render_work_mode(inpt)
 
 
 

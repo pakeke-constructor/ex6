@@ -65,12 +65,9 @@ ex6 is intended to be highly-customizable when it comes to workflow.
 As such, we should have question dialogs that are defined AS PLUGINS, but become part of the UI when appropriate.
 E.g. when question-dialog appears, it REPLACES the command-input-box.
 
-
 </ui-description>
 
 
-## Running:
-- run using `py ex6.py`
 
 
 # IMPORTANT AGENT DETAILS:
