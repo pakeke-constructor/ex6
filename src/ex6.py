@@ -47,9 +47,24 @@ class ContextInfo:
     input_stack: list = field(default_factory=list)
 
     def __post_init__(self):
-        def console_input():
-            # TODO draw terminal here, (self is ctx closure)
-            return Text("[red]TERMINAL[/red]")
+        input_text = ""
+        ctx = self
+
+        def console_input(inpt):
+            nonlocal input_text
+            input_text += inpt.consume_text()
+            if inpt.consume_backspace() and input_text:
+                input_text = input_text[:-1]
+            if inpt.consume_enter() and input_text:
+                text = input_text
+                input_text = ""
+                if text.startswith("/"):
+                    dispatch_command(text)
+                else:
+                    # TODO: send to LLM (plugin handles this)
+                    ctx.messages.append(("user", len(text) * 4))
+            return Panel(f"> {input_text}_", style="dim")
+
         self.input_stack = [console_input]
 
     def push_ui(self, draw_fn):
@@ -76,15 +91,32 @@ def flatten_contexts(ctxs, depth=0):
         result.extend(flatten_contexts(c.children, depth + 1))
     return result
 
+def make_selection_input():
+    input_text = ""
+
+    def draw(inpt):
+        nonlocal input_text
+        input_text += inpt.consume_text()
+        if inpt.consume_backspace() and input_text:
+            input_text = input_text[:-1]
+        if inpt.consume_enter() and input_text:
+            text = input_text
+            input_text = ""
+            if text.startswith("/"):
+                dispatch_command(text)
+        return Panel(f"> {input_text}_", style="dim")
+
+    return draw
+
 @dataclass
 class AppState:
-    input_buffer: str = ""
     console: list = field(default_factory=list)
     keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
     hover_idx: int = 0
     contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
+    selection_input: callable = field(default_factory=make_selection_input)
 
 state = AppState()
 
@@ -240,12 +272,14 @@ def render_right_panel():
 
 
 def render_input_box(inpt):
-    # TODO: implement user-input system
-    # - render input_buffer as editable text
-    # - if current_context has input_stack, top item replaces this
-    # - handle backspace, typing, enter to submit
-    # - commands start with "/", else LLM chat (work-mode only)
-    return Panel(f"> {state.input_buffer}_", style="dim")
+    ctx = state.current_context
+    if ctx and ctx.input_stack:
+        result = ctx.input_stack[-1](inpt)
+        if result is None:  # signals pop
+            ctx.input_stack.pop()
+            return render_input_box(inpt)  # render next in stack
+        return result
+    return state.selection_input(inpt)  # selection mode fallback
 
 
 def render_selection_mode(inpt: InputPass):
@@ -263,8 +297,28 @@ def render_selection_mode(inpt: InputPass):
 
 
 def render_work_mode(inpt: InputPass) -> Layout:
-    # todo
-    return Layout()
+    ctx = state.current_context
+
+    # ESC to go back to selection mode
+    if inpt.consume('\x1b'):
+        state.mode = "selection"
+
+    # Build conversation display
+    conv = Text()
+    if ctx and ctx.messages:
+        for name, toks in ctx.messages:
+            conv.append(f"[{name}] ", style="bold cyan")
+            conv.append(f"({toks//1000}k tokens)\n", style="dim")
+    else:
+        conv.append("(empty conversation)\n", style="dim")
+
+    # Layout: conversation panel + input box
+    layout = Layout()
+    layout.split_column(
+        Layout(Panel(conv, title=ctx.name if ctx else "Work"), name="main"),
+        Layout(render_input_box(inpt), name="input", size=3),
+    )
+    return layout
 
 
 def _render(inpt: InputPass):
