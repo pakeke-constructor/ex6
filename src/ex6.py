@@ -278,6 +278,8 @@ def input_thread():
 
 
 
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 def render_left_panel(inpt):
     flat = flatten_contexts(state.contexts)
 
@@ -289,12 +291,14 @@ def render_left_panel(inpt):
         state.current_context, _ = flat[state.hover_idx]
         state.mode = "work"
 
+    spin_char = SPINNER[int(time.time() * 10) % len(SPINNER)]
     lines = Text()
     for i, (ctx, depth) in enumerate(flat):
         indent = "    " * depth
         prefix = "> " if i == state.hover_idx else "   "
         style = "bold cyan" if i == state.hover_idx else ""
-        lines.append(f"{prefix}{indent}{ctx.name}\n", style=style)
+        spin = f" {spin_char}" if ctx.llm_currently_running else ""
+        lines.append(f"{prefix}{indent}{ctx.name}{spin}\n", style=style)
     return Panel(lines, title="Contexts")
 
 
