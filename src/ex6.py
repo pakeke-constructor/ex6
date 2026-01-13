@@ -47,6 +47,27 @@ def mock_llm_stream():
 
 all_contexts = set()
 
+def is_prefix(short_msgs, long_msgs):
+    """Check if short_msgs is a prefix of long_msgs. Empty lists are not valid prefixes."""
+    if not short_msgs or len(short_msgs) >= len(long_msgs):
+        return False
+    return long_msgs[:len(short_msgs)] == short_msgs
+
+def find_parent(ctx):
+    """Find the context with longest message prefix (direct parent)."""
+    best = None
+    for candidate in all_contexts:
+        if candidate is ctx:
+            continue
+        if is_prefix(candidate.messages, ctx.messages):
+            if best is None or len(candidate.messages) > len(best.messages):
+                best = candidate
+    return best
+
+def get_children(ctx):
+    """Get all direct children of this context."""
+    return [c for c in all_contexts if find_parent(c) is ctx]
+
 @dataclass
 class ContextInfo:
     name: str
@@ -57,9 +78,6 @@ class ContextInfo:
     max_tokens: int = 200000
     cost: float = 0.15
     messages: list = field(default_factory=list)
-    # TODO: in future; we shouldnt have a list of children.
-    # Contexts should exist in one big pool, and they should AUTOMATICALLY find their children/parents based on identical conversation history.
-    children: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
 
     def __post_init__(self):
@@ -103,7 +121,6 @@ class ContextInfo:
     def fork(self) -> ContextInfo:
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
-        cpy.children = []
         cpy.input_stack = []
         cpy.__post_init__()  # fresh input handlers
         all_contexts.add(cpy)
@@ -118,30 +135,38 @@ def get_content(msg: dict[str, str|Callable[[ContextInfo],str]], ctx: ContextInf
     return c(ctx) if callable(c) else c
 
 
+# Parent-child relationships are auto-detected via message prefixes
+_base_msg = {"role": "system", "content": "base"}
 DUMMY_CONTEXTS = [
     ContextInfo("ctx1", messages=[
         {"role": "system", "content": "You are helpful.", "name": "sys-prompt-1"},
         {"role": "user", "content": "hello"},
     ]),
-    ContextInfo("ctx2", children=[
-        ContextInfo("ctx2_child", tokens=8000),
-        ContextInfo("blah_second_child", children=[
-            ContextInfo("nested_child", tokens=2000)
-        ])
-    ]),
+    ContextInfo("ctx2", messages=[_base_msg]),
+    ContextInfo("ctx2_child", tokens=8000, messages=[_base_msg, {"role": "user", "content": "child1"}]),
+    ContextInfo("blah_second_child", messages=[_base_msg, {"role": "user", "content": "child2"}]),
+    ContextInfo("nested_child", tokens=2000, messages=[_base_msg, {"role": "user", "content": "child2"}, {"role": "assistant", "content": "nested"}]),
     ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08),
     ContextInfo("debug_ctx", tokens=5000, messages=[
         {"role": "system", "content": "Debug mode."},
         {"role": "user", "content": "test input"},
     ]),
 ]
+for _ctx in DUMMY_CONTEXTS:
+    all_contexts.add(_ctx)
 
-def flatten_contexts(ctxs, depth=0):
-    """Flatten context tree into (ctx, depth) pairs."""
+def flatten_contexts(ctxs):
+    """Flatten context tree into (ctx, depth) pairs. Parent-child via message prefixes."""
+    def subtree(ctx, depth):
+        result = [(ctx, depth)]
+        for child in get_children(ctx):
+            result.extend(subtree(child, depth + 1))
+        return result
+
     result = []
-    for c in ctxs:
-        result.append((c, depth))
-        result.extend(flatten_contexts(c.children, depth + 1))
+    roots = [c for c in ctxs if find_parent(c) is None]
+    for c in roots:
+        result.extend(subtree(c, 0))
     return result
 
 def make_selection_input():
