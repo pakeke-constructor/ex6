@@ -156,10 +156,14 @@ for _ctx in DUMMY_CONTEXTS:
     all_contexts.add(_ctx)
 
 def flatten_contexts(ctxs):
-    """Flatten context tree into (ctx, depth) pairs. Parent-child via message prefixes."""
+    """Flatten context tree, collapsing single-child chains."""
     def subtree(ctx, depth):
+        children = get_children(ctx)
+        if len(children) == 1:
+            # Skip this node, continue with child at same depth
+            return subtree(children[0], depth)
         result = [(ctx, depth)]
-        for child in get_children(ctx):
+        for child in children:
             result.extend(subtree(child, depth + 1))
         return result
 
