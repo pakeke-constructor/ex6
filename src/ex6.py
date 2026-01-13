@@ -155,12 +155,13 @@ DUMMY_CONTEXTS = [
 for _ctx in DUMMY_CONTEXTS:
     all_contexts.add(_ctx)
 
-def flatten_contexts(ctxs):
-    """Flatten context tree, collapsing single-child chains."""
+def flatten_contexts(ctxs, pinned=None):
+    """Flatten context tree, collapsing single-child chains. Pinned ctx + children never collapsed."""
+    pinned_set = {pinned} | set(get_children(pinned)) if pinned else set()
+
     def subtree(ctx, depth):
         children = get_children(ctx)
-        if len(children) == 1:
-            # Skip this node, continue with child at same depth
+        if len(children) == 1 and ctx not in pinned_set:
             return subtree(children[0], depth)
         result = [(ctx, depth)]
         for child in children:
@@ -310,14 +311,25 @@ def input_thread():
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 def render_left_panel(inpt):
-    flat = flatten_contexts(state.contexts)
+    # LEFT changes current_context before flatten (affects pinning)
+    if inpt.consume_left() and state.current_context:
+        state.current_context = find_parent(state.current_context) or state.current_context
+
+    flat = flatten_contexts(state.contexts, pinned=state.current_context)
+
+    # Sync hover_idx to current_context position
+    for i, (ctx, _) in enumerate(flat):
+        if ctx is state.current_context:
+            state.hover_idx = i
+            break
 
     if inpt.consume_up():
         state.hover_idx = max(0, state.hover_idx - 1)
     if inpt.consume_down():
         state.hover_idx = min(len(flat) - 1, state.hover_idx + 1)
+    if flat:
+        state.current_context = flat[state.hover_idx][0]
     if inpt.consume_enter() and flat:
-        state.current_context, _ = flat[state.hover_idx]
         state.mode = "work"
 
     spin_char = SPINNER[int(time.time() * 10) % len(SPINNER)]
@@ -332,7 +344,7 @@ def render_left_panel(inpt):
 
 
 def render_right_panel():
-    flat = flatten_contexts(state.contexts)
+    flat = flatten_contexts(state.contexts, pinned=state.current_context)
     if not flat:
         return Panel("No contexts", title="Info")
     ctx, _ = flat[state.hover_idx]
