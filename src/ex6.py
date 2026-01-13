@@ -1,10 +1,9 @@
 
-from typing import Optional, Callable, AsyncIterator
+from typing import Optional, Callable
 
 import threading
 import time
 import copy
-import asyncio
 import glob
 import os
 import inspect
@@ -38,10 +37,10 @@ class LockedValue:
 
 
 
-async def mock_llm_stream() -> AsyncIterator[str]:
+def mock_llm_stream():
     """Mock LLM data stream."""
     for _ in range(20):
-        await asyncio.sleep(0.1)
+        time.sleep(0.1)
         yield "token! "
 
 
@@ -83,19 +82,22 @@ class ContextInfo:
         # can add more 
         self.input_stack = [console_input]
     
+    def __hash__(self): return id(self)
+    def __eq__(self, other): return self is other
+    
     def call(self, text):
         cpy = self.fork()
-        cpy.messages.append({
-            "role":"user",
-            "content": text
-        })
-        # TODO: call the LLM here, use these two values.
-        # llm_current_output: str = ""
-        # llm_currently_running: bool = False
+        cpy.messages.append({"role": "user", "content": text})
+        cpy.llm_currently_running = True
+        cpy.llm_current_output = ""
 
-        # For streaming, might need to launch a custom thread.
-        # Might need mutex/lock where the streamed output is piped to?
-        # Or actually, might need asyncio magic instead? Use AsyncIterator
+        def run():
+            for token in mock_llm_stream():
+                cpy.llm_current_output += token
+            cpy.messages.append({"role": "assistant", "content": cpy.llm_current_output})
+            cpy.llm_currently_running = False
+
+        threading.Thread(target=run, daemon=True).start()
 
     def fork(self) -> ContextInfo:
         cpy = copy.copy(self)
@@ -362,6 +364,11 @@ def render_work_mode(inpt: InputPass) -> Layout:
             conv.append(f"{content}\n", style="dim")
     else:
         conv.append("(empty conversation)\n", style="dim")
+
+    # Show streaming output
+    if ctx and ctx.llm_currently_running:
+        conv.append(f"[assistant] ", style="bold yellow")
+        conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
 
     # Layout: conversation panel + input box
     layout = Layout()
