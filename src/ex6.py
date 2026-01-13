@@ -156,12 +156,10 @@ for _ctx in DUMMY_CONTEXTS:
     all_contexts.add(_ctx)
 
 def flatten_contexts(ctxs, pinned=None):
-    """Flatten context tree, collapsing single-child chains. Pinned ctx + children never collapsed."""
-    pinned_set = {pinned} | set(get_children(pinned)) if pinned else set()
-
+    """Flatten context tree, collapsing single-child chains. Pinned ctx never collapsed."""
     def subtree(ctx, depth):
         children = get_children(ctx)
-        if len(children) == 1 and ctx not in pinned_set:
+        if len(children) == 1 and ctx is not pinned:
             return subtree(children[0], depth)
         result = [(ctx, depth)]
         for child in children:
