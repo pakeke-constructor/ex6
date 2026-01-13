@@ -39,7 +39,7 @@ class LockedValue:
 
 def mock_llm_stream():
     """Mock LLM data stream."""
-    for _ in range(30):
+    for _ in range(60):
         time.sleep(0.1)
         yield "token "
 
@@ -195,7 +195,6 @@ class AppState:
     keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
-    hover_idx: int = 0
     contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
     selection_input: callable = field(default_factory=make_selection_input)
 
@@ -306,27 +305,26 @@ def input_thread():
 
 
 
-SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+#SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+SPINNER = "/-\\|/-\\||"
 
 def render_left_panel(inpt):
-    # LEFT changes current_context before flatten (affects pinning)
+    # LEFT navigates to parent
     if inpt.consume_left() and state.current_context:
         state.current_context = find_parent(state.current_context) or state.current_context
 
     flat = flatten_contexts(state.contexts, pinned=state.current_context)
 
-    # Sync hover_idx to current_context position
-    for i, (ctx, _) in enumerate(flat):
-        if ctx is state.current_context:
-            state.hover_idx = i
-            break
+    # Find current index
+    idx = next((i for i, (c, _) in enumerate(flat) if c is state.current_context), 0)
 
-    if inpt.consume_up():
-        state.hover_idx = max(0, state.hover_idx - 1)
-    if inpt.consume_down():
-        state.hover_idx = min(len(flat) - 1, state.hover_idx + 1)
-    if flat:
-        state.current_context = flat[state.hover_idx][0]
+    # Up/down navigate via flat list
+    if inpt.consume_up() and idx > 0:
+        state.current_context = flat[idx - 1][0]
+        idx -= 1
+    if inpt.consume_down() and idx < len(flat) - 1:
+        state.current_context = flat[idx + 1][0]
+        idx += 1
     if inpt.consume_enter() and flat:
         state.mode = "work"
 
@@ -334,18 +332,17 @@ def render_left_panel(inpt):
     lines = Text()
     for i, (ctx, depth) in enumerate(flat):
         indent = "    " * depth
-        prefix = "> " if i == state.hover_idx else "   "
-        style = "bold cyan" if i == state.hover_idx else ""
+        prefix = "> " if i == idx else "   "
+        style = "bold cyan" if i == idx else ""
         spin = f" {spin_char}" if ctx.llm_currently_running else ""
         lines.append(f"{prefix}{indent}{ctx.name}{spin}\n", style=style)
     return Panel(lines, title="Contexts")
 
 
 def render_right_panel():
-    flat = flatten_contexts(state.contexts, pinned=state.current_context)
-    if not flat:
+    ctx = state.current_context
+    if not ctx:
         return Panel("No contexts", title="Info")
-    ctx, _ = flat[state.hover_idx]
 
     ratio = ctx.tokens / ctx.max_tokens
     bar_len = 20
