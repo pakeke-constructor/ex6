@@ -1,8 +1,10 @@
 
-from typing import Optional
+from typing import Optional, Callable, AsyncIterator
 
 import threading
 import time
+import copy
+import asyncio
 import glob
 import os
 import inspect
@@ -35,20 +37,34 @@ class LockedValue:
             self._val.append(x)
 
 
+
+async def mock_llm_stream() -> AsyncIterator[str]:
+    """Mock LLM data stream."""
+    for _ in range(20):
+        await asyncio.sleep(0.1)
+        yield "token! "
+
+
+
+all_contexts = set()
+
 @dataclass
 class ContextInfo:
     name: str
     model: str = "opus-4.5"
+    llm_current_output: str = ""
+    llm_currently_running: bool = False
     tokens: int = 32000
     max_tokens: int = 200000
     cost: float = 0.15
     messages: list = field(default_factory=list)
+    # TODO: in future; we shouldnt have a list of children.
+    # Contexts should exist in one big pool, and they should AUTOMATICALLY find their children/parents based on identical conversation history.
     children: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
 
     def __post_init__(self):
         input_text = ""
-        ctx = self
 
         def console_input(inpt):
             nonlocal input_text
@@ -61,18 +77,45 @@ class ContextInfo:
                 if text.startswith("/"):
                     dispatch_command(text)
                 else:
-                    # TODO: send to LLM (plugin handles this)
-                    ctx.messages.append(("user", len(text) * 4))
+                    self.call(text)
             return Panel(f"> {input_text}_", style="dim")
 
+        # can add more 
         self.input_stack = [console_input]
+    
+    def call(self, text):
+        cpy = self.fork()
+        cpy.messages.append({
+            "role":"user",
+            "content": text
+        })
+        # TODO: call the LLM here, use these two values.
+        # llm_current_output: str = ""
+        # llm_currently_running: bool = False
+
+        # For streaming, might need to launch a custom thread.
+        # Might need mutex/lock where the streamed output is piped to?
+        # Or actually, might need asyncio magic instead? Use AsyncIterator
+
+    def fork(self) -> ContextInfo:
+        cpy = copy.copy(self)
+        all_contexts.add(cpy)
+        return cpy
 
     def push_ui(self, draw_fn):
         self.input_stack.append(draw_fn)
 
-# Dummy data
+
+def get_content(msg: dict[str, str|Callable[[ContextInfo],str]], ctx: ContextInfo) -> str:
+    c = msg["content"]
+    return c(ctx) if callable(c) else c
+
+
 DUMMY_CONTEXTS = [
-    ContextInfo("ctx1", messages=[("sys-prompt-1", 12000), ("user", 400)]),
+    ContextInfo("ctx1", messages=[
+        {"role": "system", "content": "You are helpful.", "name": "sys-prompt-1"},
+        {"role": "user", "content": "hello"},
+    ]),
     ContextInfo("ctx2", children=[
         ContextInfo("ctx2_child", tokens=8000),
         ContextInfo("blah_second_child", children=[
@@ -80,7 +123,10 @@ DUMMY_CONTEXTS = [
         ])
     ]),
     ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08),
-    ContextInfo("debug_ctx", tokens=5000, messages=[("sys", 4000), ("user", 1000)]),
+    ContextInfo("debug_ctx", tokens=5000, messages=[
+        {"role": "system", "content": "Debug mode."},
+        {"role": "user", "content": "test input"},
+    ]),
 ]
 
 def flatten_contexts(ctxs, depth=0):
@@ -193,7 +239,8 @@ class InputPass:
         return self.consume(readchar.key.DOWN)
 
 
-def dispatch_command(text):
+
+def dispatch_command(text: str):
     if not text.startswith("/"): return False
     parts = text[1:].split()
     if not parts: return False
@@ -263,7 +310,9 @@ def render_right_panel():
     info.append("─" * 20 + "\n")
 
     if ctx.messages:
-        for name, toks in ctx.messages:
+        for msg in ctx.messages:
+            name = msg.get("name") or msg["role"]
+            toks = len(get_content(msg, ctx)) * 4
             info.append(f"{name} ({toks//1000}k)\n")
     else:
         info.append("(no messages)\n", style="dim")
@@ -279,7 +328,7 @@ def render_input_box(inpt):
             ctx.input_stack.pop()
             return render_input_box(inpt)  # render next in stack
         return result
-    return state.selection_input(inpt)  # selection mode fallback
+    return state.selection_input(inpt)  # selection-mode fallback
 
 
 def render_selection_mode(inpt: InputPass):
@@ -306,9 +355,11 @@ def render_work_mode(inpt: InputPass) -> Layout:
     # Build conversation display
     conv = Text()
     if ctx and ctx.messages:
-        for name, toks in ctx.messages:
+        for msg in ctx.messages:
+            name = msg.get("name") or msg["role"]
+            content = get_content(msg, ctx)
             conv.append(f"[{name}] ", style="bold cyan")
-            conv.append(f"({toks//1000}k tokens)\n", style="dim")
+            conv.append(f"{content}\n", style="dim")
     else:
         conv.append("(empty conversation)\n", style="dim")
 
