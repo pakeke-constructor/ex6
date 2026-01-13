@@ -331,8 +331,8 @@ def render_left_panel(inpt):
     spin_char = SPINNER[int(time.time() * 10) % len(SPINNER)]
     lines = Text()
     for i, (ctx, depth) in enumerate(flat):
-        indent = "    " * depth
-        prefix = "> " if i == idx else "   "
+        indent = "  " * depth
+        prefix = "> " if i == idx else "  "
         style = "bold cyan" if i == idx else ""
         spin = f" {spin_char}" if ctx.llm_currently_running else ""
         lines.append(f"{prefix}{indent}{ctx.name}{spin}\n", style=style)
