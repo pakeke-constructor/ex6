@@ -39,9 +39,9 @@ class LockedValue:
 
 def mock_llm_stream():
     """Mock LLM data stream."""
-    for _ in range(20):
+    for _ in range(30):
         time.sleep(0.1)
-        yield "token! "
+        yield "token "
 
 
 
@@ -90,6 +90,7 @@ class ContextInfo:
         cpy.messages.append({"role": "user", "content": text})
         cpy.llm_currently_running = True
         cpy.llm_current_output = ""
+        state.current_context = cpy  # switch view to new context
 
         def run():
             for token in mock_llm_stream():
@@ -101,6 +102,10 @@ class ContextInfo:
 
     def fork(self) -> ContextInfo:
         cpy = copy.copy(self)
+        cpy.messages = copy.deepcopy(self.messages)
+        cpy.children = []
+        cpy.input_stack = []
+        cpy.__post_init__()  # fresh input handlers
         all_contexts.add(cpy)
         return cpy
 
