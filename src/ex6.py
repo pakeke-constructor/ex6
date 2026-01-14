@@ -47,6 +47,44 @@ def mock_llm_stream():
 
 all_contexts = set()
 
+def make_input(on_submit):
+    text = ""
+    cursor = 0
+
+    def draw(inpt):
+        nonlocal text, cursor
+        # typing
+        typed = inpt.consume_text()
+        if typed:
+            text = text[:cursor] + typed + text[cursor:]
+            cursor += len(typed)
+        # navigation
+        if inpt.consume(readchar.key.LEFT) and cursor > 0:
+            cursor -= 1
+        if inpt.consume_right() and cursor < len(text):
+            cursor += 1
+        # deletion
+        if inpt.consume_backspace() and cursor > 0:
+            text = text[:cursor-1] + text[cursor:]
+            cursor -= 1
+        if inpt.consume('\x7f') and cursor > 0:  # ctrl+backspace
+            i = cursor - 1
+            while i > 0 and text[i-1] == ' ': i -= 1
+            while i > 0 and text[i-1] != ' ': i -= 1
+            text = text[:i] + text[cursor:]
+            cursor = i
+        # submit
+        if inpt.consume_enter() and text:
+            submitted = text
+            text = ""
+            cursor = 0
+            on_submit(submitted)
+        # render
+        display = text[:cursor] + "_" + text[cursor:]
+        return Panel(f"> {display}", style="white")
+
+    return draw
+
 @dataclass
 class ContextInfo:
     name: str
@@ -61,23 +99,10 @@ class ContextInfo:
     input_stack: list = field(default_factory=list)
 
     def __post_init__(self):
-        input_text = ""
-
-        def console_input(inpt):
-            nonlocal input_text
-            input_text += inpt.consume_text()
-            if inpt.consume_backspace() and input_text:
-                input_text = input_text[:-1]
-            if inpt.consume_enter() and input_text:
-                text = input_text
-                input_text = ""
-                if text.startswith("/"):
-                    dispatch_command(text)
-                else:
-                    self.call(text)
-            return Panel(f"> {input_text}_", style="dim")
-
-        self.input_stack = [console_input]
+        def on_submit(t):
+            if t.startswith("/"): dispatch_command(t)
+            else: self.call(t)
+        self.input_stack = [make_input(on_submit)]
         all_contexts.add(self)
     
     def __hash__(self): return id(self)
@@ -129,23 +154,6 @@ DUMMY_CONTEXTS = [
 
 
 
-def make_selection_input():
-    input_text = ""
-
-    def draw(inpt):
-        nonlocal input_text
-        input_text += inpt.consume_text()
-        if inpt.consume_backspace() and input_text:
-            input_text = input_text[:-1]
-        if inpt.consume_enter() and input_text:
-            text = input_text
-            input_text = ""
-            if text.startswith("/"):
-                dispatch_command(text)
-        return Panel(f"> {input_text}_", style="dim")
-
-    return draw
-
 @dataclass
 class AppState:
     console: list = field(default_factory=list)
@@ -153,7 +161,7 @@ class AppState:
     current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
     contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
-    selection_input: callable = field(default_factory=make_selection_input)
+    selection_input: callable = field(default_factory=lambda: make_input(lambda t: dispatch_command(t) if t.startswith("/") else None))
 
 state = AppState()
 
@@ -343,7 +351,7 @@ def render_selection_mode(inpt: InputPass):
     layout = Layout()
     layout.split_column(
         Layout(main, name="main"),
-        Layout(render_input_box(inpt), name="input", size=3),
+        Layout(render_input_box(inpt), name="input", size=4),
     )
     return layout
 
@@ -376,7 +384,7 @@ def render_work_mode(inpt: InputPass) -> Layout:
     layout = Layout()
     layout.split_column(
         Layout(Panel(conv, title=ctx.name if ctx else "Work"), name="main"),
-        Layout(render_input_box(inpt), name="input", size=3),
+        Layout(render_input_box(inpt), name="input", size=4),
     )
     return layout
 
