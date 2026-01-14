@@ -292,7 +292,7 @@ def render_left_panel(inpt):
     now = time.time()
     lines = Text()
     for i, ctx in enumerate(ctxs):
-        prefix = "> " if i == idx else "  "
+        prefix = Text(">>" if i == idx else "  ", style="red bold" if i == idx else "")
         spin = f" {spin_char}" if ctx.llm_currently_running else ""
         toks = f" ({ctx.tokens//1000}k)"
         # color: yellow=running, white=recent, dim=stale
@@ -303,8 +303,10 @@ def render_left_panel(inpt):
         else:
             color = "dim"
         style = f"bold {color}" if i == idx else color
-        lines.append(f"{prefix}{ctx.name}{toks}{spin}\n", style=style)
+        lines.append(prefix)
+        lines.append(f"{ctx.name}{toks}{spin}\n", style=style)
     return Panel(lines, title="Contexts")
+
 
 
 def render_right_panel():
