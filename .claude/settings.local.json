@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:rich.readthedocs.io)"
+      "WebSearch",
+      "WebFetch"
     ]
   }
 }

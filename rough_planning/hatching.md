@@ -26,9 +26,15 @@ def hatch(
 ```
 
 
-
 ## Subagents:
 The LLM can also use this to spin up subagents too.
+
+
+## QUESTION: Difference between hatching and /compress?
+Hatching is more general. Can be used for different things:
+- Compressing existing contexts
+- Creating a new context to spin up a subagent
+- 
 
 
 
