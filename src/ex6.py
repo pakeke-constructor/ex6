@@ -77,7 +77,6 @@ class ContextInfo:
                     self.call(text)
             return Panel(f"> {input_text}_", style="dim")
 
-        # can add more 
         self.input_stack = [console_input]
         all_contexts.add(self)
     
@@ -352,7 +351,6 @@ def render_selection_mode(inpt: InputPass):
 def render_work_mode(inpt: InputPass) -> Layout:
     ctx = state.current_context
 
-    # ESC to go back to selection mode
     if inpt.consume(ESCAPE):
         state.mode = "selection"
 
@@ -375,7 +373,6 @@ def render_work_mode(inpt: InputPass) -> Layout:
     if ctx and ctx.llm_currently_running:
         conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
 
-    # Layout: conversation panel + input box
     layout = Layout()
     layout.split_column(
         Layout(Panel(conv, title=ctx.name if ctx else "Work"), name="main"),
