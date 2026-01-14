@@ -392,7 +392,7 @@ if __name__ == "__main__":
             if inpt.consume(readchar.key.CTRL_C):
                 break
             live.update(_render(inpt), refresh=True)
-            time.sleep(1/60)
+            time.sleep(1/200)
 
 
 
