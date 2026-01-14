@@ -47,27 +47,6 @@ def mock_llm_stream():
 
 all_contexts = set()
 
-def is_prefix(short_msgs, long_msgs):
-    """Check if short_msgs is a prefix of long_msgs. Empty lists are not valid prefixes."""
-    if not short_msgs or len(short_msgs) >= len(long_msgs):
-        return False
-    return long_msgs[:len(short_msgs)] == short_msgs
-
-def find_parent(ctx):
-    """Find the context with longest message prefix (direct parent)."""
-    best = None
-    for candidate in all_contexts:
-        if candidate is ctx:
-            continue
-        if is_prefix(candidate.messages, ctx.messages):
-            if best is None or len(candidate.messages) > len(best.messages):
-                best = candidate
-    return best
-
-def get_children(ctx):
-    """Get all direct children of this context."""
-    return [c for c in all_contexts if find_parent(c) is ctx]
-
 @dataclass
 class ContextInfo:
     name: str
@@ -105,17 +84,15 @@ class ContextInfo:
     def __eq__(self, other): return self is other
     
     def call(self, text):
-        cpy = self.fork()
-        cpy.messages.append({"role": "user", "content": text})
-        cpy.llm_currently_running = True
-        cpy.llm_current_output = ""
-        state.current_context = cpy  # switch view to new context
+        self.messages.append({"role": "user", "content": text})
+        self.llm_currently_running = True
+        self.llm_current_output = ""
 
         def run():
             for token in mock_llm_stream():
-                cpy.llm_current_output += token
-            cpy.messages.append({"role": "assistant", "content": cpy.llm_current_output})
-            cpy.llm_currently_running = False
+                self.llm_current_output += token
+            self.messages.append({"role": "assistant", "content": self.llm_current_output})
+            self.llm_currently_running = False
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -136,41 +113,20 @@ def get_content(msg: dict[str, str|Callable[[ContextInfo],str]], ctx: ContextInf
     return c(ctx) if callable(c) else c
 
 
-# Parent-child relationships are auto-detected via message prefixes
-_base_msg = {"role": "system", "content": "base"}
 DUMMY_CONTEXTS = [
     ContextInfo("ctx1", messages=[
         {"role": "system", "content": "You are helpful.", "name": "sys-prompt-1"},
         {"role": "user", "content": "hello"},
     ]),
-    ContextInfo("ctx2", messages=[_base_msg]),
-    ContextInfo("ctx2_child", tokens=8000, messages=[_base_msg, {"role": "user", "content": "child1"}]),
-    ContextInfo("blah_second_child", messages=[_base_msg, {"role": "user", "content": "child2"}]),
-    ContextInfo("nested_child", tokens=2000, messages=[_base_msg, {"role": "user", "content": "child2"}, {"role": "assistant", "content": "nested"}]),
-    ContextInfo("foobar", model="sonnet-4", messages=[_base_msg], tokens=45000, cost=0.08),
+    ContextInfo("ctx2"),
     ContextInfo("debug_ctx", tokens=5000, messages=[
         {"role": "system", "content": "Debug mode."},
         {"role": "user", "content": "test input"},
     ]),
+    ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08),
 ]
 
 
-def flatten_contexts(ctxs, pinned=None):
-    """Flatten context tree, collapsing single-child chains. Pinned ctx never collapsed."""
-    def subtree(ctx, depth):
-        children = get_children(ctx)
-        if len(children) == 1 and ctx is not pinned:
-            return subtree(children[0], depth)
-        result = [(ctx, depth)]
-        for child in children:
-            result.extend(subtree(child, depth + 1))
-        return result
-
-    result = []
-    roots = [c for c in ctxs if find_parent(c) is None]
-    for c in roots:
-        result.extend(subtree(c, 0))
-    return result
 
 def make_selection_input():
     input_text = ""
@@ -263,8 +219,6 @@ class InputPass:
         return self.consume(readchar.key.ENTER)
     def consume_backspace(self) -> bool:
         return self.consume(readchar.key.BACKSPACE)
-    def consume_left(self) -> bool:
-        return self.consume(readchar.key.LEFT)
     def consume_right(self) -> bool:
         return self.consume(readchar.key.RIGHT)
     def consume_up(self) -> bool:
@@ -310,31 +264,25 @@ SPINNER = "/-\\|/-\\||"
 
 
 def render_left_panel(inpt):
-    # LEFT navigates to parent
-    if inpt.consume_left() and state.current_context:
-        state.current_context = find_parent(state.current_context) or state.current_context
-
-    flat = flatten_contexts(state.contexts, pinned=state.current_context)
-
-    idx = next((i for i, (c, _) in enumerate(flat) if c is state.current_context), 0)
+    ctxs = sorted(all_contexts, key=lambda c: c.name)
+    idx = next((i for i, c in enumerate(ctxs) if c is state.current_context), 0)
 
     if inpt.consume_up() and idx > 0:
-        state.current_context = flat[idx - 1][0]
+        state.current_context = ctxs[idx - 1]
         idx -= 1
-    if inpt.consume_down() and idx < len(flat) - 1:
-        state.current_context = flat[idx + 1][0]
+    if inpt.consume_down() and idx < len(ctxs) - 1:
+        state.current_context = ctxs[idx + 1]
         idx += 1
-    if inpt.consume_enter() and flat:
+    if inpt.consume_enter() and ctxs:
         state.mode = "work"
 
     spin_char = SPINNER[int(time.time() * 10) % len(SPINNER)]
     lines = Text()
-    for i, (ctx, depth) in enumerate(flat):
-        indent = "  " * depth
+    for i, ctx in enumerate(ctxs):
         prefix = "> " if i == idx else "  "
         style = "bold cyan" if i == idx else ""
         spin = f" {spin_char}" if ctx.llm_currently_running else ""
-        lines.append(f"{prefix}{indent}{ctx.name}{spin}\n", style=style)
+        lines.append(f"{prefix}{ctx.name}{spin}\n", style=style)
     return Panel(lines, title="Contexts")
 
 
