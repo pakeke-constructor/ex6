@@ -99,6 +99,7 @@ class ContextInfo:
 
         # can add more 
         self.input_stack = [console_input]
+        all_contexts.add(self)
     
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -146,14 +147,13 @@ DUMMY_CONTEXTS = [
     ContextInfo("ctx2_child", tokens=8000, messages=[_base_msg, {"role": "user", "content": "child1"}]),
     ContextInfo("blah_second_child", messages=[_base_msg, {"role": "user", "content": "child2"}]),
     ContextInfo("nested_child", tokens=2000, messages=[_base_msg, {"role": "user", "content": "child2"}, {"role": "assistant", "content": "nested"}]),
-    ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08),
+    ContextInfo("foobar", model="sonnet-4", messages=[_base_msg], tokens=45000, cost=0.08),
     ContextInfo("debug_ctx", tokens=5000, messages=[
         {"role": "system", "content": "Debug mode."},
         {"role": "user", "content": "test input"},
     ]),
 ]
-for _ctx in DUMMY_CONTEXTS:
-    all_contexts.add(_ctx)
+
 
 def flatten_contexts(ctxs, pinned=None):
     """Flatten context tree, collapsing single-child chains. Pinned ctx never collapsed."""
@@ -304,9 +304,10 @@ def input_thread():
 
 
 
+ESCAPE = '\x1b'
 
-#SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 SPINNER = "/-\\|/-\\||"
+
 
 def render_left_panel(inpt):
     # LEFT navigates to parent
@@ -315,10 +316,8 @@ def render_left_panel(inpt):
 
     flat = flatten_contexts(state.contexts, pinned=state.current_context)
 
-    # Find current index
     idx = next((i for i, (c, _) in enumerate(flat) if c is state.current_context), 0)
 
-    # Up/down navigate via flat list
     if inpt.consume_up() and idx > 0:
         state.current_context = flat[idx - 1][0]
         idx -= 1
@@ -396,7 +395,7 @@ def render_work_mode(inpt: InputPass) -> Layout:
     ctx = state.current_context
 
     # ESC to go back to selection mode
-    if inpt.consume('\x1b'):
+    if inpt.consume(ESCAPE):
         state.mode = "selection"
 
     # Build conversation display
