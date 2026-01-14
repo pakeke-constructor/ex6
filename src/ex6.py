@@ -53,6 +53,7 @@ class ContextInfo:
     model: str = "opus-4.5"
     llm_current_output: str = ""
     llm_currently_running: bool = False
+    last_llm_time: float = 0
     tokens: int = 32000
     max_tokens: int = 200000
     cost: float = 0.15
@@ -93,6 +94,7 @@ class ContextInfo:
                 self.llm_current_output += token
             self.messages.append({"role": "assistant", "content": self.llm_current_output})
             self.llm_currently_running = False
+            self.last_llm_time = time.time()
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -277,12 +279,21 @@ def render_left_panel(inpt):
         state.mode = "work"
 
     spin_char = SPINNER[int(time.time() * 10) % len(SPINNER)]
+    now = time.time()
     lines = Text()
     for i, ctx in enumerate(ctxs):
         prefix = "> " if i == idx else "  "
-        style = "bold cyan" if i == idx else ""
         spin = f" {spin_char}" if ctx.llm_currently_running else ""
-        lines.append(f"{prefix}{ctx.name}{spin}\n", style=style)
+        toks = f" ({ctx.tokens//1000}k)"
+        # color: yellow=running, white=recent, dim=stale
+        if ctx.llm_currently_running:
+            color = "yellow"
+        elif now - ctx.last_llm_time < 360:
+            color = "white"
+        else:
+            color = "dim"
+        style = f"bold {color}" if i == idx else color
+        lines.append(f"{prefix}{ctx.name}{toks}{spin}\n", style=style)
     return Panel(lines, title="Contexts")
 
 
@@ -294,14 +305,13 @@ def render_right_panel():
     ratio = ctx.tokens / ctx.max_tokens
     bar_len = 20
     filled = int(ratio * bar_len)
-    bar = "[" + "X" * filled + "-" * (bar_len - filled) + "]"
+    bar = "█" * filled + "░" * (bar_len - filled)
 
     info = Text()
-    info.append(f"{ctx.name}    ", style="bold")
+    info.append(f"{ctx.name}  ", style="bold")
     info.append(f"{ctx.model}\n", style="dim")
-    info.append(f"{bar}\n")
-    info.append(f"{ctx.tokens//1000}k / {ctx.max_tokens//1000}k tokens, ${ctx.cost:.2f}\n")
-    info.append("─" * 20 + "\n")
+    info.append(f"{bar} {ctx.tokens//1000}k/{ctx.max_tokens//1000}k\n", style="cyan")
+    info.append(f"${ctx.cost:.2f}\n\n", style="dim")
 
     if ctx.messages:
         for msg in ctx.messages:
