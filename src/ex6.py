@@ -350,16 +350,19 @@ def render_work_mode(inpt: InputPass) -> Layout:
     conv = Text()
     if ctx and ctx.messages:
         for msg in ctx.messages:
-            name = msg.get("name") or msg["role"]
+            role = msg["role"]
             content = get_content(msg, ctx)
-            conv.append(f"[{name}] ", style="bold cyan")
-            conv.append(f"{content}\n", style="dim")
+            if role == "user":
+                conv.append(f"{content}\n", style="bold cyan")
+            elif role == "assistant":
+                conv.append(f"{content}\n", style="white")
+            else:
+                conv.append(f"{content}\n", style="dim")
     else:
         conv.append("(empty conversation)\n", style="dim")
 
     # Show streaming output
     if ctx and ctx.llm_currently_running:
-        conv.append(f"[assistant] ", style="bold yellow")
         conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
 
     # Layout: conversation panel + input box
