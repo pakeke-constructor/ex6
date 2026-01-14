@@ -1,6 +1,7 @@
 
 from typing import Optional, Callable
 
+import math
 import threading
 import time
 import copy
@@ -79,9 +80,11 @@ def make_input(on_submit):
             text = ""
             cursor = 0
             on_submit(submitted)
+
         # render
-        display = text[:cursor] + "_" + text[cursor:]
-        return Panel(f"> {display}", style="white")
+        blinking_cursor = "█" if (math.floor(time.time()*2) % 2 == 0) else " "
+        display = text[:cursor] + blinking_cursor + text[cursor:]
+        return Panel(f"[red]>[/red] {display}", style="white")
 
     return draw
 
