@@ -81,7 +81,7 @@ def make_input(on_submit):
             cursor = 0
             on_submit(submitted)
 
-        # render
+        # blinking-cursor
         blinking_cursor = "█" if (math.floor(time.time()*2) % 2 == 0) else " "
         display = text[:cursor] + blinking_cursor + text[cursor:]
         return Panel(f"[red]>[/red] {display}", style="white")
