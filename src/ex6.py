@@ -343,8 +343,10 @@ class Ex6App(App):
         self._keys = []
 
     def compose(self) -> ComposeResult:
-        yield Static(id="main")
-        yield Static(id="input")
+        self.main = Static(id="main")
+        self.input = Static(id="input")
+        yield self.main
+        yield self.input
 
     def on_mount(self):
         self.set_interval(1/90, self._render_frame)
@@ -365,7 +367,7 @@ class Ex6App(App):
                 Layout(render_selection_left(inpt), name="left", ratio=1),
                 Layout(render_selection_right(), name="right", ratio=2),
             )
-            self.query_one("#main", Static).update(main)
+            self.main.update(main)
         else:
             ctx = state.current_context
             if inpt.consume("escape"):
@@ -374,8 +376,8 @@ class Ex6App(App):
                 conv = render_work_mode(ctx, inpt)
             else:
                 conv = Text("(empty conversation)\n", style="dim")
-            self.query_one("#main", Static).update(Panel(conv, title=ctx.name if ctx else "Work"))
-        self.query_one("#input", Static).update(render_input_box(inpt))
+            self.main.update(Panel(conv, title=ctx.name if ctx else "Work"))
+        self.input.update(render_input_box(inpt))
 
 
 if __name__ == "__main__":
