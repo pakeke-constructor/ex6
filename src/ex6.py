@@ -47,10 +47,25 @@ def make_input(on_submit):
             cursor -= 1
         if inpt.consume_right() and cursor < len(text):
             cursor += 1
+        if inpt.consume("ctrl+left"):  # prev word
+            while cursor > 0 and text[cursor-1] == ' ': cursor -= 1
+            while cursor > 0 and text[cursor-1] != ' ': cursor -= 1
+        if inpt.consume("ctrl+right"):  # next word
+            while cursor < len(text) and text[cursor] != ' ': cursor += 1
+            while cursor < len(text) and text[cursor] == ' ': cursor += 1
+        if inpt.consume("home"): cursor = 0
+        if inpt.consume("end"): cursor = len(text)
         # deletion
         if inpt.consume_backspace() and cursor > 0:
             text = text[:cursor-1] + text[cursor:]
             cursor -= 1
+        if inpt.consume("delete") and cursor < len(text):
+            text = text[:cursor] + text[cursor+1:]
+        if inpt.consume("ctrl+delete") and cursor < len(text):
+            i = cursor
+            while i < len(text) and text[i] != ' ': i += 1
+            while i < len(text) and text[i] == ' ': i += 1
+            text = text[:cursor] + text[i:]
         if inpt.consume('\x7f') and cursor > 0:  # ctrl+backspace
             i = cursor - 1
             while i > 0 and text[i-1] == ' ': i -= 1

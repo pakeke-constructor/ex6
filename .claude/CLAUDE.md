@@ -12,7 +12,7 @@ This project, `ex6`, serves as a thin, simple alternative to claude-code.
 - Lives in terminal.
 
 ## Project architecture:
-- `ex6.py`: the ENTIRE project, contained in one python file.
+- `src/ex6.py`: the ENTIRE project, contained in one python file.
 
 ## Plugin ideology:
 `.ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `./ex6` folder.  
