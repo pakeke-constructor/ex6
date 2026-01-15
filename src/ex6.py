@@ -193,21 +193,26 @@ def tool(fn):
 class InputPass:
     '''Created every frame with keys pressed that frame.'''
     def __init__(self, keys: list):
-        self._keys = set(keys)
-        self._consumed = set()
+        self._keys = keys  # list of (character, key_name) tuples
 
     def consume(self, key: str) -> bool:
-        if key in self._keys and key not in self._consumed:
-            self._consumed.add(key)
-            return True
+        '''Consume first event matching key name.'''
+        for i, (char, key_name) in enumerate(self._keys):
+            if key_name == key:
+                self._keys.pop(i)
+                return True
         return False
 
     def consume_text(self) -> str:
+        '''Consume all printable characters.'''
         text = ""
-        for k in list(self._keys - self._consumed):
-            if len(k) == 1 and k.isprintable():
-                self._consumed.add(k)
-                text += k
+        remaining = []
+        for char, key_name in self._keys:
+            if char and len(char) == 1 and char.isprintable():
+                text += char
+            else:
+                remaining.append((char, key_name))
+        self._keys[:] = remaining
         return text
 
     def consume_enter(self) -> bool:
@@ -341,7 +346,7 @@ class Ex6App(App):
         if event.key == "ctrl+c":
             self.exit()
             return
-        self._keys.append(event.key)
+        self._keys.append((event.character, event.key))
         self._render_frame()
 
     def _render_frame(self):
