@@ -30,7 +30,6 @@ def mock_llm_stream():
 
 
 
-all_contexts = set()
 
 def make_input(on_submit):
     text = ""
@@ -90,7 +89,7 @@ class ContextInfo:
             if t.startswith("/"): dispatch_command(t)
             else: self.call(t)
         self.input_stack = [make_input(on_submit)]
-        all_contexts.add(self)
+        state.contexts.add(self)
     
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -114,7 +113,6 @@ class ContextInfo:
         cpy.messages = copy.deepcopy(self.messages)
         cpy.input_stack = []
         cpy.__post_init__()  # fresh input handlers
-        all_contexts.add(cpy)
         return cpy
 
     def push_ui(self, draw_fn):
@@ -126,30 +124,26 @@ def get_content(msg: dict[str, str|Callable[[ContextInfo],str]], ctx: ContextInf
     return c(ctx) if callable(c) else c
 
 
-DUMMY_CONTEXTS = [
-    ContextInfo("ctx1", messages=[
-        {"role": "system", "content": "You are helpful.", "name": "sys-prompt-1"},
-        {"role": "user", "content": "hello"},
-    ]),
-    ContextInfo("ctx2"),
-    ContextInfo("debug_ctx", tokens=5000, messages=[
-        {"role": "system", "content": "Debug mode."},
-        {"role": "user", "content": "test input"},
-    ]),
-    ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08),
-]
-
-
-
 @dataclass
 class AppState:
-    console: list = field(default_factory=list)
     current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
-    contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
+    contexts: set = field(default_factory=set)
     selection_input: callable = field(default_factory=lambda: make_input(lambda t: dispatch_command(t) if t.startswith("/") else None))
 
 state = AppState()
+
+
+ContextInfo("ctx1", messages=[
+    {"role": "system", "content": "You are helpful.", "name": "sys-prompt-1"},
+    {"role": "user", "content": "hello"},
+])
+ContextInfo("ctx2")
+ContextInfo("debug_ctx", tokens=5000, messages=[
+    {"role": "system", "content": "Debug mode."},
+    {"role": "user", "content": "test input"},
+])
+ContextInfo("foobar", model="sonnet-4", tokens=45000, cost=0.08)
 
 
 
@@ -253,7 +247,7 @@ SPINNER = "/-\\|/-\\||"
 
 
 def render_left_panel(inpt):
-    ctxs = sorted(all_contexts, key=lambda c: c.name)
+    ctxs = sorted(state.contexts, key=lambda c: c.name)
     idx = next((i for i, c in enumerate(ctxs) if c is state.current_context), 0)
 
     if inpt.consume_up() and idx > 0:
@@ -269,7 +263,7 @@ def render_left_panel(inpt):
     now = time.time()
     lines = Text()
     for i, ctx in enumerate(ctxs):
-        prefix = Text(">>" if i == idx else "  ", style="red bold" if i == idx else "")
+        prefix = Text(">>  " if i == idx else "  ", style="red bold" if i == idx else "")
         spin = f" {spin_char}" if ctx.llm_currently_running else ""
         toks = f" ({ctx.tokens//1000}k)"
         # color: yellow=running, white=recent, dim=stale
@@ -331,10 +325,6 @@ class Ex6App(App):
         super().__init__()
         self._keys = []
 
-    def _take_keys(self):
-        k, self._keys = self._keys, []
-        return k
-
     def compose(self) -> ComposeResult:
         yield Static(id="main")
         yield Static(id="input")
@@ -350,7 +340,8 @@ class Ex6App(App):
         self._render_frame()
 
     def _render_frame(self):
-        inpt = InputPass(self._take_keys())
+        inpt = InputPass(self._keys)
+        self._keys = []
         if state.mode == "selection":
             main = Layout()
             main.split_row(
