@@ -9,32 +9,16 @@ import glob
 import os
 import inspect
 from dataclasses import dataclass, field
-from rich.live import Live
 from rich.panel import Panel
 from rich.layout import Layout
 from rich.text import Text
-import readchar
+from textual.app import App, ComposeResult
+from textual.widgets import Static
 
 
 
 _commands = {}
-
 _tools = {}
-
-
-
-class LockedValue:
-    def __init__(self, val):
-        self._val = val
-        self._lock = threading.Lock()
-    def take(self):
-        with self._lock:
-            v = self._val
-            self._val = []
-            return v
-    def append(self, x):
-        with self._lock:
-            self._val.append(x)
 
 
 
@@ -60,7 +44,7 @@ def make_input(on_submit):
             text = text[:cursor] + typed + text[cursor:]
             cursor += len(typed)
         # navigation
-        if inpt.consume(readchar.key.LEFT) and cursor > 0:
+        if inpt.consume("left") and cursor > 0:
             cursor -= 1
         if inpt.consume_right() and cursor < len(text):
             cursor += 1
@@ -160,7 +144,6 @@ DUMMY_CONTEXTS = [
 @dataclass
 class AppState:
     console: list = field(default_factory=list)
-    keys: LockedValue = field(default_factory=lambda: LockedValue([]))
     current_context: Optional['ContextInfo'] = None
     mode: str = "selection"
     contexts: list = field(default_factory=lambda: DUMMY_CONTEXTS)
@@ -210,33 +193,38 @@ def tool(fn):
 class InputPass:
     '''Created every frame with keys pressed that frame.'''
     def __init__(self, keys: list):
-        self._keys = set(keys)
-        self._consumed = set()
+        self._keys = keys  # list of (character, key_name) tuples
 
     def consume(self, key: str) -> bool:
-        if key in self._keys and key not in self._consumed:
-            self._consumed.add(key)
-            return True
+        '''Consume first event matching key name.'''
+        for i, (char, key_name) in enumerate(self._keys):
+            if key_name == key:
+                self._keys.pop(i)
+                return True
         return False
 
     def consume_text(self) -> str:
+        '''Consume all printable characters.'''
         text = ""
-        for k in list(self._keys - self._consumed):
-            if len(k) == 1 and k.isprintable():
-                self._consumed.add(k)
-                text += k
+        remaining = []
+        for char, key_name in self._keys:
+            if char and len(char) == 1 and char.isprintable():
+                text += char
+            else:
+                remaining.append((char, key_name))
+        self._keys[:] = remaining
         return text
 
     def consume_enter(self) -> bool:
-        return self.consume(readchar.key.ENTER)
+        return self.consume("enter")
     def consume_backspace(self) -> bool:
-        return self.consume(readchar.key.BACKSPACE)
+        return self.consume("backspace")
     def consume_right(self) -> bool:
-        return self.consume(readchar.key.RIGHT)
+        return self.consume("right")
     def consume_up(self) -> bool:
-        return self.consume(readchar.key.UP)
+        return self.consume("up")
     def consume_down(self) -> bool:
-        return self.consume(readchar.key.DOWN)
+        return self.consume("down")
 
 
 
@@ -260,17 +248,6 @@ def load_plugins():
     for path in glob.glob(os.path.join(plugin_dir, "*.py")):
         with open(path, "r", encoding="utf-8") as f:
             exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
-
-
-
-def input_thread():
-    while True:
-        key = readchar.readkey()
-        state.keys.append(key)
-
-
-
-ESCAPE = '\x1b'
 
 SPINNER = "/-\\|/-\\||"
 
@@ -347,72 +324,66 @@ def render_input_box(inpt):
     return state.selection_input(inpt)  # selection-mode fallback
 
 
-def render_selection_mode(inpt: InputPass):
-    main = Layout()
-    main.split_row(
-        Layout(render_left_panel(inpt), name="left"),
-        Layout(render_right_panel(), name="right"),
-    )
-    layout = Layout()
-    layout.split_column(
-        Layout(main, name="main"),
-        Layout(render_input_box(inpt), name="input", size=4),
-    )
-    return layout
+class Ex6App(App):
+    CSS = "Screen { layout: vertical; } #main { height: 1fr; } #input { height: 4; }"
 
+    def __init__(self):
+        super().__init__()
+        self._keys = []
 
-def render_work_mode(inpt: InputPass) -> Layout:
-    ctx = state.current_context
+    def _take_keys(self):
+        k, self._keys = self._keys, []
+        return k
 
-    if inpt.consume(ESCAPE):
-        state.mode = "selection"
+    def compose(self) -> ComposeResult:
+        yield Static(id="main")
+        yield Static(id="input")
 
-    # Build conversation display
-    conv = Text()
-    if ctx and ctx.messages:
-        for msg in ctx.messages:
-            role = msg["role"]
-            content = get_content(msg, ctx)
-            if role == "user":
-                conv.append(f"{content}\n", style="bold cyan")
-            elif role == "assistant":
-                conv.append(f"{content}\n", style="white")
+    def on_mount(self):
+        self.set_interval(1/90, self._render_frame)
+
+    def on_key(self, event):
+        if event.key == "ctrl+c":
+            self.exit()
+            return
+        self._keys.append((event.character, event.key))
+        self._render_frame()
+
+    def _render_frame(self):
+        inpt = InputPass(self._take_keys())
+        if state.mode == "selection":
+            main = Layout()
+            main.split_row(
+                Layout(render_left_panel(inpt), name="left"),
+                Layout(render_right_panel(), name="right"),
+            )
+            self.query_one("#main", Static).update(main)
+        else:
+            ctx = state.current_context
+            if inpt.consume("escape"):
+                state.mode = "selection"
+            conv = Text()
+            if ctx and ctx.messages:
+                for msg in ctx.messages:
+                    role = msg["role"]
+                    content = get_content(msg, ctx)
+                    if role == "user":
+                        conv.append(f"{content}\n", style="bold cyan")
+                    elif role == "assistant":
+                        conv.append(f"{content}\n", style="white")
+                    else:
+                        conv.append(f"{content}\n", style="dim")
             else:
-                conv.append(f"{content}\n", style="dim")
-    else:
-        conv.append("(empty conversation)\n", style="dim")
-
-    # Show streaming output
-    if ctx and ctx.llm_currently_running:
-        conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
-
-    layout = Layout()
-    layout.split_column(
-        Layout(Panel(conv, title=ctx.name if ctx else "Work"), name="main"),
-        Layout(render_input_box(inpt), name="input", size=4),
-    )
-    return layout
-
-
-def _render(inpt: InputPass):
-    if state.mode == "selection":
-        return render_selection_mode(inpt)
-    else:
-        return render_work_mode(inpt)
-
+                conv.append("(empty conversation)\n", style="dim")
+            if ctx and ctx.llm_currently_running:
+                conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
+            self.query_one("#main", Static).update(Panel(conv, title=ctx.name if ctx else "Work"))
+        self.query_one("#input", Static).update(render_input_box(inpt))
 
 
 if __name__ == "__main__":
     load_plugins()
-    threading.Thread(target=input_thread, daemon=True).start()
-
-    with Live(Layout(), screen=True, auto_refresh=False) as live:
-        while True:
-            inpt = InputPass(state.keys.take())
-            if inpt.consume(readchar.key.CTRL_C):
-                break
-            live.update(_render(inpt), refresh=True)
-            time.sleep(1/200)
+    Ex6App().run()
 
 
 
