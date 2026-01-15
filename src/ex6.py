@@ -246,7 +246,7 @@ def load_plugins():
 SPINNER = "/-\\|/-\\||"
 
 
-def render_left_panel(inpt):
+def render_selection_left(inpt):
     ctxs = sorted(state.contexts, key=lambda c: c.name)
     idx = next((i for i, c in enumerate(ctxs) if c is state.current_context), 0)
 
@@ -280,7 +280,7 @@ def render_left_panel(inpt):
 
 
 
-def render_right_panel():
+def render_selection_right():
     ctx = state.current_context
     if not ctx:
         return Panel("No contexts", title="Info")
@@ -318,6 +318,23 @@ def render_input_box(inpt):
     return state.selection_input(inpt)  # selection-mode fallback
 
 
+
+def render_work_mode(ctx, inpt):
+    conv = Text()
+    for msg in ctx.messages:
+        role = msg["role"]
+        content = get_content(msg, ctx)
+        if role == "user":
+            conv.append(f"{content}\n", style="bold cyan")
+        elif role == "assistant":
+            conv.append(f"{content}\n", style="white")
+        else:
+            conv.append(f"{content}\n", style="dim")
+    if ctx and ctx.llm_currently_running:
+        conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
+    return conv
+
+
 class Ex6App(App):
     CSS = "Screen { layout: vertical; } #main { height: 1fr; } #input { height: 4; }"
 
@@ -345,29 +362,18 @@ class Ex6App(App):
         if state.mode == "selection":
             main = Layout()
             main.split_row(
-                Layout(render_left_panel(inpt), name="left"),
-                Layout(render_right_panel(), name="right"),
+                Layout(render_selection_left(inpt), name="left", ratio=1),
+                Layout(render_selection_right(), name="right", ratio=2),
             )
             self.query_one("#main", Static).update(main)
         else:
             ctx = state.current_context
             if inpt.consume("escape"):
                 state.mode = "selection"
-            conv = Text()
             if ctx and ctx.messages:
-                for msg in ctx.messages:
-                    role = msg["role"]
-                    content = get_content(msg, ctx)
-                    if role == "user":
-                        conv.append(f"{content}\n", style="bold cyan")
-                    elif role == "assistant":
-                        conv.append(f"{content}\n", style="white")
-                    else:
-                        conv.append(f"{content}\n", style="dim")
+                conv = render_work_mode(ctx, inpt)
             else:
-                conv.append("(empty conversation)\n", style="dim")
-            if ctx and ctx.llm_currently_running:
-                conv.append(f"{ctx.llm_current_output}_\n", style="yellow")
+                conv = Text("(empty conversation)\n", style="dim")
             self.query_one("#main", Static).update(Panel(conv, title=ctx.name if ctx else "Work"))
         self.query_one("#input", Static).update(render_input_box(inpt))
 
