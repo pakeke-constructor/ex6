@@ -1,6 +1,7 @@
 from blessed import Terminal
 from typing import Tuple
 import time
+from region import Region
 
 Rect = Tuple[int, int, int, int]  # (x, y, w, h)
 
@@ -108,10 +109,10 @@ class InputPass:
         return text
 
 
-def make_input(buf, on_submit, y_pos):
+def make_input(on_submit):
     text, cursor = "", 0
 
-    def draw(inpt):
+    def draw(buf, inpt, r):
         nonlocal text, cursor
         typed = inpt.consume_text()
         if typed:
@@ -127,7 +128,7 @@ def make_input(buf, on_submit, y_pos):
             text, cursor = "", 0
 
         blink = "█" if int(time.time() * 2) % 2 == 0 else " "
-        buf.puts(0, y_pos, "> " + text[:cursor] + blink + text[cursor:], 'white')
+        buf.puts(r[0], r[1], "> " + text[:cursor] + blink + text[cursor:], 'white')
 
     return draw
 
@@ -142,7 +143,7 @@ if __name__ == "__main__":
         global submitted
         submitted = t
 
-    input_draw = make_input(buf, on_submit, term.height - 1)
+    input_draw = make_input(on_submit)
 
     with term.cbreak(), term.hidden_cursor():
         print(term.clear, end='')
@@ -152,8 +153,13 @@ if __name__ == "__main__":
                 if str(key) == '\x03': break
                 keys.append(key)
 
+            # Resize buffer if terminal changed
+            if buf.w != term.width or buf.h != term.height:
+                buf = ScreenBuffer(term.width, term.height)
+
             inpt = InputPass(keys)
             keys = []
+            input_r = Region(0, term.height - 1, term.width, 1)
 
             buf.clear()
             buf.rect_line((1, 1, 30, 5), 'blue')
@@ -164,7 +170,7 @@ if __name__ == "__main__":
             buf.vline((50, 1, 1, 5), 'green')
             if submitted:
                 buf.puts(2, 7, f"Submitted: {submitted}", 'green')
-            input_draw(inpt)
+            input_draw(buf, inpt, input_r)
             buf.flush(term)
 
         print(term.clear + term.normal)
