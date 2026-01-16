@@ -33,6 +33,40 @@ class ScreenBuffer:
                     out += c
         print(out, end='', flush=True)
 
+    def rect(self, x, y, w, h, style=None, fill=True):
+        if fill:
+            for row in range(y, y + h):
+                for col in range(x, x + w):
+                    self.put(col, row, '█', style)
+        else:
+            # box-drawing: ┌ ─ ┐ │ └ ┘
+            for col in range(x + 1, x + w - 1):
+                self.put(col, y, '─', style)
+                self.put(col, y + h - 1, '─', style)
+            for row in range(y + 1, y + h - 1):
+                self.put(x, row, '│', style)
+                self.put(x + w - 1, row, '│', style)
+            self.put(x, y, '┌', style)
+            self.put(x + w - 1, y, '┐', style)
+            self.put(x, y + h - 1, '└', style)
+            self.put(x + w - 1, y + h - 1, '┘', style)
+
+    def text_nowrap(self, txt, x, y, width, style=None):
+        for i, c in enumerate(txt[:width]):
+            self.put(x + i, y, c, style)
+
+    def text_wrap(self, txt, x, y, width, height, style=None):
+        row = 0
+        col = 0
+        for c in txt:
+            if c == '\n' or col >= width:
+                row += 1
+                col = 0
+                if c == '\n': continue
+            if row >= height: break
+            self.put(x + col, y + row, c, style)
+            col += 1
+
 
 class InputPass:
     def __init__(self, keys: list):
@@ -105,9 +139,12 @@ if __name__ == "__main__":
             keys = []
 
             buf.clear()
-            buf.puts(2, 1, "ex6 blessed", 'bold')
+            buf.rect(1, 1, 30, 5, 'blue', fill=False)
+            buf.text_nowrap("ex6 blessed (in a box)", 3, 2, 26, 'bold')
+            buf.text_wrap("This text wraps within the box area nicely.", 3, 3, 26, 2, 'cyan')
+            buf.rect(35, 1, 10, 3, 'red', fill=True)
             if submitted:
-                buf.puts(2, 3, f"Submitted: {submitted}", 'green')
+                buf.puts(2, 7, f"Submitted: {submitted}", 'green')
             input_draw(inpt)
             buf.flush(term)
 
