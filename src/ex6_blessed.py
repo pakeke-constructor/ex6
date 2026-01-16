@@ -70,18 +70,19 @@ class ScreenBuffer:
 
     def text_contained(self, txt: str, r: Rect, style=None, wrap=True, newlines=True) -> int:
         x, y, w, h = r
-        if not newlines: txt = txt.replace('\n', ' ').replace('\r', ' ')
+        if not newlines: 
+            txt = txt.replace('\n', ' ')
+        txt = txt.replace('\r\n', '\n').replace('\r', '\n')
         row, col = 0, 0
         for c in txt:
-            if c == '\n' or (wrap and col >= w):
-                row += 1
-                col = 0
-                if c == '\n': continue
-            if not wrap and col >= w: continue
-            if row >= h: break
+            if c == '\n': row += 1; col = 0; continue
+            if wrap and col >= w: row += 1; col = 0
+            if row >= h or (not wrap and col >= w): continue
             self.put(x + col, y + row, c, style)
             col += 1
-        return row + 1 if col > 0 else row
+        return row + 1 if col > 0 or row == 0 else row
+
+
 
 
 class InputPass:
