@@ -2,6 +2,9 @@ from blessed import Terminal
 import time
 
 
+
+
+
 class ScreenBuffer:
     def __init__(self, w, h):
         self.w, self.h = w, h
@@ -33,23 +36,31 @@ class ScreenBuffer:
                     out += c
         print(out, end='', flush=True)
 
-    def rect(self, x, y, w, h, style=None, fill=True):
-        if fill:
-            for row in range(y, y + h):
-                for col in range(x, x + w):
-                    self.put(col, row, '█', style)
-        else:
-            # box-drawing: ┌ ─ ┐ │ └ ┘
-            for col in range(x + 1, x + w - 1):
-                self.put(col, y, '─', style)
-                self.put(col, y + h - 1, '─', style)
-            for row in range(y + 1, y + h - 1):
-                self.put(x, row, '│', style)
-                self.put(x + w - 1, row, '│', style)
-            self.put(x, y, '┌', style)
-            self.put(x + w - 1, y, '┐', style)
-            self.put(x, y + h - 1, '└', style)
-            self.put(x + w - 1, y + h - 1, '┘', style)
+    def fill(self, x, y, w, h, char='█', style=None):
+        for row in range(y, y + h):
+            for col in range(x, x + w):
+                self.put(col, row, char, style)
+
+    def rect_line(self, x, y, w, h, style=None):
+        # box-drawing: ┌ ─ ┐ │ └ ┘
+        for col in range(x + 1, x + w - 1):
+            self.put(col, y, '─', style)
+            self.put(col, y + h - 1, '─', style)
+        for row in range(y + 1, y + h - 1):
+            self.put(x, row, '│', style)
+            self.put(x + w - 1, row, '│', style)
+        self.put(x, y, '┌', style)
+        self.put(x + w - 1, y, '┐', style)
+        self.put(x, y + h - 1, '└', style)
+        self.put(x + w - 1, y + h - 1, '┘', style)
+
+    def hline(self, x, y, width, style=None):
+        for i in range(width):
+            self.put(x + i, y, '─', style)
+
+    def vline(self, x, y, height, style=None):
+        for i in range(height):
+            self.put(x, y + i, '│', style)
 
     def text_nowrap(self, txt, x, y, width, style=None):
         for i, c in enumerate(txt[:width]):
@@ -139,10 +150,12 @@ if __name__ == "__main__":
             keys = []
 
             buf.clear()
-            buf.rect(1, 1, 30, 5, 'blue', fill=False)
+            buf.rect_line(1, 1, 30, 5, 'blue')
             buf.text_nowrap("ex6 blessed (in a box)", 3, 2, 26, 'bold')
             buf.text_wrap("This text wraps within the box area nicely.", 3, 3, 26, 2, 'cyan')
-            buf.rect(35, 1, 10, 3, 'red', fill=True)
+            buf.fill(35, 1, 10, 3, '█', 'red')
+            buf.hline(1, 6, 30, 'yellow')
+            buf.vline(50, 1, 5, 'green')
             if submitted:
                 buf.puts(2, 7, f"Submitted: {submitted}", 'green')
             input_draw(inpt)
