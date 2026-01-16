@@ -20,7 +20,7 @@ with term.cbreak(), term.hidden_cursor():
     print(term.home + term.black_on_olivedrab4 + term.clear)
 
     # loop every 20ms
-    while term.inkey(timeout=0.02) != 'q':
+    while term.inkey(timeout=0.002) != 'q':
         # erase,
         txt_erase = term.move_xy(*roundxy(x, y)) + ' '
 
@@ -36,3 +36,4 @@ with term.cbreak(), term.hidden_cursor():
         # draw !
         txt_ball = term.move_xy(*roundxy(x, y)) + '█'
         print(txt_erase + txt_ball, end='', flush=True)
+
