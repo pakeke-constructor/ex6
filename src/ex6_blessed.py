@@ -68,23 +68,20 @@ class ScreenBuffer:
         for i in range(h):
             self.put(x, y + i, '│', style)
 
-    def text_nowrap(self, txt: str, r: Rect, style=None):
-        x, y, w, _ = r
-        for i, c in enumerate(txt[:w]):
-            self.put(x + i, y, c, style)
-
-    def text_wrap(self, txt: str, r: Rect, style=None):
+    def text_contained(self, txt: str, r: Rect, style=None, wrap=True, newlines=True) -> int:
         x, y, w, h = r
-        row = 0
-        col = 0
+        if not newlines: txt = txt.replace('\n', ' ').replace('\r', ' ')
+        row, col = 0, 0
         for c in txt:
-            if c == '\n' or col >= w:
+            if c == '\n' or (wrap and col >= w):
                 row += 1
                 col = 0
                 if c == '\n': continue
+            if not wrap and col >= w: continue
             if row >= h: break
             self.put(x + col, y + row, c, style)
             col += 1
+        return row + 1 if col > 0 else row
 
 
 class InputPass:
@@ -159,8 +156,8 @@ if __name__ == "__main__":
 
             buf.clear()
             buf.rect_line((1, 1, 30, 5), 'blue')
-            buf.text_nowrap("ex6 blessed (in a box)", (3, 2, 26, 1), 'bold')
-            buf.text_wrap("This text wraps within the box area nicely.", (3, 3, 26, 2), 'cyan')
+            buf.text_contained("ex6 blessed (in a box)", (3, 2, 26, 1), 'bold', wrap=False)
+            buf.text_contained("This text wraps within the box area nicely.", (3, 3, 26, 2), 'cyan')
             buf.fill((35, 1, 10, 3), '█', 'red')
             buf.hline((1, 6, 30, 1), 'yellow')
             buf.vline((50, 1, 1, 5), 'green')
