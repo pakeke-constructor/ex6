@@ -137,12 +137,13 @@ if __name__ == "__main__":
     term = Terminal()
     buf = ScreenBuffer(term.width, term.height)
     keys = []
-    submitted = ""
 
+    ## EXAMPLE make_input CALL:
+    ## (Temporary, just for testing)
+    submitted = ""
     def on_submit(t):
         global submitted
         submitted = t
-
     input_draw = make_input(on_submit)
 
     with term.cbreak(), term.hidden_cursor():
@@ -161,6 +162,7 @@ if __name__ == "__main__":
             keys = []
             input_r = Region(0, term.height - 1, term.width, 1)
 
+            ## EXAMPLE / TEMPORARY CODE ONLY.
             buf.clear()
             buf.rect_line((1, 1, 30, 5), 'blue')
             buf.text_contained("ex6 blessed (in a box)", (3, 2, 26, 1), 'bold', wrap=False)
