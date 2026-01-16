@@ -228,8 +228,7 @@ if __name__ == "__main__":
     keys = []
     input_draw = make_input(lambda t: None)
 
-    with term.cbreak(), term.hidden_cursor():
-        print(term.clear, end='')
+    with term.cbreak(), term.hidden_cursor(), term.fullscreen():
         while True:
             key = term.inkey(timeout=0.011)
             if key:
@@ -254,4 +253,3 @@ if __name__ == "__main__":
             input_draw(buf, inpt, input_r)
             buf.flush(term)
 
-        print(term.clear + term.normal)
