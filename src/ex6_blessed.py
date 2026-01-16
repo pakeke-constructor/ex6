@@ -2,12 +2,11 @@ from blessed import Terminal
 from typing import Tuple
 import time
 from region import Region
+from state import Context, state
 
 Rect = Tuple[int, int, int, int]  # (x, y, w, h)
 
-
-
-
+SPINNER = "/-\\|"
 
 class ScreenBuffer:
     def __init__(self, w, h):
@@ -48,6 +47,7 @@ class ScreenBuffer:
 
     def rect_line(self, r: Rect, style=None):
         x, y, w, h = r
+        if w < 2 or h < 2: return
         for col in range(x + 1, x + w - 1):
             self.put(col, y, '─', style)
             self.put(col, y + h - 1, '─', style)
@@ -71,7 +71,7 @@ class ScreenBuffer:
 
     def text_contained(self, txt: str, r: Rect, style=None, wrap=True, newlines=True) -> int:
         x, y, w, h = r
-        if not newlines: 
+        if not newlines:
             txt = txt.replace('\n', ' ')
         txt = txt.replace('\r\n', '\n').replace('\r', '\n')
         row, col = 0, 0
@@ -82,8 +82,6 @@ class ScreenBuffer:
             self.put(x + col, y + row, c, style)
             col += 1
         return row + 1 if col > 0 or row == 0 else row
-
-
 
 
 class InputPass:
@@ -133,18 +131,102 @@ def make_input(on_submit):
     return draw
 
 
+# --- SELECTION MODE UI ---
+
+def render_selection_left(buf, inpt, r):
+    x, y, w, h = r
+    buf.rect_line(r, 'blue')
+    buf.puts(x + 2, y, " Contexts ", 'blue')
+
+    ctxs = sorted(state.contexts, key=lambda c: c.name)
+    if not ctxs:
+        buf.puts(x + 2, y + 1, "(no contexts)", 'dim')
+        return
+
+    idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
+
+    # navigation
+    if inpt.consume('KEY_UP') and idx > 0:
+        state.current = ctxs[idx - 1]
+    if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
+        state.current = ctxs[idx + 1]
+
+    # draw list
+    now = time.time()
+    spin = SPINNER[int(now * 8) % len(SPINNER)]
+    for i, ctx in enumerate(ctxs):
+        if y + 1 + i >= y + h - 1: break
+        selected = (ctx is state.current)
+        prefix = ">> " if selected else "   "
+        suffix = f" {spin}" if ctx.llm_running else ""
+        toks = f" ({ctx.tokens//1000}k)"
+
+        if ctx.llm_running: style = 'yellow'
+        elif now - ctx.last_llm_time < 360: style = 'white'
+        else: style = 'dim'
+
+        line = f"{prefix}{ctx.name}{toks}{suffix}"
+        buf.puts(x + 1, y + 1 + i, line[:w-2], 'bold' if selected else style)
+
+
+def render_selection_right(buf, r):
+    x, y, w, h = r
+    buf.rect_line(r, 'blue')
+    buf.puts(x + 2, y, " Info ", 'blue')
+
+    ctx = state.current
+    if not ctx:
+        buf.puts(x + 2, y + 1, "(no context selected)", 'dim')
+        return
+
+    # header
+    buf.puts(x + 2, y + 1, ctx.name, 'bold')
+    buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, 'dim')
+
+    # token bar
+    ratio = ctx.tokens / ctx.max_tokens if ctx.max_tokens else 0
+    bar_w = min(w - 4, 20)
+    filled = int(ratio * bar_w)
+    bar = "█" * filled + "░" * (bar_w - filled)
+    buf.puts(x + 2, y + 2, bar, 'cyan')
+    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.tokens//1000}k/{ctx.max_tokens//1000}k", 'dim')
+
+    # cost
+    buf.puts(x + 2, y + 3, f"${ctx.cost:.2f}", 'dim')
+
+    # messages
+    buf.hline((x + 1, y + 4, w - 2, 1), 'blue')
+    row = y + 5
+    if ctx.messages:
+        for msg in ctx.messages:
+            if row >= y + h - 1: break
+            role = msg.get("name", msg.get("role", "?"))
+            content = msg.get("content", "")
+            toks = len(content) * 4  # rough estimate
+            buf.puts(x + 2, row, f"{role} ({toks})", 'dim')
+            row += 1
+    else:
+        buf.puts(x + 2, row, "(no messages)", 'dim')
+
+
+# --- MAIN ---
+
 if __name__ == "__main__":
+    # dummy contexts
+    c1 = Context("ctx1", messages=[
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "Hi! How can I help?"},
+    ])
+    c2 = Context("ctx2", model="sonnet-4", tokens=5000)
+    c3 = Context("foobar", tokens=45000, cost=0.08)
+    state.contexts = {c1, c2, c3}
+    state.current = c1
+
     term = Terminal()
     buf = ScreenBuffer(term.width, term.height)
     keys = []
-
-    ## EXAMPLE make_input CALL:
-    ## (Temporary, just for testing)
-    submitted = ""
-    def on_submit(t):
-        global submitted
-        submitted = t
-    input_draw = make_input(on_submit)
+    input_draw = make_input(lambda t: None)
 
     with term.cbreak(), term.hidden_cursor():
         print(term.clear, end='')
@@ -154,24 +236,21 @@ if __name__ == "__main__":
                 if str(key) == '\x03': break
                 keys.append(key)
 
-            # Resize buffer if terminal changed
             if buf.w != term.width or buf.h != term.height:
                 buf = ScreenBuffer(term.width, term.height)
 
             inpt = InputPass(keys)
             keys = []
+
+            buf.clear()
+
+            main_r = Region(0, 0, term.width, term.height - 1)
             input_r = Region(0, term.height - 1, term.width, 1)
 
-            ## EXAMPLE / TEMPORARY CODE ONLY.
-            buf.clear()
-            buf.rect_line((1, 1, 30, 5), 'blue')
-            buf.text_contained("ex6 blessed (in a box)", (3, 2, 26, 1), 'bold', wrap=False)
-            buf.text_contained("This text wraps within the box area nicely.", (3, 3, 26, 2), 'cyan')
-            buf.fill((35, 1, 10, 3), '█', 'red')
-            buf.hline((1, 6, 30, 1), 'yellow')
-            buf.vline((50, 1, 1, 5), 'green')
-            if submitted:
-                buf.puts(2, 7, f"Submitted: {submitted}", 'green')
+            left, right = main_r.split_horizontal(1, 2)
+            render_selection_left(buf, inpt, left)
+            render_selection_right(buf, right)
+
             input_draw(buf, inpt, input_r)
             buf.flush(term)
 
