@@ -11,7 +11,7 @@ Super damn simple event loop style.
 
 ## Option-2:
 Stick with Textualize; but use it properly.
-Lean into the UI nature of it.  
+Lean into the oop nature of it.  
 ^^^ honestly i think this could be good.
 
 See sentiment: https://news.ycombinator.com/item?id=35123383
