@@ -32,11 +32,8 @@ class ScreenBuffer:
         for y in range(self.h):
             for x in range(self.w):
                 c, s = self.chars[y][x], self.styles[y][x]
-                if s:
-                    styled = getattr(term, s, None)
-                    out += styled(c) if styled else c
-                else:
-                    out += c
+                styled = getattr(term, s, None) if s else None
+                out += styled(c) if styled else c
         print(out, end='', flush=True)
 
     def fill(self, r: Rect, char='█', style=None):
@@ -155,7 +152,7 @@ def render_selection_left(buf, inpt, r):
     now = time.time()
     spin = SPINNER[int(now * 8) % len(SPINNER)]
     for i, ctx in enumerate(ctxs):
-        if y + 1 + i >= y + h - 1: break
+        if i >= h - 2: break
         selected = (ctx is state.current)
         prefix = ">> " if selected else "   "
         suffix = f" {spin}" if ctx.llm_running else ""
@@ -197,15 +194,14 @@ def render_selection_right(buf, r):
     # messages
     buf.hline((x + 1, y + 4, w - 2, 1), 'blue')
     row = y + 5
-    if ctx.messages:
-        for msg in ctx.messages:
-            if row >= y + h - 1: break
-            role = msg.get("name", msg.get("role", "?"))
-            content = msg.get("content", "")
-            toks = len(content) * 4  # rough estimate
-            buf.puts(x + 2, row, f"{role} ({toks})", 'dim')
-            row += 1
-    else:
+    msgs = ctx.messages or []
+    for msg in msgs:
+        if row >= y + h - 1: break
+        role = msg.get("name", msg.get("role", "?"))
+        toks = len(msg.get("content", "")) * 4
+        buf.puts(x + 2, row, f"{role} ({toks})", 'dim')
+        row += 1
+    if not msgs:
         buf.puts(x + 2, row, "(no messages)", 'dim')
 
 
