@@ -6,7 +6,7 @@ Claude-code constantly spins up subagents with fresh contexts.
 
 
 
-## Example:
+## Example of a subagent reading/planning:
 ```
 ● Now I have a clear direction. Let me design the implementation.
 ● Plan(Plan immediate-mode UI impl)
@@ -33,6 +33,16 @@ spun up a subagent, with entirely fresh context.
 
 
 
+## Example of subagent writing code:
+```
+● Update(src\ex6.py)
+
+● Update(src\ex6.py)
+
+● Update(src\ex6.py)
+```
+Here, the parent-agent recognized that the tasks were independent.
+So it spun up 3 independent sub-agents that all operated on their own.
 
 
 
