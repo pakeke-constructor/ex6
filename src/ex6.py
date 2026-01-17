@@ -145,7 +145,7 @@ class Context:
             if t.startswith("/"): dispatch_command(t)
             else: self.invoke(t)
         self.input_stack = [make_input(on_submit)]
-        state.contexts.add(self)
+        state.contexts[self.name] = self
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -411,7 +411,7 @@ def render_selection_left(buf, inpt, r):
     buf.rect_line(r, 'blue')
     buf.puts(x + 2, y, " Contexts ", 'blue')
 
-    ctxs = sorted(state.contexts, key=lambda c: c.name)
+    ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
     if not ctxs:
         buf.puts(x + 2, y + 1, "(no contexts)", 'dim')
         return
@@ -531,7 +531,6 @@ def _create_test_contexts():
     Context("foobar", tokens=45000, cost=0.08)
 
     state.current = c1
-
 
 
 
