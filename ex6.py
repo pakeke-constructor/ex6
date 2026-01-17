@@ -1,9 +1,11 @@
 
 import os
+import sys
 
 os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
 # (if using SSH, you might want to set this higher. Ask some LLM to explain why.)
 
+sys.modules['ex6'] = sys.modules[__name__]  # so plugins can `import ex6`
 
 from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
