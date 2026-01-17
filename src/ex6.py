@@ -144,22 +144,19 @@ def call_llm(ctx):
 
 
 
-def prev_word(text, cursor):
-    """Move cursor to start of previous word"""
-    i = cursor
-    while i > 0 and not text[i-1].isalnum(): i -= 1
-    while i > 0 and text[i-1].isalnum(): i -= 1
-    return i
-
-def next_word(text, cursor):
-    """Move cursor to start of next word"""
-    i = cursor
-    while i < len(text) and text[i].isalnum(): i += 1
-    while i < len(text) and not text[i].isalnum(): i += 1
-    return i
 
 def make_input(on_submit):
     text, cursor = "", 0
+
+    def prev_word(text, i):
+        while i > 0 and not text[i-1].isalnum(): i -= 1
+        while i > 0 and text[i-1].isalnum(): i -= 1
+        return i
+
+    def next_word(text, i):
+        while i < len(text) and text[i].isalnum(): i += 1
+        while i < len(text) and not text[i].isalnum(): i += 1
+        return i
 
     def draw(buf, inpt, r):
         nonlocal text, cursor
