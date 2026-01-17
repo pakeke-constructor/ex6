@@ -12,7 +12,9 @@ This project, `ex6`, serves as a thin, simple alternative to claude-code.
 - Lives in terminal.
 
 ## Project architecture:
-- `src/ex6.py`: the ENTIRE project, contained in one python file.
+- `src/ex6.py`: main entrypoint
+- `src/region.py`: class for (x,y,w,h) layout handlingt
+- `src/state.py`: contains classes for the global app-state
 
 ## Plugin ideology:
 `.ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `./ex6` folder.  
@@ -27,14 +29,16 @@ Displays list of named context-windows, user chooses what one to work in.
 This UI has 2 panels, split horizontally:
 
 - SelectionMode-Left-panel:
-Displays a list of LLM contexts. Each context has a name, and they are layed out in a tree-like structure, with children/forked contexts as "child nodes".
+Displays a list of LLM context-windows.  
+Each context has a name, and a list of prompts/system prompts.
+
 eg:
 ```
 ctx1
 ctx2
-    ctx2_child
-    blah_second_child
-        nested_child
+ctx2_child
+blah_second_child
+nested_child
 >> foobar  (the '>>' means that foobar is hovered)
 debug_ctx
 ```

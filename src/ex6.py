@@ -105,6 +105,25 @@ class InputPass:
         return text
 
 
+
+
+OVERRIDES = {}
+
+def overridable(fn):
+    OVERRIDES[fn.__name__] = fn
+    def wrap_fn(*a, **ka):
+        f = OVERRIDES[fn.__name__]
+        f(*a, **ka)
+    return wrap_fn
+
+def override(fn):
+    name = fn.__name__
+    assert OVERRIDES.get(name)
+    OVERRIDES[name] = fn
+
+
+
+
 def make_input(on_submit):
     text, cursor = "", 0
 
