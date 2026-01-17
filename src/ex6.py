@@ -108,16 +108,21 @@ class InputPass:
 
 
 OVERRIDES = {}
+_OVERRIDDEN = set()
 
 def overridable(fn):
     OVERRIDES[fn.__name__] = fn
     def wrap_fn(*a, **ka):
-        f = OVERRIDES[fn.__name__]
-        f(*a, **ka)
+        return OVERRIDES[fn.__name__](*a, **ka)
     return wrap_fn
 
 def override(fn):
     name = fn.__name__
+    if name not in OVERRIDES:
+        raise RuntimeError(f"'{name}' not overridable")
+    if name in _OVERRIDDEN:
+        raise RuntimeError(f"'{name}' already overridden")
+    _OVERRIDDEN.add(name)
     OVERRIDES[name] = fn
     return fn
 
