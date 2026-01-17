@@ -23,8 +23,6 @@ _commands = {}
 _tools = {}
 
 
-def get_fn_name(fn):
-    return fn.__name__
 
 
 def command(fn):
@@ -36,7 +34,7 @@ def command(fn):
 
     now, `/command a b` should be valid command
     '''
-    name = get_fn_name(fn)
+    name = fn.__name__
     sig = inspect.signature(fn)
     spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
             for p in sig.parameters.values()]
@@ -52,7 +50,7 @@ def tool(fn):
 
     can be included in ctx windows for LLMs.
     '''
-    name = get_fn_name(fn)
+    name = fn.__name__
     sig = inspect.signature(fn)
     spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
             for p in sig.parameters.values()]
@@ -180,7 +178,6 @@ class Context:
 
 Rect = Tuple[int, int, int, int]  # (x, y, w, h)
 
-SPINNER = "/-\\|"
 
 class ScreenBuffer:
     def __init__(self, w, h):
@@ -284,6 +281,7 @@ class InputPass:
 
 
 
+@overridable
 def make_input(on_submit):
     text, cursor = "", 0
 
@@ -327,6 +325,7 @@ def make_input(on_submit):
 
     return draw
 
+@overridable
 def make_work_input():
     def on_submit(text):
         if state.current:
@@ -336,6 +335,7 @@ def make_work_input():
 
 # --- SELECTION MODE UI ---
 
+@overridable
 def render_selection_left(buf, inpt, r):
     x, y, w, h = r
     buf.rect_line(r, 'blue')
@@ -358,6 +358,7 @@ def render_selection_left(buf, inpt, r):
 
     # draw list
     now = time.time()
+    SPINNER = "/-\\|"
     spin = SPINNER[int(now * 8) % len(SPINNER)]
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
@@ -374,6 +375,7 @@ def render_selection_left(buf, inpt, r):
         buf.puts(x + 1, y + 1 + i, line[:w-2], 'bold' if selected else style)
 
 
+@overridable
 def render_selection_right(buf, r):
     x, y, w, h = r
     buf.rect_line(r, 'blue')
@@ -415,6 +417,7 @@ def render_selection_right(buf, r):
 
 
 
+@overridable
 def render_work_mode(buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
