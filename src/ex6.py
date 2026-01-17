@@ -118,8 +118,8 @@ def overridable(fn):
 
 def override(fn):
     name = fn.__name__
-    assert OVERRIDES.get(name)
     OVERRIDES[name] = fn
+    return fn
 
 
 
