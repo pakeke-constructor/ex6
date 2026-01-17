@@ -126,6 +126,12 @@ def override(fn):
     OVERRIDES[name] = fn
     return fn
 
+@overridable
+def call_llm(ctx):
+    """Yields tokens. Override this to use real LLM."""
+    for _ in range(60):
+        time.sleep(0.1)
+        yield "token "
 
 
 
@@ -152,6 +158,12 @@ def make_input(on_submit):
 
     return draw
 
+def make_work_input():
+    def on_submit(text):
+        if state.current:
+            state.current.call(text, call_llm)
+    return make_input(on_submit)
+
 
 # --- SELECTION MODE UI ---
 
@@ -172,6 +184,8 @@ def render_selection_left(buf, inpt, r):
         state.current = ctxs[idx - 1]
     if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
         state.current = ctxs[idx + 1]
+    if inpt.consume('KEY_ENTER') and state.current:
+        state.mode = "work"
 
     # draw list
     now = time.time()
@@ -230,6 +244,32 @@ def render_selection_right(buf, r):
         buf.puts(x + 2, row, "(no messages)", 'dim')
 
 
+# --- WORK MODE UI ---
+
+def render_work_mode(buf, inpt, r):
+    x, y, w, h = r
+    ctx = state.current
+    assert ctx
+    buf.rect_line(r, 'blue')
+    buf.puts(x + 2, y, f" {ctx.name} ", 'blue')
+
+    # Build lines from messages (most recent that fit)
+    lines = []
+    for msg in ctx.messages:
+        role, content = msg["role"], msg.get("content", "")
+        style = "cyan" if role == "user" else ("white" if role == "assistant" else "dim")
+        lines.append((content, style))
+    if ctx.llm_running:
+        lines.append((ctx.llm_output + "█", "yellow"))
+
+    # Render from top down, showing recent
+    row = y + 1
+    for content, style in lines:
+        rows_used = buf.text_contained(content, (x+1, row, w-2, h-2-row+y), style)
+        row += rows_used
+        if row >= y + h - 1: break
+
+
 # --- MAIN ---
 
 if __name__ == "__main__":
@@ -247,7 +287,8 @@ if __name__ == "__main__":
     term = Terminal()
     buf = ScreenBuffer(term.width, term.height)
     keys = []
-    input_draw = make_input(lambda t: None)
+    selection_input = make_input(lambda t: None)
+    work_input = make_work_input()
 
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
         while True:
@@ -267,10 +308,17 @@ if __name__ == "__main__":
             main_r = Region(0, 0, term.width, term.height - 1)
             input_r = Region(0, term.height - 1, term.width, 1)
 
-            left, right = main_r.split_horizontal(1, 2)
-            render_selection_left(buf, inpt, left)
-            render_selection_right(buf, right)
+            if state.mode == "selection":
+                left, right = main_r.split_horizontal(1, 2)
+                render_selection_left(buf, inpt, left)
+                render_selection_right(buf, right)
+                selection_input(buf, inpt, input_r)
+            else:  # work mode
+                if inpt.consume('KEY_ESCAPE'):
+                    state.mode = "selection"
+                else:
+                    render_work_mode(buf, inpt, main_r)
+                    work_input(buf, inpt, input_r)
 
-            input_draw(buf, inpt, input_r)
             buf.flush(term)
 

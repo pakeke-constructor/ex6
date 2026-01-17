@@ -1,6 +1,8 @@
 
 from dataclasses import dataclass, field
 from typing import Optional
+import threading
+import time
 
 @dataclass
 class Context:
@@ -16,6 +18,18 @@ class Context:
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
+
+    def call(self, text, llm_fn):
+        self.messages.append({"role": "user", "content": text})
+        self.llm_running = True
+        self.llm_output = ""
+        def run():
+            for token in llm_fn(self):
+                self.llm_output += token
+            self.messages.append({"role": "assistant", "content": self.llm_output})
+            self.llm_running = False
+            self.last_llm_time = time.time()
+        threading.Thread(target=run, daemon=True).start()
 
 @dataclass
 class AppState:
