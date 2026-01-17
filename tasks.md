@@ -8,7 +8,6 @@ Be kinda like claude-code.
 
 
 ## BROKEN DOWN GOALS:
-- ctrl-backspace should work.
 - basic command plugin: `/clear [name], /new [name], /del [name], /fork [name]`
 
 - fancy rendering API on `work` mode; allow tool-use to look nice

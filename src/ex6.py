@@ -9,7 +9,14 @@ from blessed import Terminal
 from typing import Tuple
 import time
 from region import Region
-from state import Context, state
+from dataclasses import dataclass, field
+from typing import Optional
+import threading
+import copy 
+import time
+
+
+
 
 Rect = Tuple[int, int, int, int]  # (x, y, w, h)
 
@@ -88,6 +95,98 @@ class ScreenBuffer:
         return row + 1 if col > 0 or row == 0 else row
 
 
+
+
+OVERRIDES = {}
+_OVERRIDDEN = set()
+
+def overridable(fn):
+    OVERRIDES[fn.__name__] = fn
+    def wrap_fn(*a, **ka):
+        return OVERRIDES[fn.__name__](*a, **ka)
+    return wrap_fn
+
+def override(fn):
+    name = fn.__name__
+    if name not in OVERRIDES:
+        raise RuntimeError(f"'{name}' not overridable")
+    if name in _OVERRIDDEN:
+        raise RuntimeError(f"'{name}' already overridden")
+    _OVERRIDDEN.add(name)
+    OVERRIDES[name] = fn
+    return fn
+
+
+
+@dataclass
+class AppState:
+    contexts: set = field(default_factory=set)
+    current: Optional['Context'] = None
+    mode: str = "selection"
+
+
+state = AppState()
+
+
+
+@overridable
+def invoke_llm(ctx):
+    """Override this to use real LLM."""
+    for _ in range(60):
+        time.sleep(0.1)
+        yield "token "
+
+
+@dataclass
+class Context:
+    name: str
+    model: str = "opus-4.5"
+    messages: list = field(default_factory=list)
+    tokens: int = 32000
+    max_tokens: int = 200000
+    cost: float = 0.15
+    llm_running: bool = False
+    llm_output: str = ""
+    last_llm_time: float = 0
+    messages: list = field(default_factory=list)
+    input_stack: list = field(default_factory=list)
+
+    def __post_init__(self):
+        def on_submit(t):
+            if t.startswith("/"): dispatch_command(t)
+            else: self.invoke(t)
+        self.input_stack = [make_input(on_submit)]
+        state.contexts.add(self)
+
+    def __hash__(self): return id(self)
+    def __eq__(self, other): return self is other
+
+    def invoke(self, text, llm_fn=None):
+        llm_fn = llm_fn or invoke_llm
+        self.messages.append({"role": "user", "content": text})
+        self.llm_running = True
+        self.llm_output = ""
+        def run():
+            for token in llm_fn(self):
+                self.llm_output += token
+            self.messages.append({"role": "assistant", "content": self.llm_output})
+            self.llm_running = False
+            self.last_llm_time = time.time()
+        threading.Thread(target=run, daemon=True).start()
+    
+    def fork(self) -> Context:
+        cpy = copy.copy(self)
+        cpy.messages = copy.deepcopy(self.messages)
+        cpy.input_stack = []
+        cpy.__post_init__()  # fresh input handlers
+        return cpy
+
+    def push_ui(self, draw_fn):
+        self.input_stack.append(draw_fn)
+
+
+
+
 class InputPass:
     KEY_ALIASES = {'\x17': 'KEY_CTRL_BACKSPACE', '\x7f': 'KEY_CTRL_BACKSPACE', '\x1bd': 'KEY_CTRL_DELETE'}
 
@@ -112,36 +211,6 @@ class InputPass:
                 remaining.append(k)
         self._keys[:] = remaining
         return text
-
-
-
-
-OVERRIDES = {}
-_OVERRIDDEN = set()
-
-def overridable(fn):
-    OVERRIDES[fn.__name__] = fn
-    def wrap_fn(*a, **ka):
-        return OVERRIDES[fn.__name__](*a, **ka)
-    return wrap_fn
-
-def override(fn):
-    name = fn.__name__
-    if name not in OVERRIDES:
-        raise RuntimeError(f"'{name}' not overridable")
-    if name in _OVERRIDDEN:
-        raise RuntimeError(f"'{name}' already overridden")
-    _OVERRIDDEN.add(name)
-    OVERRIDES[name] = fn
-    return fn
-
-@overridable
-def call_llm(ctx):
-    """Yields tokens. Override this to use real LLM."""
-    for _ in range(60):
-        time.sleep(0.1)
-        yield "token "
-
 
 
 
@@ -191,7 +260,7 @@ def make_input(on_submit):
 def make_work_input():
     def on_submit(text):
         if state.current:
-            state.current.call(text, call_llm)
+            state.current.invoke(text)
     return make_input(on_submit)
 
 
