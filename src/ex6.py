@@ -15,7 +15,6 @@ import inspect
 import copy 
 import time
 import glob
-import re
 
 
 
@@ -126,6 +125,18 @@ class Message:
         return c(ctx) if callable(c) else c
 
 
+def _ensure_unique_name(name):
+    if not state.contexts.get("name"):
+        # this name is ok
+        return name
+    # otherwise, search for new name
+    while True:
+        last = name[-1]
+        if last.isdigit() and last != '9': name = name[:-1] + str(int(last) + 1)
+        elif last == '9': name = name + '0'
+        else: name = name + '1'
+        if name not in state.contexts: break
+    return name
 
 @dataclass
 class Context:
@@ -164,18 +175,11 @@ class Context:
             self.last_llm_time = time.time()
         threading.Thread(target=run, daemon=True).start()
     
-    def fork(self, new_name: str = None) -> 'Context':
+    def fork(self, new_name: Optional[str] = None) -> 'Context':
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
         cpy.input_stack = []
-        if not new_name:
-            # extract base name: "foo_3" -> "foo", "bar" -> "bar"
-            m = re.match(r'^(.+?)_(\d+)$', self.name)
-            base = m.group(1) if m else self.name
-            i = int(m.group(2)) + 1 if m else 1
-            while f"{base}_{i}" in state.contexts: i += 1
-            new_name = f"{base}_{i}"
-        cpy.name = new_name
+        cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.__post_init__()
         return cpy
 
