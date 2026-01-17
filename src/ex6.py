@@ -1,4 +1,10 @@
 
+import os
+
+os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
+# (if using SSH, you might want to set this higher. Ask some LLM to explain why.)
+
+
 from blessed import Terminal
 from typing import Tuple
 import time
