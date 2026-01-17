@@ -5,27 +5,28 @@ from src import ex6
 
 @ex6.command
 def clear(name: Optional[str]):
-    pass
-    # clears context
-    # removes all messages except for the STARTING system-prompt messages.
-    # ie loop over the beginning of ctx.messages;
-    # when you get to non sys prompt; prune everything.
-
-    # (if name is None, uses current-context.)
+    ctx = ex6.state.contexts.get(name) if name else ex6.state.current
+    if not ctx: return
+    i = 0
+    while i < len(ctx.messages) and ctx.messages[i].role == "system":
+        i += 1
+    ctx.messages = ctx.messages[:i]
 
 
 @ex6.command
 def delete(name: Optional[str]):
-    pass
-    # deletes context
-    # (if name is None, uses current-context.)
+    ctx = ex6.state.contexts.get(name) if name else ex6.state.current
+    if not ctx: return
+    del ex6.state.contexts[ctx.name]
+    if ex6.state.current is ctx:
+        ex6.state.current = None
 
 
 @ex6.command
 def fork(name: Optional[str]):
-    pass
-    # forks context
-    # (if name is None, uses current-context.)
+    ctx = ex6.state.contexts.get(name) if name else ex6.state.current
+    if not ctx: return
+    ctx.fork()
 
 
 

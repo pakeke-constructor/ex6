@@ -15,6 +15,7 @@ import inspect
 import copy 
 import time
 import glob
+import re
 
 
 
@@ -117,10 +118,10 @@ def invoke_llm(ctx):
 
 @dataclass
 class Message:
-    content: Union[str, Callable[['Context'], str]]
     role: Literal["system", "user", "assistant"]
+    content: Union[str, Callable[['Context'], str]]
 
-    def get_msg(self, ctx: Context):
+    def get_msg(self, ctx: 'Context'):
         c = self.content
         return c(ctx) if callable(c) else c
 
@@ -152,22 +153,30 @@ class Context:
 
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm
-        self.messages.append({"role": "user", "content": text})
+        self.messages.append(Message(role="user", content=text))
         self.llm_running = True
         self.llm_output = ""
         def run():
             for token in llm_fn(self):
                 self.llm_output += token
-            self.messages.append({"role": "assistant", "content": self.llm_output})
+            self.messages.append(Message(role="assistant", content=self.llm_output))
             self.llm_running = False
             self.last_llm_time = time.time()
         threading.Thread(target=run, daemon=True).start()
     
-    def fork(self) -> Context:
+    def fork(self, new_name: str = None) -> 'Context':
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
         cpy.input_stack = []
-        cpy.__post_init__()  # fresh input handlers
+        if not new_name:
+            # extract base name: "foo_3" -> "foo", "bar" -> "bar"
+            m = re.match(r'^(.+?)_(\d+)$', self.name)
+            base = m.group(1) if m else self.name
+            i = int(m.group(2)) + 1 if m else 1
+            while f"{base}_{i}" in state.contexts: i += 1
+            new_name = f"{base}_{i}"
+        cpy.name = new_name
+        cpy.__post_init__()
         return cpy
 
     def push_ui(self, draw_fn):
@@ -477,9 +486,10 @@ def render_selection_right(buf, r):
     msgs = ctx.messages or []
     for msg in msgs:
         if row >= y + h - 1: break
-        role = msg.get("name", msg.get("role", "?"))
-        toks = len(msg.get("content", "")) * 4
-        buf.puts(x + 2, row, f"{role} ({toks})", 'dim')
+        role = msg.role
+        content = msg.content if isinstance(msg.content, str) else "<fn>"
+        toks = len(content) * 4
+        buf.puts(x + 2, row, f"{role} ({toks//1000}k)", 'dim')
         row += 1
     if not msgs:
         buf.puts(x + 2, row, "(no messages)", 'dim')
@@ -498,7 +508,8 @@ def render_work_mode(buf, inpt, r):
     # Build lines from messages (most recent that fit)
     lines = []
     for msg in ctx.messages:
-        role, content = msg["role"], msg.get("content", "")
+        role = msg.role
+        content = msg.get_msg(ctx)
         style = "cyan" if role == "user" else ("white" if role == "assistant" else "dim")
         lines.append((content, style))
     if ctx.llm_running:
@@ -523,9 +534,9 @@ def _load_plugins():
 
 def _create_test_contexts():
     c1 = Context("ctx1", messages=[
-        {"role": "system", "content": "You are helpful."},
-        {"role": "user", "content": "hello"},
-        {"role": "assistant", "content": "Hi! How can I help?"},
+        Message(role="system", content="You are helpful."),
+        Message(role="user", content="hello"),
+        Message(role="assistant", content="Hi! How can I help?"),
     ])
     Context("ctx2", model="sonnet-4", tokens=5000)
     Context("foobar", tokens=45000, cost=0.08)
