@@ -89,12 +89,15 @@ class ScreenBuffer:
 
 
 class InputPass:
+    KEY_ALIASES = {'\x17': 'KEY_CTRL_BACKSPACE', '\x7f': 'KEY_CTRL_BACKSPACE', '\x1bd': 'KEY_CTRL_DELETE'}
+
     def __init__(self, keys: list):
         self._keys = list(keys)
 
     def consume(self, name: str) -> bool:
         for i, k in enumerate(self._keys):
-            if k.name == name or str(k) == name:
+            key_name = self.KEY_ALIASES.get(str(k), k.name)
+            if key_name == name or k.name == name:
                 self._keys.pop(i)
                 return True
         return False
@@ -141,6 +144,20 @@ def call_llm(ctx):
 
 
 
+def prev_word(text, cursor):
+    """Move cursor to start of previous word"""
+    i = cursor
+    while i > 0 and not text[i-1].isalnum(): i -= 1
+    while i > 0 and text[i-1].isalnum(): i -= 1
+    return i
+
+def next_word(text, cursor):
+    """Move cursor to start of next word"""
+    i = cursor
+    while i < len(text) and text[i].isalnum(): i += 1
+    while i < len(text) and not text[i].isalnum(): i += 1
+    return i
+
 def make_input(on_submit):
     text, cursor = "", 0
 
@@ -155,6 +172,16 @@ def make_input(on_submit):
         if inpt.consume('KEY_BACKSPACE') and cursor > 0:
             text = text[:cursor-1] + text[cursor:]
             cursor -= 1
+        if inpt.consume('KEY_DELETE') and cursor < len(text):
+            text = text[:cursor] + text[cursor+1:]
+        if inpt.consume('KEY_CTRL_BACKSPACE') and cursor > 0:
+            new_cursor = prev_word(text, cursor)
+            text = text[:new_cursor] + text[cursor:]
+            cursor = new_cursor
+        if inpt.consume('KEY_CTRL_DELETE') and cursor < len(text):
+            text = text[:cursor] + text[next_word(text, cursor):]
+        if inpt.consume('KEY_CTRL_LEFT'): cursor = prev_word(text, cursor)
+        if inpt.consume('KEY_CTRL_RIGHT'): cursor = next_word(text, cursor)
         if inpt.consume('KEY_ENTER') and text:
             on_submit(text)
             text, cursor = "", 0
