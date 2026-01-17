@@ -12,9 +12,13 @@ This project, `ex6`, serves as a thin, simple alternative to claude-code.
 - Lives in terminal.
 
 ## Project architecture:
-- `src/ex6.py`: main entrypoint
-- `src/region.py`: class for (x,y,w,h) layout handlingt
-- `src/state.py`: contains classes for the global app-state
+- `src/ex6.py`: project file. EVERYTHING is layed out in this file.
+Classes:
+- `ScreenBuffer`: used to render to screen.
+- `InputPass`: cleared every frame; handles input management/blocking
+- `Region`: represents (x,y,w,h) tuple; used for immediate-mode layout.
+- `Context`: represents a LLM context window (and potentially a running LLM.)
+- `Message`: represents a message (system, user, assistant). Can return content dynamically/lazily.
 
 ## Plugin ideology:
 `.ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `./ex6` folder.  

@@ -6,9 +6,8 @@ os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
 
 
 from blessed import Terminal
-from typing import Tuple
+from typing import Union, Tuple, List, Optional, Literal, Callable
 import time
-from region import Region
 from dataclasses import dataclass, field
 from typing import Optional
 import threading
@@ -56,7 +55,6 @@ def tool(fn):
             for p in sig.parameters.values()]
     _tools[name] = (fn, spec)
     return fn
-
 
 
 
@@ -118,6 +116,17 @@ def invoke_llm(ctx):
 
 
 @dataclass
+class Message:
+    content: Union[str, Callable[['Context'], str]]
+    role: Literal["system", "user", "assistant"]
+
+    def get_msg(self, ctx: Context):
+        c = self.content
+        return c(ctx) if callable(c) else c
+
+
+
+@dataclass
 class Context:
     name: str
     model: str = "opus-4.5"
@@ -168,7 +177,17 @@ class Context:
 
 
 
+
+
+
+
+#====================================
+# UI, rendering, input, main-loop:
+#====================================
+
+
 Rect = Tuple[int, int, int, int]  # (x, y, w, h)
+RegionLike = Union['Region', Rect]
 
 
 class ScreenBuffer:
@@ -242,6 +261,65 @@ class ScreenBuffer:
             self.put(x + col, y + row, c, style)
             col += 1
         return row + 1 if col > 0 or row == 0 else row
+
+
+
+
+class Region(tuple):
+    """
+    A class reprenting a (x,y,w,h) area on the screen.
+    Used for laying out ui.
+    """
+    def __new__(cls, x: int = 0, y: int = 0, w: int = 0, h: int = 0):
+        return super().__new__(cls, (int(x), int(y), max(0, int(w)), max(0, int(h))))
+    
+    def __repr__(self):
+        return f"Region{super().__repr__()}"
+    
+    def split_vertical(self, *ratios: float) -> List['Region']:
+        norm = [r / sum(ratios) for r in ratios]
+        regions = []
+        accum_y = self[1]
+        for ratio in norm:
+            h = int(self[3] * ratio)
+            regions.append(Region(self[0], accum_y, self[2], h))
+            accum_y += h
+        return regions
+    
+    def split_horizontal(self, *ratios: float) -> List['Region']:
+        norm = [r / sum(ratios) for r in ratios]
+        regions = []
+        accum_x = self[0]
+        for ratio in norm:
+            w = int(self[2] * ratio)
+            regions.append(Region(accum_x, self[1], w, self[3]))
+            accum_x += w
+        return regions
+    
+    def grid(self, cols: int, rows: int) -> List['Region']:
+        cell_w = self[2] // cols
+        cell_h = self[3] // rows
+        regions = []
+        for row in range(rows):
+            for col in range(cols):
+                x = self[0] + cell_w * col
+                y = self[1] + cell_h * row
+                regions.append(Region(x, y, cell_w, cell_h))
+        return regions
+    
+    def shrink(self, left: int, top: Optional[int] = None, right: Optional[int] = None, bottom: Optional[int] = None) -> 'Region':
+        top = top if top is not None else left
+        right = right if right is not None else left
+        bottom = bottom if bottom is not None else top
+        return Region(
+            self[0] + left,
+            self[1] + top,
+            self[2] - left - right,
+            self[3] - top - bottom
+        )
+    
+    def move(self, dx: int, dy: int) -> 'Region':
+        return Region(self[0] + dx, self[1] + dy, self[2], self[3])
 
 
 
