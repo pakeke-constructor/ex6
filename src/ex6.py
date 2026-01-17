@@ -12,87 +12,77 @@ from region import Region
 from dataclasses import dataclass, field
 from typing import Optional
 import threading
+import inspect
 import copy 
 import time
+import glob
+
+
+
+_commands = {}
+_tools = {}
+
+
+def get_fn_name(fn):
+    return fn.__name__
+
+
+def command(fn):
+    '''
+    used like:
+
+    @ex6.command
+    def my_command(arg1, arg2): pass
+
+    now, `/command a b` should be valid command
+    '''
+    name = get_fn_name(fn)
+    sig = inspect.signature(fn)
+    spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
+            for p in sig.parameters.values()]
+    _commands[name] = (fn, spec)
+    return fn
+
+
+def tool(fn):
+    '''
+    @ex6.tool
+    def my_llm_tool(arg1, arg2):
+        pass
+
+    can be included in ctx windows for LLMs.
+    '''
+    name = get_fn_name(fn)
+    sig = inspect.signature(fn)
+    spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
+            for p in sig.parameters.values()]
+    _tools[name] = (fn, spec)
+    return fn
 
 
 
 
-Rect = Tuple[int, int, int, int]  # (x, y, w, h)
+def dispatch_command(text: str):
+    if not text.startswith("/"): return False
+    parts = text[1:].split()
+    if not parts: return False
+    
+    name, args = parts[0], parts[1:]
+    if name not in _commands: return True
+    
+    fn, spec = _commands[name]
+    return fn(*[typ(args[i]) for i, (_, typ) in enumerate(spec)])
 
-SPINNER = "/-\\|"
 
-class ScreenBuffer:
-    def __init__(self, w, h):
-        self.w, self.h = w, h
-        self.chars = [[' '] * w for _ in range(h)]
-        self.styles = [[None] * w for _ in range(h)]
 
-    def put(self, x, y, char, style=None):
-        if 0 <= x < self.w and 0 <= y < self.h:
-            self.chars[y][x] = char
-            self.styles[y][x] = style
+def load_plugins():
+    plugin_dir = os.path.join(os.path.dirname(__file__) or ".", ".ex6")
+    if not os.path.isdir(plugin_dir):
+        return
+    for path in glob.glob(os.path.join(plugin_dir, "*.py")):
+        with open(path, "r", encoding="utf-8") as f:
+            exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
 
-    def puts(self, x, y, text, style=None):
-        for i, c in enumerate(text):
-            self.put(x + i, y, c, style)
-
-    def clear(self):
-        for row in self.chars: row[:] = [' '] * self.w
-        for row in self.styles: row[:] = [None] * self.w
-
-    def flush(self, term):
-        out = term.home
-        for y in range(self.h):
-            for x in range(self.w):
-                c, s = self.chars[y][x], self.styles[y][x]
-                styled = getattr(term, s, None) if s else None
-                out += styled(c) if styled else c
-        print(out, end='', flush=True)
-
-    def fill(self, r: Rect, char='█', style=None):
-        x, y, w, h = r
-        for row in range(y, y + h):
-            for col in range(x, x + w):
-                self.put(col, row, char, style)
-
-    def rect_line(self, r: Rect, style=None):
-        x, y, w, h = r
-        if w < 2 or h < 2: return
-        for col in range(x + 1, x + w - 1):
-            self.put(col, y, '─', style)
-            self.put(col, y + h - 1, '─', style)
-        for row in range(y + 1, y + h - 1):
-            self.put(x, row, '│', style)
-            self.put(x + w - 1, row, '│', style)
-        self.put(x, y, '┌', style)
-        self.put(x + w - 1, y, '┐', style)
-        self.put(x, y + h - 1, '└', style)
-        self.put(x + w - 1, y + h - 1, '┘', style)
-
-    def hline(self, r: Rect, style=None):
-        x, y, w, _ = r
-        for i in range(w):
-            self.put(x + i, y, '─', style)
-
-    def vline(self, r: Rect, style=None):
-        x, y, _, h = r
-        for i in range(h):
-            self.put(x, y + i, '│', style)
-
-    def text_contained(self, txt: str, r: Rect, style=None, wrap=True, newlines=True) -> int:
-        x, y, w, h = r
-        if not newlines:
-            txt = txt.replace('\n', ' ')
-        txt = txt.replace('\r\n', '\n').replace('\r', '\n')
-        row, col = 0, 0
-        for c in txt:
-            if c == '\n': row += 1; col = 0; continue
-            if wrap and col >= w: row += 1; col = 0
-            if row >= h or (not wrap and col >= w): continue
-            self.put(x + col, y + row, c, style)
-            col += 1
-        return row + 1 if col > 0 or row == 0 else row
 
 
 
@@ -183,6 +173,86 @@ class Context:
 
     def push_ui(self, draw_fn):
         self.input_stack.append(draw_fn)
+
+
+
+
+
+Rect = Tuple[int, int, int, int]  # (x, y, w, h)
+
+SPINNER = "/-\\|"
+
+class ScreenBuffer:
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.chars = [[' '] * w for _ in range(h)]
+        self.styles = [[None] * w for _ in range(h)]
+
+    def put(self, x, y, char, style=None):
+        if 0 <= x < self.w and 0 <= y < self.h:
+            self.chars[y][x] = char
+            self.styles[y][x] = style
+
+    def puts(self, x, y, text, style=None):
+        for i, c in enumerate(text):
+            self.put(x + i, y, c, style)
+
+    def clear(self):
+        for row in self.chars: row[:] = [' '] * self.w
+        for row in self.styles: row[:] = [None] * self.w
+
+    def flush(self, term):
+        out = term.home
+        for y in range(self.h):
+            for x in range(self.w):
+                c, s = self.chars[y][x], self.styles[y][x]
+                styled = getattr(term, s, None) if s else None
+                out += styled(c) if styled else c
+        print(out, end='', flush=True)
+
+    def fill(self, r: Rect, char='█', style=None):
+        x, y, w, h = r
+        for row in range(y, y + h):
+            for col in range(x, x + w):
+                self.put(col, row, char, style)
+
+    def rect_line(self, r: Rect, style=None):
+        x, y, w, h = r
+        if w < 2 or h < 2: return
+        for col in range(x + 1, x + w - 1):
+            self.put(col, y, '─', style)
+            self.put(col, y + h - 1, '─', style)
+        for row in range(y + 1, y + h - 1):
+            self.put(x, row, '│', style)
+            self.put(x + w - 1, row, '│', style)
+        self.put(x, y, '┌', style)
+        self.put(x + w - 1, y, '┐', style)
+        self.put(x, y + h - 1, '└', style)
+        self.put(x + w - 1, y + h - 1, '┘', style)
+
+    def hline(self, r: Rect, style=None):
+        x, y, w, _ = r
+        for i in range(w):
+            self.put(x + i, y, '─', style)
+
+    def vline(self, r: Rect, style=None):
+        x, y, _, h = r
+        for i in range(h):
+            self.put(x, y + i, '│', style)
+
+    def text_contained(self, txt: str, r: Rect, style=None, wrap=True, newlines=True) -> int:
+        x, y, w, h = r
+        if not newlines:
+            txt = txt.replace('\n', ' ')
+        txt = txt.replace('\r\n', '\n').replace('\r', '\n')
+        row, col = 0, 0
+        for c in txt:
+            if c == '\n': row += 1; col = 0; continue
+            if wrap and col >= w: row += 1; col = 0
+            if row >= h or (not wrap and col >= w): continue
+            self.put(x + col, y + row, c, style)
+            col += 1
+        return row + 1 if col > 0 or row == 0 else row
 
 
 
@@ -343,7 +413,7 @@ def render_selection_right(buf, r):
         buf.puts(x + 2, row, "(no messages)", 'dim')
 
 
-# --- WORK MODE UI ---
+
 
 def render_work_mode(buf, inpt, r):
     x, y, w, h = r
@@ -369,7 +439,6 @@ def render_work_mode(buf, inpt, r):
         if row >= y + h - 1: break
 
 
-# --- MAIN ---
 
 if __name__ == "__main__":
     # dummy contexts
