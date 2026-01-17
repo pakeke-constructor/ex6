@@ -153,10 +153,6 @@ class Context:
     input_stack: list = field(default_factory=list)
 
     def __post_init__(self):
-        def on_submit(t):
-            if t.startswith("/"): dispatch_command(t)
-            else: self.invoke(t)
-        self.input_stack = [make_input(on_submit)]
         state.contexts[self.name] = self
 
     def __hash__(self): return id(self)
@@ -408,10 +404,13 @@ def make_input(on_submit):
 
     return draw
 
+
 @overridable
 def make_work_input():
     def on_submit(text):
-        if state.current:
+        if text.startswith("/"):
+            dispatch_command(text)
+        elif state.current:
             state.current.invoke(text)
     return make_input(on_submit)
 
@@ -528,7 +527,7 @@ def render_work_mode(buf, inpt, r):
 
 
 def _load_plugins():
-    plugin_dir = os.path.join(os.path.dirname(__file__) or ".", ".ex6")
+    plugin_dir = ".ex6"
     if not os.path.isdir(plugin_dir):
         return
     for path in glob.glob(os.path.join(plugin_dir, "*.py")):

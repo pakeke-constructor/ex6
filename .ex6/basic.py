@@ -1,6 +1,6 @@
 
 from typing import Optional
-from src import ex6
+import ex6
 
 
 @ex6.command
@@ -29,6 +29,8 @@ def fork(name: Optional[str]):
     ctx.fork()
 
 
-
+@ex6.command
+def crash():
+    raise RuntimeError("Crash!")
 
 
