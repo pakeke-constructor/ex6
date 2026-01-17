@@ -73,14 +73,6 @@ def dispatch_command(text: str):
 
 
 
-def load_plugins():
-    plugin_dir = os.path.join(os.path.dirname(__file__) or ".", ".ex6")
-    if not os.path.isdir(plugin_dir):
-        return
-    for path in glob.glob(os.path.join(plugin_dir, "*.py")):
-        with open(path, "r", encoding="utf-8") as f:
-            exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
-
 
 
 
@@ -108,7 +100,7 @@ def override(fn):
 
 @dataclass
 class AppState:
-    contexts: set = field(default_factory=set)
+    contexts: dict[str,Context] = field(default_factory=dict)
     current: Optional['Context'] = None
     mode: str = "selection"
 
@@ -442,18 +434,33 @@ def render_work_mode(buf, inpt, r):
         if row >= y + h - 1: break
 
 
+def _load_plugins():
+    plugin_dir = os.path.join(os.path.dirname(__file__) or ".", ".ex6")
+    if not os.path.isdir(plugin_dir):
+        return
+    for path in glob.glob(os.path.join(plugin_dir, "*.py")):
+        with open(path, "r", encoding="utf-8") as f:
+            exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
 
-if __name__ == "__main__":
-    # dummy contexts
+
+def _create_test_contexts():
     c1 = Context("ctx1", messages=[
         {"role": "system", "content": "You are helpful."},
         {"role": "user", "content": "hello"},
         {"role": "assistant", "content": "Hi! How can I help?"},
     ])
-    c2 = Context("ctx2", model="sonnet-4", tokens=5000)
-    c3 = Context("foobar", tokens=45000, cost=0.08)
-    state.contexts = {c1, c2, c3}
+    Context("ctx2", model="sonnet-4", tokens=5000)
+    Context("foobar", tokens=45000, cost=0.08)
+
     state.current = c1
+
+
+
+
+if __name__ == "__main__":
+    _load_plugins()
+
+    _create_test_contexts()
 
     term = Terminal()
     buf = ScreenBuffer(term.width, term.height)
