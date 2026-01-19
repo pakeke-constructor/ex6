@@ -12,7 +12,7 @@ This project, `ex6`, serves as a thin, simple alternative to claude-code.
 - Lives in terminal.
 
 ## Project architecture:
-- `src/ex6.py`: project file. EVERYTHING is layed out in this file.
+- `ex6.py`: project file. EVERYTHING is layed out in this file.
 Classes:
 - `ScreenBuffer`: used to render to screen.
 - `InputPass`: cleared every frame; handles input management/blocking
