@@ -206,6 +206,7 @@ class ScreenBuffer:
         self.w, self.h = w, h
         self.chars = [[' '] * w for _ in range(h)]
         self.styles = [[None] * w for _ in range(h)]
+        self.backgrounds = [[None] * w for _ in range(h)]
 
     def put(self, x, y, char, style=None):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -216,15 +217,29 @@ class ScreenBuffer:
         for i, c in enumerate(text):
             self.put(x + i, y, c, style)
 
+    def style(self, x, y, add):
+        """Append to existing style (e.g., add 'bold' to 'red' → 'red_bold')"""
+        if 0 <= x < self.w and 0 <= y < self.h:
+            cur = self.styles[y][x]
+            self.styles[y][x] = f"{cur}_{add}" if cur else add
+
+    def bg(self, x, y, color):
+        """Set background color"""
+        if 0 <= x < self.w and 0 <= y < self.h:
+            self.backgrounds[y][x] = color
+
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
         for row in self.styles: row[:] = [None] * self.w
+        for row in self.backgrounds: row[:] = [None] * self.w
 
     def flush(self, term):
         out = term.home
         for y in range(self.h):
             for x in range(self.w):
-                c, s = self.chars[y][x], self.styles[y][x]
+                c, s, bg = self.chars[y][x], self.styles[y][x], self.backgrounds[y][x]
+                if s and bg: s = f"{s}_on_{bg}"
+                elif bg: s = f"on_{bg}"
                 styled = getattr(term, s, None) if s else None
                 out += styled(c) if styled else c
         print(out, end='', flush=True)
