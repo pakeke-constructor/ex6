@@ -206,16 +206,19 @@ class ScreenBuffer:
         self.w, self.h = w, h
         self.chars = [[' '] * w for _ in range(h)]
         self.styles = [[None] * w for _ in range(h)]
+        self.fg_colors = [[None] * w for _ in range(h)]
         self.backgrounds = [[None] * w for _ in range(h)]
 
-    def put(self, x, y, char, style=None):
+    def put(self, x, y, char, style=None, txt_color=None, bg_color=None):
         if 0 <= x < self.w and 0 <= y < self.h:
             self.chars[y][x] = char
             self.styles[y][x] = style
+            self.fg_colors[y][x] = txt_color
+            self.backgrounds[y][x] = bg_color
 
-    def puts(self, x, y, text, style=None):
+    def puts(self, x, y, text, style=None, txt_color=None, bg_color=None):
         for i, c in enumerate(text):
-            self.put(x + i, y, c, style)
+            self.put(x + i, y, c, style, txt_color, bg_color)
 
     def style(self, x, y, add):
         """Append to existing style (e.g., add 'bold' to 'red' → 'red_bold')"""
@@ -231,50 +234,53 @@ class ScreenBuffer:
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
         for row in self.styles: row[:] = [None] * self.w
+        for row in self.fg_colors: row[:] = [None] * self.w
         for row in self.backgrounds: row[:] = [None] * self.w
 
     def flush(self, term):
         out = term.home
         for y in range(self.h):
             for x in range(self.w):
-                c, s, bg = self.chars[y][x], self.styles[y][x], self.backgrounds[y][x]
-                if s and bg: s = f"{s}_on_{bg}"
-                elif bg: s = f"on_{bg}"
-                styled = getattr(term, s, None) if s else None
+                c = self.chars[y][x]
+                fg, s, bg = self.fg_colors[y][x], self.styles[y][x], self.backgrounds[y][x]
+                parts = [p for p in [fg, s] if p]
+                if bg: parts.append(f"on_{bg}")
+                attr = "_".join(parts) if parts else None
+                styled = getattr(term, attr, None) if attr else None
                 out += styled(c) if styled else c
         print(out, end='', flush=True)
 
-    def fill(self, r: Rect, char='█', style=None):
+    def fill(self, r: Rect, char='█', style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
         for row in range(y, y + h):
             for col in range(x, x + w):
-                self.put(col, row, char, style)
+                self.put(col, row, char, style, txt_color, bg_color)
 
-    def rect_line(self, r: Rect, style=None):
+    def rect_line(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
         if w < 2 or h < 2: return
         for col in range(x + 1, x + w - 1):
-            self.put(col, y, '─', style)
-            self.put(col, y + h - 1, '─', style)
+            self.put(col, y, '─', style, txt_color, bg_color)
+            self.put(col, y + h - 1, '─', style, txt_color, bg_color)
         for row in range(y + 1, y + h - 1):
-            self.put(x, row, '│', style)
-            self.put(x + w - 1, row, '│', style)
-        self.put(x, y, '┌', style)
-        self.put(x + w - 1, y, '┐', style)
-        self.put(x, y + h - 1, '└', style)
-        self.put(x + w - 1, y + h - 1, '┘', style)
+            self.put(x, row, '│', style, txt_color, bg_color)
+            self.put(x + w - 1, row, '│', style, txt_color, bg_color)
+        self.put(x, y, '┌', style, txt_color, bg_color)
+        self.put(x + w - 1, y, '┐', style, txt_color, bg_color)
+        self.put(x, y + h - 1, '└', style, txt_color, bg_color)
+        self.put(x + w - 1, y + h - 1, '┘', style, txt_color, bg_color)
 
-    def hline(self, r: Rect, style=None):
+    def hline(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, w, _ = r
         for i in range(w):
-            self.put(x + i, y, '─', style)
+            self.put(x + i, y, '─', style, txt_color, bg_color)
 
-    def vline(self, r: Rect, style=None):
+    def vline(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, _, h = r
         for i in range(h):
-            self.put(x, y + i, '│', style)
+            self.put(x, y + i, '│', style, txt_color, bg_color)
 
-    def text_contained(self, txt: str, r: Rect, style=None, wrap=True, newlines=True) -> int:
+    def text_contained(self, txt: str, r: Rect, style=None, txt_color=None, bg_color=None, wrap=True, newlines=True) -> int:
         x, y, w, h = r
         if not newlines:
             txt = txt.replace('\n', ' ')
@@ -284,7 +290,7 @@ class ScreenBuffer:
             if c == '\n': row += 1; col = 0; continue
             if wrap and col >= w: row += 1; col = 0
             if row >= h or (not wrap and col >= w): continue
-            self.put(x + col, y + row, c, style)
+            self.put(x + col, y + row, c, style, txt_color, bg_color)
             col += 1
         return row + 1 if col > 0 or row == 0 else row
 
@@ -417,7 +423,7 @@ def make_input(on_submit):
             text, cursor = "", 0
 
         blink = "█" if int(time.time() * 2) % 2 == 0 else " "
-        buf.puts(r[0], r[1], "> " + text[:cursor] + blink + text[cursor:], 'white')
+        buf.puts(r[0], r[1], "> " + text[:cursor] + blink + text[cursor:], txt_color='white')
 
     return draw
 
@@ -437,12 +443,12 @@ def make_work_input():
 @overridable
 def render_selection_left(buf, inpt, r):
     x, y, w, h = r
-    buf.rect_line(r, 'blue')
-    buf.puts(x + 2, y, " Contexts ", 'blue')
+    buf.rect_line(r, txt_color='blue')
+    buf.puts(x + 2, y, " Contexts ", txt_color='blue')
 
     ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
     if not ctxs:
-        buf.puts(x + 2, y + 1, "(no contexts)", 'dim')
+        buf.puts(x + 2, y + 1, "(no contexts)", style='dim')
         return
 
     idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
@@ -466,42 +472,42 @@ def render_selection_left(buf, inpt, r):
         suffix = f" {spin}" if ctx.llm_running else ""
         toks = f" ({ctx.tokens//1000}k)"
 
-        if ctx.llm_running: style = 'yellow'
-        elif now - ctx.last_llm_time < 360: style = 'white'
-        else: style = 'dim'
+        if ctx.llm_running: txt_color = 'yellow'
+        elif now - ctx.last_llm_time < 360: txt_color = 'white'
+        else: txt_color = None
 
         line = f"{prefix}{ctx.name}{toks}{suffix}"
-        buf.puts(x + 1, y + 1 + i, line[:w-2], 'bold' if selected else style)
+        buf.puts(x + 1, y + 1 + i, line[:w-2], style='bold' if selected else ('dim' if not txt_color else None), txt_color=txt_color)
 
 
 @overridable
 def render_selection_right(buf, r):
     x, y, w, h = r
-    buf.rect_line(r, 'blue')
-    buf.puts(x + 2, y, " Info ", 'blue')
+    buf.rect_line(r, txt_color='blue')
+    buf.puts(x + 2, y, " Info ", txt_color='blue')
 
     ctx = state.current
     if not ctx:
-        buf.puts(x + 2, y + 1, "(no context selected)", 'dim')
+        buf.puts(x + 2, y + 1, "(no context selected)", style='dim')
         return
 
     # header
-    buf.puts(x + 2, y + 1, ctx.name, 'bold')
-    buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, 'dim')
+    buf.puts(x + 2, y + 1, ctx.name, style='bold')
+    buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, style='dim')
 
     # token bar
     ratio = ctx.tokens / ctx.max_tokens if ctx.max_tokens else 0
     bar_w = min(w - 4, 20)
     filled = int(ratio * bar_w)
     bar = "█" * filled + "░" * (bar_w - filled)
-    buf.puts(x + 2, y + 2, bar, 'cyan')
-    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.tokens//1000}k/{ctx.max_tokens//1000}k", 'dim')
+    buf.puts(x + 2, y + 2, bar, txt_color='cyan')
+    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.tokens//1000}k/{ctx.max_tokens//1000}k", style='dim')
 
     # cost
-    buf.puts(x + 2, y + 3, f"${ctx.cost:.2f}", 'dim')
+    buf.puts(x + 2, y + 3, f"${ctx.cost:.2f}", style='dim')
 
     # messages
-    buf.hline((x + 1, y + 4, w - 2, 1), 'blue')
+    buf.hline((x + 1, y + 4, w - 2, 1), txt_color='blue')
     row = y + 5
     msgs = ctx.messages or []
     for msg in msgs:
@@ -509,10 +515,10 @@ def render_selection_right(buf, r):
         role = msg.role
         content = msg.content if isinstance(msg.content, str) else "<fn>"
         toks = len(content) * 4
-        buf.puts(x + 2, row, f"{role} ({toks//1000}k)", 'dim')
+        buf.puts(x + 2, row, f"{role} ({toks//1000}k)", style='dim')
         row += 1
     if not msgs:
-        buf.puts(x + 2, row, "(no messages)", 'dim')
+        buf.puts(x + 2, row, "(no messages)", style='dim')
 
 
 
@@ -522,23 +528,25 @@ def render_work_mode(buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
     assert ctx
-    buf.rect_line(r, 'blue')
-    buf.puts(x + 2, y, f" {ctx.name} ", 'blue')
+    buf.rect_line(r, txt_color='blue')
+    buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
 
     # Build lines from messages (most recent that fit)
     lines = []
     for msg in ctx.messages:
         role = msg.role
         content = msg.get_msg(ctx)
-        style = "cyan" if role == "user" else ("white" if role == "assistant" else "dim")
-        lines.append((content, style))
+        if role == "user": txt_color, s = "cyan", None
+        elif role == "assistant": txt_color, s = "white", None
+        else: txt_color, s = None, "dim"
+        lines.append((content, s, txt_color))
     if ctx.llm_running:
-        lines.append((ctx.llm_output + "█", "yellow"))
+        lines.append((ctx.llm_output + "█", None, "yellow"))
 
     # Render from top down, showing recent
     row = y + 1
-    for content, style in lines:
-        rows_used = buf.text_contained(content, (x+1, row, w-2, h-2-row+y), style)
+    for content, s, txt_color in lines:
+        rows_used = buf.text_contained(content, (x+1, row, w-2, h-2-row+y), style=s, txt_color=txt_color)
         row += rows_used
         if row >= y + h - 1: break
 
