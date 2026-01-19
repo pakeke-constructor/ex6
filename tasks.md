@@ -10,7 +10,12 @@ Be kinda like claude-code.
 ## BROKEN DOWN GOALS:
 - basic command plugin: `/clear [name], /new [name], /del [name], /fork [name]`
 
-- fancy rendering API on `work` mode; allow tool-use to look nice
+- Hooked up properly to openrouter
+- LLM tool-use
+- LLM token-counting
+- LLM pricing
+
+- Tool-use rendering.
     - ^^^ THIS WILL REQUIRE A LOT OF THINKING.
     - Maybe 2 types of override:
         - general text override (e.g. syntax-highlight. Only static content)

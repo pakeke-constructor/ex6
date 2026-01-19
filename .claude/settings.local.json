@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "WebFetch"
+      "WebFetch",
+      "Bash(ls -la \"C:\\\\_PROGRAMMING\\\\LLMS\\\\ex6\\\\.ex6\"\" 2>&1 || echo \"Directory may not exist yet \")"
     ]
   }
 }

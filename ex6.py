@@ -205,44 +205,33 @@ class ScreenBuffer:
     def __init__(self, w, h):
         self.w, self.h = w, h
         self.chars = [[' '] * w for _ in range(h)]
-        self.styles = [[None] * w for _ in range(h)]
-        self.fg_colors = [[None] * w for _ in range(h)]
-        self.backgrounds = [[None] * w for _ in range(h)]
+        self.styles: List[List[Optional[str]]] = [[None] * w for _ in range(h)]
+        self.txt_colors: List[List[Optional[str]]] = [[None] * w for _ in range(h)]
+        self.bg_colors: List[List[Optional[str]]] = [[None] * w for _ in range(h)]
 
     def put(self, x, y, char, style=None, txt_color=None, bg_color=None):
         if 0 <= x < self.w and 0 <= y < self.h:
             self.chars[y][x] = char
             self.styles[y][x] = style
-            self.fg_colors[y][x] = txt_color
-            self.backgrounds[y][x] = bg_color
+            self.txt_colors[y][x] = txt_color
+            self.bg_colors[y][x] = bg_color
 
     def puts(self, x, y, text, style=None, txt_color=None, bg_color=None):
         for i, c in enumerate(text):
             self.put(x + i, y, c, style, txt_color, bg_color)
 
-    def style(self, x, y, add):
-        """Append to existing style (e.g., add 'bold' to 'red' → 'red_bold')"""
-        if 0 <= x < self.w and 0 <= y < self.h:
-            cur = self.styles[y][x]
-            self.styles[y][x] = f"{cur}_{add}" if cur else add
-
-    def bg(self, x, y, color):
-        """Set background color"""
-        if 0 <= x < self.w and 0 <= y < self.h:
-            self.backgrounds[y][x] = color
-
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
         for row in self.styles: row[:] = [None] * self.w
-        for row in self.fg_colors: row[:] = [None] * self.w
-        for row in self.backgrounds: row[:] = [None] * self.w
+        for row in self.txt_colors: row[:] = [None] * self.w
+        for row in self.bg_colors: row[:] = [None] * self.w
 
     def flush(self, term):
         out = term.home
         for y in range(self.h):
             for x in range(self.w):
                 c = self.chars[y][x]
-                fg, s, bg = self.fg_colors[y][x], self.styles[y][x], self.backgrounds[y][x]
+                fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
                 parts = [p for p in [fg, s] if p]
                 if bg: parts.append(f"on_{bg}")
                 attr = "_".join(parts) if parts else None
@@ -477,7 +466,11 @@ def render_selection_left(buf, inpt, r):
         else: txt_color = None
 
         line = f"{prefix}{ctx.name}{toks}{suffix}"
-        buf.puts(x + 1, y + 1 + i, line[:w-2], style='bold' if selected else ('dim' if not txt_color else None), txt_color=txt_color)
+        buf.puts(
+            x + 1, y + 1 + i, line[:w-2],
+            style='bold' if selected else ('dim' if not txt_color else None),
+            txt_color=txt_color
+        )
 
 
 @overridable
