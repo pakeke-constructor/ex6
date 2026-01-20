@@ -3,7 +3,7 @@ import json
 import ex6
 
 import openai
-from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from typing import List
 
@@ -11,7 +11,7 @@ from typing import List
 
 
 @ex6.override
-def invoke_llm(ctx):
+def invoke_llm(ctx: ex6.Context):
     client = openai.OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ.get("OPENROUTER_API_KEY", "")
@@ -25,7 +25,7 @@ def invoke_llm(ctx):
         messages=messages,
         stream=True,
         stream_options={"include_usage": True},
-        tools=tools if tools else None
+        tools= tools if (not not tools) else None # pyright: ignore
     )
 
     input_tokens, output_tokens = 0, 0

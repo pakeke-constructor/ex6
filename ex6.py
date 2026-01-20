@@ -603,7 +603,7 @@ def render_work_mode(buf, inpt, r):
 
 
 def _load_plugins():
-    plugin_dir = ".ex6"
+    plugin_dir = "_ex6"
     if not os.path.isdir(plugin_dir):
         return
     for path in glob.glob(os.path.join(plugin_dir, "*.py")):

@@ -2,11 +2,7 @@
 import ex6
 from ex6 import Context, Message
 
-
-def read_file(ctx: ex6.Context, path: str) -> str:
-    """Read and return contents of a file at the given path."""
-    with open(path, "r") as f:
-        return f.read()
+from _ex6.tool_test import read_file
 
 
 c1 = Context("ctx1", messages=[
