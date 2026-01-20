@@ -21,7 +21,6 @@ import glob
 
 
 _commands = {}
-_tools = {}
 
 
 
@@ -43,20 +42,6 @@ def command(fn):
     return fn
 
 
-def tool(fn):
-    '''
-    @ex6.tool
-    def my_llm_tool(arg1, arg2):
-        pass
-
-    can be included in ctx windows for LLMs.
-    '''
-    name = fn.__name__
-    sig = inspect.signature(fn)
-    spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
-            for p in sig.parameters.values()]
-    _tools[name] = (fn, spec)
-    return fn
 
 
 
@@ -121,6 +106,7 @@ def invoke_llm(ctx):
 class Message:
     role: Literal["system", "user", "assistant"]
     content: Union[str, Callable[['Context'], str]]
+    tools: dict[str, Callable] = field(default_factory=dict)
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
@@ -148,6 +134,14 @@ def _ensure_unique_name(name):
         if name not in state.contexts: break
     return name
 
+def _check_tool_args(fn: Callable, args: dict) -> dict:
+    """Validate args against fn annotations, raise TypeError if mismatch."""
+    hints = fn.__annotations__
+    for name, val in args.items():
+        if name in hints and not isinstance(val, hints[name]):
+            raise TypeError(f"{fn.__name__}: arg '{name}' expected {hints[name].__name__}, got {type(val).__name__}")
+    return args
+
 @dataclass
 class Context:
     name: str
@@ -157,7 +151,7 @@ class Context:
     cost: float = 0.15
     llm_running: bool = False
     llm_output: str = ""
-    last_llm_time: float = 0
+    last_invoke_time: float = 0
     llm_result: Optional[LLMResult] = None
     input_stack: list = field(default_factory=list)
 
@@ -172,6 +166,12 @@ class Context:
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
 
+    def get_tools(self) -> dict[str, Callable]:
+        tools = {}
+        for m in self.messages:
+            tools.update(m.tools)
+        return tools
+
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
@@ -184,8 +184,15 @@ class Context:
                 elif isinstance(item, LLMResult):
                     self.llm_result = item
             self.messages.append(Message(role="assistant", content=self.llm_output))
+            # execute tool calls
+            if self.llm_result and self.llm_result.tool_calls:
+                tools = self.get_tools()
+                for tc in self.llm_result.tool_calls:
+                    fn = tools.get(tc["name"])
+                    if fn:
+                        fn(self, **_check_tool_args(fn, tc["args"]))
             self.llm_running = False
-            self.last_llm_time = time.time()
+            self.last_invoke_time = time.time()
         threading.Thread(target=run, daemon=True).start()
     
     def fork(self, new_name: Optional[str] = None) -> 'Context':
@@ -477,7 +484,7 @@ def render_selection_left(buf, inpt, r):
         toks = f" ({ctx.tokens//1000}k)"
 
         if ctx.llm_running: txt_color = 'yellow'
-        elif now - ctx.last_llm_time < 360: txt_color = 'white'
+        elif now - ctx.last_invoke_time < 360: txt_color = 'white'
         else: txt_color = None
 
         line = f"{prefix}{ctx.name}{toks}{suffix}"
