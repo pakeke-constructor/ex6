@@ -46,16 +46,34 @@ def command(fn):
 
 
 
+def _coerce_arg(value: str, typ):
+    """Convert string arg to the annotated type."""
+    origin = get_origin(typ)
+    # Handle Optional[X] / Union[X, None]
+    if origin is Union:
+        args = [t for t in get_args(typ) if t is not type(None)]
+        typ = args[0] if len(args) == 1 else str
+    # Handle basic types
+    if typ in (str, inspect.Parameter.empty):
+        return value
+    return typ(value)
+
 def dispatch_command(text: str):
     if not text.startswith("/"): return False
     parts = text[1:].split()
     if not parts: return False
-    
+
     name, args = parts[0], parts[1:]
     if name not in _commands: return True
-    
+
     fn, spec = _commands[name]
-    return fn(*[typ(args[i]) for i, (_, typ) in enumerate(spec)])
+    parsed = []
+    for i, (_, typ) in enumerate(spec):
+        if i < len(args):
+            parsed.append(_coerce_arg(args[i], typ))
+        else:
+            parsed.append(None)
+    return fn(*parsed)
 
 
 
@@ -130,8 +148,7 @@ class LLMResult:
 
 
 def _ensure_unique_name(name):
-    if not state.contexts.get("name"):
-        # this name is ok
+    if name not in state.contexts:
         return name
     # otherwise, search for new name
     while True:
@@ -185,7 +202,7 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 @dataclass
 class Context:
     name: str
-    model: str = "opus-4.5"
+    model: str
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     cost: float = 0.15

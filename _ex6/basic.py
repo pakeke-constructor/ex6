@@ -24,9 +24,9 @@ def delete(name: Optional[str]):
 
 @ex6.command
 def fork(name: Optional[str]):
-    ctx = ex6.state.contexts.get(name) if name else ex6.state.current
+    ctx = ex6.state.current
     if not ctx: return
-    ctx.fork()
+    ctx.fork(name)
 
 
 @ex6.command

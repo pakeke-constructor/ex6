@@ -21,7 +21,7 @@ Classes:
 - `Message`: represents a message (system, user, assistant). Can return content dynamically/lazily.
 
 ## Plugin ideology:
-`.ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `./ex6` folder.  
+`_ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `_ex6` folder.  
 Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add even define what terminal-UI is.
 
 
