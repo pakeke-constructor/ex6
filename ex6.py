@@ -100,7 +100,7 @@ def invoke_llm(ctx):
     """Override this to use real LLM."""
     for _ in range(60):
         time.sleep(0.1)
-        yield "token "
+        yield ResponseChunk("text", "token ")
 
 
 @dataclass
@@ -108,10 +108,17 @@ class Message:
     role: Literal["system", "user", "assistant"]
     content: Union[str, Callable[['Context'], str]]
     tools: dict[str, Callable] = field(default_factory=dict)
+    chunks: Optional[list] = None  # ordered ResponseChunks (for assistant msgs)
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
         return c(ctx) if callable(c) else c
+
+@dataclass
+class ResponseChunk:
+    type: str  # "text", "cot", "tool"
+    content: str = ""
+    tokens: int = 0  # for cot
 
 @dataclass
 class LLMResult:
@@ -182,8 +189,7 @@ class Context:
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     cost: float = 0.15
-    llm_running: bool = False
-    llm_output: str = ""
+    llm_current: Optional[list] = None  # None=idle, list=streaming ResponseChunks
     last_invoke_time: float = 0
     llm_result: Optional[LLMResult] = None
     input_stack: list = field(default_factory=list)
@@ -198,6 +204,7 @@ class Context:
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
+    def is_running(self): return self.llm_current is not None
 
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
@@ -211,15 +218,16 @@ class Context:
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
-        self.llm_running = True
-        self.llm_output = ""
+        self.llm_current = []
         def run():
             for item in llm_fn(self):
-                if isinstance(item, str):
-                    self.llm_output += item
+                if isinstance(item, ResponseChunk):
+                    self.llm_current.append(item)
                 elif isinstance(item, LLMResult):
                     self.llm_result = item
-            self.messages.append(Message(role="assistant", content=self.llm_output))
+            # build content from text chunks
+            content = "".join(c.content for c in self.llm_current if c.type == "text")
+            self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current)))
             # execute tool calls
             if self.llm_result and self.llm_result.tool_calls:
                 tools = self.get_tools()
@@ -227,7 +235,7 @@ class Context:
                     fn = tools.get(tc["name"])
                     if fn:
                         fn(self, **_check_tool_args(fn, tc["args"]))
-            self.llm_running = False
+            self.llm_current = None
             self.last_invoke_time = time.time()
         threading.Thread(target=run, daemon=True).start()
     
@@ -516,10 +524,10 @@ def render_selection_left(buf, inpt, r):
         if i >= h - 2: break
         selected = (ctx is state.current)
         prefix = ">> " if selected else "   "
-        suffix = f" {spin}" if ctx.llm_running else ""
+        suffix = f" {spin}" if ctx.is_running() else ""
         toks = f" ({ctx.tokens//1000}k)"
 
-        if ctx.llm_running: txt_color = 'yellow'
+        if ctx.is_running(): txt_color = 'yellow'
         elif now - ctx.last_invoke_time < 360: txt_color = 'white'
         else: txt_color = None
 
@@ -574,6 +582,18 @@ def render_selection_right(buf, r):
 
 
 
+def _render_chunks(chunks):
+    """Build display string from chunks list."""
+    parts = []
+    for c in chunks:
+        if c.type == "text":
+            parts.append(c.content)
+        elif c.type == "cot":
+            parts.append(f"[thinking: {c.tokens} tokens]")
+        elif c.type == "tool":
+            parts.append(c.content)
+    return "".join(parts)
+
 @overridable
 def render_work_mode(buf, inpt, r):
     x, y, w, h = r
@@ -586,13 +606,18 @@ def render_work_mode(buf, inpt, r):
     lines = []
     for msg in ctx.messages:
         role = msg.role
-        content = msg.get_msg(ctx)
+        # Use chunks for assistant msgs if available, else fallback to content
+        if role == "assistant" and msg.chunks:
+            content = _render_chunks(msg.chunks)
+        else:
+            content = msg.get_msg(ctx)
         if role == "user": txt_color, s = "cyan", None
         elif role == "assistant": txt_color, s = "white", None
         else: txt_color, s = None, "dim"
         lines.append((content, s, txt_color))
-    if ctx.llm_running:
-        lines.append((ctx.llm_output + "█", None, "yellow"))
+    if ctx.is_running():
+        content = _render_chunks(ctx.llm_current) + "█"
+        lines.append((content, None, "yellow"))
 
     # Render from top down, showing recent
     row = y + 1

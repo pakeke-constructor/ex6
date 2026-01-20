@@ -36,7 +36,11 @@ def invoke_llm(ctx: ex6.Context):
         delta = chunk.choices[0].delta if chunk.choices else None
 
         if delta and delta.content:
-            yield delta.content
+            yield ex6.ResponseChunk("text", delta.content)
+
+        # CoT (OpenRouter reasoning field) - check for reasoning in delta
+        if delta and hasattr(delta, 'reasoning') and delta.reasoning:
+            yield ex6.ResponseChunk("cot", delta.reasoning, len(delta.reasoning))
 
         if delta and delta.tool_calls:
             for tc in delta.tool_calls:
@@ -63,5 +67,7 @@ def invoke_llm(ctx: ex6.Context):
         except:
             pass
         tool_calls.append(tc)
+        # Yield tool call as chunk (full JSON for visibility)
+        yield ex6.ResponseChunk("tool", json.dumps(tc))
 
     yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason)
