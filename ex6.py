@@ -189,7 +189,8 @@ class Context:
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     cost: float = 0.15
-    llm_current: Optional[list] = None  # None=idle, list=streaming ResponseChunks
+    llm_is_running: bool = False
+    llm_current_output: list = field(default_factory=list)
     last_invoke_time: float = 0
     llm_result: Optional[LLMResult] = None
     input_stack: list = field(default_factory=list)
@@ -204,7 +205,7 @@ class Context:
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
-    def is_running(self): return self.llm_current is not None
+    def is_running(self): return self.llm_is_running
 
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
@@ -218,16 +219,17 @@ class Context:
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
-        self.llm_current = []
+        self.llm_is_running = True
+        self.llm_current_output = []
         def run():
             for item in llm_fn(self):
                 if isinstance(item, ResponseChunk):
-                    self.llm_current.append(item)
+                    self.llm_current_output.append(item)
                 elif isinstance(item, LLMResult):
                     self.llm_result = item
             # build content from text chunks
-            content = "".join(c.content for c in self.llm_current if c.type == "text")
-            self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current)))
+            content = "".join(c.content for c in self.llm_current_output if c.type == "text")
+            self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current_output)))
             # execute tool calls
             if self.llm_result and self.llm_result.tool_calls:
                 tools = self.get_tools()
@@ -235,7 +237,7 @@ class Context:
                     fn = tools.get(tc["name"])
                     if fn:
                         fn(self, **_check_tool_args(fn, tc["args"]))
-            self.llm_current = None
+            self.llm_is_running = False
             self.last_invoke_time = time.time()
         threading.Thread(target=run, daemon=True).start()
     
@@ -616,7 +618,7 @@ def render_work_mode(buf, inpt, r):
         else: txt_color, s = None, "dim"
         lines.append((content, s, txt_color))
     if ctx.is_running():
-        content = _render_chunks(ctx.llm_current) + "█"
+        content = _render_chunks(ctx.llm_current_output) + "█"
         lines.append((content, None, "yellow"))
 
     # Render from top down, showing recent
