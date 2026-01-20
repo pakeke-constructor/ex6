@@ -1,6 +1,7 @@
 import ex6
 
 def read_file(ctx: ex6.Context, path: str) -> str:
+    """Read and return contents of a file at the given path."""
     with open(path, "r") as f:
         return f.read()
 
