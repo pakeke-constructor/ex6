@@ -159,11 +159,11 @@ class Context:
     llm_output: str = ""
     last_llm_time: float = 0
     llm_result: Optional[LLMResult] = None
-    messages: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
 
     @property
-    def tokens(self):
+    def tokens(self) -> int:
+        if not self.llm_result: return 0
         return (self.llm_result.input_tokens + self.llm_result.output_tokens) if self.llm_result else 0
 
     def __post_init__(self):
