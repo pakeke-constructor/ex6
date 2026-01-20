@@ -257,6 +257,13 @@ class Context:
         self._should_continue = True
 
     def invoke(self, text, llm_fn=None):
+        '''
+        TODO: Oli's notes:
+
+        im really not happy with how complex this function is.
+        We still need to do user-ui blocking...
+        and the way this function works is very implicit.
+        '''
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
