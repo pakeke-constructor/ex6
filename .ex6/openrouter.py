@@ -26,7 +26,8 @@ def invoke_llm(ctx):
         stream_options={"include_usage": True}
     )
 
-    result = {"input_tokens": 0, "output_tokens": 0, "tool_calls": [], "finish_reason": "stop"}
+    input_tokens, output_tokens = 0, 0
+    finish_reason = "stop"
     tool_calls_acc = {}
 
     for chunk in stream:
@@ -47,17 +48,18 @@ def invoke_llm(ctx):
                         tool_calls_acc[idx]["args"] += tc.function.arguments
 
         if chunk.choices and chunk.choices[0].finish_reason:
-            result["finish_reason"] = chunk.choices[0].finish_reason
+            finish_reason = chunk.choices[0].finish_reason
 
         if chunk.usage:
-            result["input_tokens"] = chunk.usage.prompt_tokens
-            result["output_tokens"] = chunk.usage.completion_tokens
+            input_tokens = chunk.usage.prompt_tokens
+            output_tokens = chunk.usage.completion_tokens
 
+    tool_calls = []
     for tc in tool_calls_acc.values():
         try:
             tc["args"] = json.loads(tc["args"]) if tc["args"] else {}
         except:
             pass
-        result["tool_calls"].append(tc)
+        tool_calls.append(tc)
 
-    yield result
+    yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason)

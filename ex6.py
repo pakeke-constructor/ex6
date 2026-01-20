@@ -126,6 +126,14 @@ class Message:
         c = self.content
         return c(ctx) if callable(c) else c
 
+@dataclass
+class LLMResult:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    tool_calls: list = field(default_factory=list)
+    finish_reason: str = "stop"
+    error: Optional[str] = None
+
 
 def _ensure_unique_name(name):
     if not state.contexts.get("name"):
@@ -145,16 +153,18 @@ class Context:
     name: str
     model: str = "opus-4.5"
     messages: list = field(default_factory=list)
-    tokens: int = 32000
     max_tokens: int = 200000
     cost: float = 0.15
     llm_running: bool = False
     llm_output: str = ""
     last_llm_time: float = 0
-    tool_calls: list = field(default_factory=list)
-    finish_reason: str = "stop"
+    llm_result: Optional[LLMResult] = None
     messages: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
+
+    @property
+    def tokens(self):
+        return (self.llm_result.input_tokens + self.llm_result.output_tokens) if self.llm_result else 0
 
     def __post_init__(self):
         state.contexts[self.name] = self
@@ -167,15 +177,12 @@ class Context:
         self.messages.append(Message(role="user", content=text))
         self.llm_running = True
         self.llm_output = ""
-        self.tool_calls = []
         def run():
             for item in llm_fn(self):
                 if isinstance(item, str):
                     self.llm_output += item
-                elif isinstance(item, dict):
-                    self.tokens = item.get("input_tokens", 0) + item.get("output_tokens", 0)
-                    self.tool_calls = item.get("tool_calls", [])
-                    self.finish_reason = item.get("finish_reason", "stop")
+                elif isinstance(item, LLMResult):
+                    self.llm_result = item
             self.messages.append(Message(role="assistant", content=self.llm_output))
             self.llm_running = False
             self.last_llm_time = time.time()
