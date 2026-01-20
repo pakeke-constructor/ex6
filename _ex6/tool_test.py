@@ -1,9 +1,11 @@
 import ex6
 
-def read_file(ctx: ex6.Context, path: str) -> str:
+def read_file(ctx: ex6.Context, tool_call_id: str, path: str):
     """Read and return contents of a file at the given path."""
     with open(path, "r") as f:
-        return f.read()
+        content = f.read()
+    ctx.add_tool_result(tool_call_id, content)
+    ctx.request_continue()
 
 tool_system = ex6.Message(
     role="system",

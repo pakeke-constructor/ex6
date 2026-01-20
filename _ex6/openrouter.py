@@ -10,6 +10,19 @@ from typing import List
 
 
 
+def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
+    d = {"role": m.role, "content": m.get_msg(ctx)}
+    if m.tool_calls:
+        d["tool_calls"] = [
+            {"id": tc["id"], "type": "function",
+             "function": {"name": tc["name"], "arguments": json.dumps(tc["args"])}}
+            for tc in m.tool_calls
+        ]
+    if m.tool_call_id:
+        d["tool_call_id"] = m.tool_call_id
+    return d
+
+
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
     client = openai.OpenAI(
@@ -17,7 +30,7 @@ def invoke_llm(ctx: ex6.Context):
         api_key=os.environ.get("OPENROUTER_API_KEY", "")
     )
 
-    messages: List[ChatCompletionMessageParam] = [{"role": m.role, "content": m.get_msg(ctx)} for m in ctx.messages]
+    messages: List[ChatCompletionMessageParam] = [msg_to_dict(m, ctx) for m in ctx.messages]
     tools = ctx.get_tool_schemas()
 
     stream = client.chat.completions.create(

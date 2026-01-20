@@ -123,10 +123,12 @@ def invoke_llm(ctx):
 
 @dataclass
 class Message:
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "user", "assistant", "tool"]
     content: Union[str, Callable[['Context'], str]]
     tools: dict[str, Callable] = field(default_factory=dict)
     chunks: Optional[list] = None  # ordered ResponseChunks (for assistant msgs)
+    tool_calls: Optional[list] = None  # for assistant msgs with tool calls
+    tool_call_id: Optional[str] = None  # for tool result msgs
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
@@ -173,14 +175,26 @@ def _check_tool_args(fn: Callable, args: dict) -> dict:
 _TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array"}
 
 
+def _validate_tool_sig(name: str, fn: Callable):
+    """Ensure tool has (ctx: Context, tool_call_id: str, ...) signature."""
+    params = list(inspect.signature(fn).parameters.values())
+    if len(params) < 2:
+        raise TypeError(f"Tool '{name}' must have at least 2 params: (ctx, tool_call_id)")
+    if params[0].annotation not in (Context, 'Context', inspect.Parameter.empty):
+        raise TypeError(f"Tool '{name}' first param must be ctx: Context")
+    if params[1].annotation not in (str, inspect.Parameter.empty):
+        raise TypeError(f"Tool '{name}' second param must be tool_call_id: str")
+
+
 def tool_to_schema(name: str, fn: Callable) -> dict:
+    _validate_tool_sig(name, fn)
     sig = inspect.signature(fn)
+    params = list(sig.parameters.values())[2:]  # skip ctx, tool_call_id
     props = {}
     required = []
 
-    for pname, param in sig.parameters.items():
-        if param.annotation is Context:
-            continue
+    for param in params:
+        pname = param.name
         if param.default is inspect.Parameter.empty:
             required.append(pname)
         ptype = param.annotation if param.annotation != inspect.Parameter.empty else str
@@ -211,6 +225,7 @@ class Context:
     last_invoke_time: float = 0
     llm_result: Optional[LLMResult] = None
     input_stack: list = field(default_factory=list)
+    _should_continue: bool = False
 
     @property
     def tokens(self) -> int:
@@ -233,27 +248,44 @@ class Context:
     def get_tool_schemas(self) -> list[dict]:
         return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
+    def add_tool_result(self, tool_call_id: str, content: str):
+        """Add tool result message."""
+        self.messages.append(Message(role="tool", content=content, tool_call_id=tool_call_id))
+
+    def request_continue(self):
+        """Request LLM continuation after all tools complete."""
+        self._should_continue = True
+
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
         self.llm_current_output = []
-        def run():
+
+        def do_llm():
+            self.llm_current_output = []
             for item in llm_fn(self):
                 if isinstance(item, ResponseChunk):
                     self.llm_current_output.append(item)
                 elif isinstance(item, LLMResult):
                     self.llm_result = item
-            # build content from text chunks
             content = "".join(c.content for c in self.llm_current_output if c.type == "text")
-            self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current_output)))
-            # execute tool calls
-            if self.llm_result and self.llm_result.tool_calls:
+            tool_calls = self.llm_result.tool_calls if self.llm_result else None
+            self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
+
+        def run():
+            do_llm()
+            # execute tool calls and potentially continue
+            while self.llm_result and self.llm_result.tool_calls:
+                self._should_continue = False
                 tools = self.get_tools()
                 for tc in self.llm_result.tool_calls:
                     fn = tools.get(tc["name"])
                     if fn:
-                        fn(self, **_check_tool_args(fn, tc["args"]))
+                        fn(self, tc["id"], **_check_tool_args(fn, tc["args"]))
+                if not self._should_continue:
+                    break
+                do_llm()
             self.llm_is_running = False
             self.last_invoke_time = time.time()
         threading.Thread(target=run, daemon=True).start()
