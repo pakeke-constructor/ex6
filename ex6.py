@@ -151,6 +151,8 @@ class Context:
     llm_running: bool = False
     llm_output: str = ""
     last_llm_time: float = 0
+    tool_calls: list = field(default_factory=list)
+    finish_reason: str = "stop"
     messages: list = field(default_factory=list)
     input_stack: list = field(default_factory=list)
 
@@ -165,9 +167,15 @@ class Context:
         self.messages.append(Message(role="user", content=text))
         self.llm_running = True
         self.llm_output = ""
+        self.tool_calls = []
         def run():
-            for token in llm_fn(self):
-                self.llm_output += token
+            for item in llm_fn(self):
+                if isinstance(item, str):
+                    self.llm_output += item
+                elif isinstance(item, dict):
+                    self.tokens = item.get("input_tokens", 0) + item.get("output_tokens", 0)
+                    self.tool_calls = item.get("tool_calls", [])
+                    self.finish_reason = item.get("finish_reason", "stop")
             self.messages.append(Message(role="assistant", content=self.llm_output))
             self.llm_running = False
             self.last_llm_time = time.time()
@@ -553,23 +561,10 @@ def _load_plugins():
             exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
 
 
-def _create_test_contexts():
-    c1 = Context("ctx1", messages=[
-        Message(role="system", content="You are helpful."),
-        Message(role="user", content="hello"),
-        Message(role="assistant", content="Hi! How can I help?"),
-    ])
-    Context("ctx2", model="sonnet-4", tokens=5000)
-    Context("foobar", tokens=45000, cost=0.08)
-
-    state.current = c1
-
 
 
 if __name__ == "__main__":
     _load_plugins()
-
-    _create_test_contexts()
 
     term = Terminal()
     buf = ScreenBuffer(term.width, term.height)
