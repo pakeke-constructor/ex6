@@ -105,7 +105,7 @@ def override(fn):
 @dataclass
 class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
-    current: Optional['Context'] = None
+    current: 'Context' = None  # always valid when contexts is non-empty
     mode: str = "selection"
 
 
@@ -507,7 +507,7 @@ def make_work_input():
     def on_submit(text):
         if text.startswith("/"):
             dispatch_command(text)
-        elif state.current:
+        else:
             state.current.invoke(text)
     return make_input(on_submit)
 
@@ -521,10 +521,6 @@ def render_selection_left(buf, inpt, r):
     buf.puts(x + 2, y, " Contexts ", txt_color='blue')
 
     ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
-    if not ctxs:
-        buf.puts(x + 2, y + 1, "(no contexts)", style='dim')
-        return
-
     idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
 
     # navigation
@@ -532,7 +528,7 @@ def render_selection_left(buf, inpt, r):
         state.current = ctxs[idx - 1]
     if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
         state.current = ctxs[idx + 1]
-    if inpt.consume('KEY_ENTER') and state.current:
+    if inpt.consume('KEY_ENTER'):
         state.mode = "work"
 
     # draw list
@@ -565,10 +561,6 @@ def render_selection_right(buf, r):
     buf.puts(x + 2, y, " Info ", txt_color='blue')
 
     ctx = state.current
-    if not ctx:
-        buf.puts(x + 2, y + 1, "(no context selected)", style='dim')
-        return
-
     # header
     buf.puts(x + 2, y + 1, ctx.name, style='bold')
     buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, style='dim')
@@ -617,7 +609,6 @@ def _render_chunks(chunks):
 def render_work_mode(buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
-    assert ctx
     buf.rect_line(r, txt_color='blue')
     buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
 
@@ -680,6 +671,19 @@ if __name__ == "__main__":
             keys = []
 
             buf.clear()
+
+            # No contexts = show message and block everything
+            if not state.contexts:
+                msg = "You must create a plugin with Contexts for ex6 to work."
+                mx = (term.width - len(msg)) // 2
+                my = term.height // 2
+                buf.puts(mx, my, msg, txt_color='red')
+                buf.flush(term)
+                continue
+
+            # Ensure state.current always points to a valid context
+            if state.current not in state.contexts.values():
+                state.current = next(iter(state.contexts.values()))
 
             main_r = Region(0, 0, term.width, term.height - 1)
             input_r = Region(0, term.height - 1, term.width, 1)
