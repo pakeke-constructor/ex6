@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 import threading
 import inspect
+from typing import get_origin, get_args
 import copy 
 import time
 import glob
@@ -134,6 +135,8 @@ def _ensure_unique_name(name):
         if name not in state.contexts: break
     return name
 
+
+
 def _check_tool_args(fn: Callable, args: dict) -> dict:
     """Validate args against fn annotations, raise TypeError if mismatch."""
     hints = fn.__annotations__
@@ -141,6 +144,36 @@ def _check_tool_args(fn: Callable, args: dict) -> dict:
         if name in hints and not isinstance(val, hints[name]):
             raise TypeError(f"{fn.__name__}: arg '{name}' expected {hints[name].__name__}, got {type(val).__name__}")
     return args
+
+
+_TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array"}
+
+
+def tool_to_schema(name: str, fn: Callable) -> dict:
+    sig = inspect.signature(fn)
+    props = {}
+    required = []
+
+    for pname, param in sig.parameters.items():
+        if param.annotation is Context:
+            continue
+        if param.default is inspect.Parameter.empty:
+            required.append(pname)
+        ptype = param.annotation if param.annotation != inspect.Parameter.empty else str
+        if get_origin(ptype) is Union:
+            ptype = [a for a in get_args(ptype) if a is not type(None)][0]
+        props[pname] = {"type": _TYPE_MAP.get(ptype, "string")}
+
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": (fn.__doc__ or "").strip(),
+            "parameters": {"type": "object", "properties": props, "required": required}
+        }
+    }
+
+
 
 @dataclass
 class Context:
@@ -171,6 +204,9 @@ class Context:
         for m in self.messages:
             tools.update(m.tools)
         return tools
+
+    def get_tool_schemas(self) -> list[dict]:
+        return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm

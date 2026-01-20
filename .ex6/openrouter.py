@@ -18,12 +18,14 @@ def invoke_llm(ctx):
     )
 
     messages: List[ChatCompletionMessageParam] = [{"role": m.role, "content": m.get_msg(ctx)} for m in ctx.messages]
+    tools = ctx.get_tool_schemas()
 
     stream = client.chat.completions.create(
         model=ctx.model,
         messages=messages,
         stream=True,
-        stream_options={"include_usage": True}
+        stream_options={"include_usage": True},
+        tools=tools if tools else None
     )
 
     input_tokens, output_tokens = 0, 0
