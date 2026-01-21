@@ -225,7 +225,8 @@ class Context:
     last_invoke_time: float = 0
     llm_result: Optional[LLMResult] = None
     input_stack: list = field(default_factory=list)
-    _should_continue: bool = False
+    _msg_lock: threading.Lock = field(default_factory=threading.Lock)
+    llm_suspended: bool = False
 
     @property
     def tokens(self) -> int:
@@ -250,24 +251,13 @@ class Context:
 
     def add_tool_result(self, tool_call_id: str, content: str):
         """Add tool result message."""
-        self.messages.append(Message(role="tool", content=content, tool_call_id=tool_call_id))
-
-    def request_continue(self):
-        """Request LLM continuation after all tools complete."""
-        self._should_continue = True
+        with self._msg_lock:
+            self.messages.append(Message(role="tool", content=content, tool_call_id=tool_call_id))
 
     def invoke(self, text, llm_fn=None):
-        '''
-        TODO: Oli's notes:
-
-        im really not happy with how complex this function is.
-        We still need to do user-ui blocking...
-        and the way this function works is very implicit.
-        '''
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
-        self.llm_current_output = []
 
         def do_llm():
             self.llm_current_output = []
@@ -282,19 +272,23 @@ class Context:
 
         def run():
             do_llm()
-            # execute tool calls and potentially continue
             while self.llm_result and self.llm_result.tool_calls:
-                self._should_continue = False
+                self.llm_suspended = True
                 tools = self.get_tools()
+                threads = []
                 for tc in self.llm_result.tool_calls:
                     fn = tools.get(tc["name"])
                     if fn:
-                        fn(self, tc["id"], **_check_tool_args(fn, tc["args"]))
-                if not self._should_continue:
-                    break
+                        t = threading.Thread(target=fn, args=(self, tc["id"]), kwargs=_check_tool_args(fn, tc["args"]))
+                        t.start()
+                        threads.append(t)
+                for t in threads:
+                    t.join()
+                self.llm_suspended = False
                 do_llm()
             self.llm_is_running = False
             self.last_invoke_time = time.time()
+
         threading.Thread(target=run, daemon=True).start()
     
     def fork(self, new_name: Optional[str] = None) -> 'Context':
