@@ -134,6 +134,7 @@ class Message:
         c = self.content
         return c(ctx) if callable(c) else c
 
+
 @dataclass
 class ResponseChunk:
     type: str  # "text", "cot", "tool"
@@ -220,7 +221,6 @@ class Context:
     model: str
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
-    cost: float = 0.15
     llm_is_running: bool = False
     llm_current_output: list = field(default_factory=list)
     last_invoke_time: float = 0
@@ -229,10 +229,10 @@ class Context:
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
 
-    @property
-    def tokens(self) -> int:
-        if not self.llm_result: return 0
-        return (self.llm_result.input_tokens + self.llm_result.output_tokens) if self.llm_result else 0
+    def token_count(self) -> int:
+        if self.llm_result:
+            return self.llm_result.input_tokens + self.llm_result.output_tokens
+        return sum(len(m.content) // 4 for m in self.messages if isinstance(m.content, str))
 
     def __post_init__(self):
         state.contexts[self.name] = self
@@ -574,7 +574,7 @@ def render_selection_left(buf, inpt, r):
         selected = (ctx is state.current)
         prefix = ">> " if selected else "   "
         suffix = f" {spin}" if ctx.is_running() else ""
-        toks = f" ({ctx.tokens//1000}k)"
+        toks = f" ({ctx.token_count()//1000}k)"
 
         if ctx.is_running(): txt_color = 'yellow'
         elif now - ctx.last_invoke_time < 360: txt_color = 'white'
@@ -600,19 +600,17 @@ def render_selection_right(buf, r):
     buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, style='dim')
 
     # token bar
-    ratio = ctx.tokens / ctx.max_tokens if ctx.max_tokens else 0
+    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
     bar_w = min(w - 4, 20)
     filled = int(ratio * bar_w)
     bar = "█" * filled + "░" * (bar_w - filled)
     buf.puts(x + 2, y + 2, bar, txt_color='cyan')
-    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.tokens//1000}k/{ctx.max_tokens//1000}k", style='dim')
+    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", style='dim')
 
-    # cost
-    buf.puts(x + 2, y + 3, f"${ctx.cost:.2f}", style='dim')
 
     # messages
-    buf.hline((x + 1, y + 4, w - 2, 1), txt_color='blue')
-    row = y + 5
+    buf.hline((x + 1, y + 3, w - 2, 1), txt_color='blue')
+    row = y + 4
     msgs = ctx.messages or []
     for msg in msgs:
         if row >= y + h - 1: break
