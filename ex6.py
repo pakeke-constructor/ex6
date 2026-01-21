@@ -147,6 +147,7 @@ class LLMResult:
     tool_calls: list = field(default_factory=list)
     finish_reason: str = "stop"
     error: Optional[str] = None
+    cost: Optional[float] = None
 
 
 def _ensure_unique_name(name):

@@ -11,8 +11,8 @@ Be kinda like claude-code.
 - ~~basic command plugin~~
 - ~~Hooked up properly to openrouter~~
 - ~~LLM tool-use~~
-- LLM token-counting
-- LLM pricing
+- ~~LLM token-counting~~
+- ~~LLM pricing~~
 
 - Make it look prettier (currently looks shit.)
 

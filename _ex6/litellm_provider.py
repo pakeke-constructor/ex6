@@ -1,9 +1,45 @@
 import json
 import ex6
-import litellm
 from litellm import completion, completion_cost
+from datetime import date
 
-from typing import List
+
+
+# TODO:
+# TODO:
+# TODO:
+# TODO:
+# Store the daily-usage in a file somewhere.
+# This isnt actually daily-usage; it is SESSION USAGE.
+###
+# Claude-code, opencode, cursor, etc, ALL of them use temporary files.
+# we should use temp-files too.
+# maybe just a function `ex6.get_save_directory()`?
+
+
+
+# Daily budget tracking
+_daily_cost = 0.0
+_daily_limit = 10.0  # default $10/day
+_last_reset = date.today()
+
+
+def set_daily_limit(limit: float):
+    global _daily_limit
+    _daily_limit = limit
+
+
+def get_daily_cost() -> float:
+    _maybe_reset()
+    return _daily_cost
+
+
+def _maybe_reset():
+    global _daily_cost, _last_reset
+    today = date.today()
+    if today != _last_reset:
+        _daily_cost = 0.0
+        _last_reset = today
 
 
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
@@ -21,6 +57,13 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
+    global _daily_cost
+    _maybe_reset()
+
+    if _daily_cost >= _daily_limit:
+        yield ex6.LLMResult(error=f"daily budget exceeded (${_daily_cost:.2f}/${_daily_limit:.2f})")
+        return
+
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
     tools = ctx.get_tool_schemas()
 
@@ -34,10 +77,8 @@ def invoke_llm(ctx: ex6.Context):
     input_tokens, output_tokens = 0, 0
     finish_reason = "stop"
     tool_calls_acc = {}
-    completion_response = None
 
     for chunk in response:
-        completion_response = chunk
         delta = chunk.choices[0].delta if chunk.choices else None
 
         if delta and delta.content:
@@ -70,16 +111,13 @@ def invoke_llm(ctx: ex6.Context):
         tool_calls.append(tc)
         yield ex6.ResponseChunk("tool", json.dumps(tc))
 
-    # Calculate cost using litellm
-    if completion_response and input_tokens and output_tokens:
+    # Calculate cost
+    cost = None
+    if input_tokens and output_tokens:
         try:
-            cost = completion_cost(
-                model=ctx.model,
-                prompt_tokens=input_tokens,
-                completion_tokens=output_tokens
-            )
-            ctx.cost += cost
+            cost = completion_cost(model=ctx.model, prompt_tokens=input_tokens, completion_tokens=output_tokens)
+            _daily_cost += cost
         except:
             pass
 
-    yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason)
+    yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
