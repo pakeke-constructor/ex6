@@ -12,7 +12,7 @@ Be kinda like claude-code.
 - ~~Hooked up properly to openrouter~~
 - ~~LLM tool-use~~
 - ~~LLM pricing~~
-- LLM token-counting
+- ~~LLM token-counting~~
 
 - Make it look prettier (currently looks shit.)
 
@@ -32,5 +32,8 @@ Be kinda like claude-code.
 How should we handle scheduling?  
 As in; main-agent spins up 2 subagents.  
 How do we know when to resume the main agent?
+
+ANSWER: simple; is just normal tool-usage :)
+Very very elegant.
 
 
