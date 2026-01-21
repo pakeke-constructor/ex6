@@ -251,7 +251,6 @@ class Context:
         return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
     def add_tool_result(self, tool_call_id: str, content: str):
-        """Add tool result message."""
         with self._msg_lock:
             self.messages.append(Message(role="tool", content=content, tool_call_id=tool_call_id))
 
