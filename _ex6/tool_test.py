@@ -12,27 +12,26 @@ def read_file(ctx: ex6.Context, tool_call_id: str, path: str):
 
 def ask_user(ctx: ex6.Context, tool_call_id: str, question: str):
     """Ask user a question and wait for their response. Blocks until answered."""
-    result = ""
+    result = [None]
+
+    def on_submit(text):
+        result[0] = text
+        ctx.input_stack.pop()
+
+    input_draw = ex6.make_input(on_submit)
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
-        nonlocal result
         x, y, w, h = r
         buf.puts(x, y, f"? {question}", txt_color='yellow')
-        typed = inpt.consume_text()
-        if typed:
-            result = (result or "") + typed
-        if inpt.consume('KEY_BACKSPACE') and result:
-            result = result[:-1]
-        if inpt.consume('KEY_ENTER') and result:
-            ctx.input_stack.pop()
-        buf.puts(x + 2, y + 1, "> " + result + "█", txt_color='white')
+        input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
 
     ctx.push_ui(draw)
 
     while draw in ctx.input_stack:
         time.sleep(0.05)
 
-    ctx.add_tool_result(tool_call_id, result)
+    assert result[0]
+    ctx.add_tool_result(tool_call_id, result[0])
 
 
 tool_system = ex6.Message(
