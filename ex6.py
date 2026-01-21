@@ -105,7 +105,7 @@ def override(fn):
 @dataclass
 class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
-    current: 'Context' = None  # always valid when contexts is non-empty
+    current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
     mode: str = "selection"
 
 

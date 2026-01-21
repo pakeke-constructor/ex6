@@ -8,12 +8,13 @@ Be kinda like claude-code.
 
 
 ## BROKEN DOWN GOALS:
-- basic command plugin: `/clear [name], /new [name], /del [name], /fork [name]`
-
-- Hooked up properly to openrouter
-- LLM tool-use
+- ~~basic command plugin~~
+- ~~Hooked up properly to openrouter~~
+- ~~LLM tool-use~~
 - LLM token-counting
 - LLM pricing
+
+- Make it look prettier (currently looks shit.)
 
 - Tool-use rendering.
     - ^^^ THIS WILL REQUIRE A LOT OF THINKING.
