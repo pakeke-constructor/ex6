@@ -14,7 +14,7 @@ c1 = Context("ctx1", messages=[
 ], model=MODEL)
 
 Context("ctx2", model=MODEL)
-Context("foobar", cost=0.08, model=MODEL)
+Context("foobar", model=MODEL)
 
 # Example context with file-read tool
 Context("file_reader", messages=[
