@@ -19,6 +19,18 @@ Just aggregates a tonne of market data and stuff
 
 
 
+- Meta ad tool.
+Deploys meta ads, optimizes stuff, generates copy
+
+
+
+- Cold Email bot
+Generates cold emails. Monitors leads. Runs automatically
+
+
+
+
+
 ## Bigger projects:
 - Real estate agent AI video generation. QR code affiliate
 
