@@ -549,9 +549,21 @@ def make_work_input():
 
 
 @overridable
-def render_selection_name():
-    ## PUT IN HERE
-    pass
+def render_selection_name(buf, ctx, x, y):
+    selected = ctx is state.current
+    toks = f" ({ctx.token_count()//1000}k)"
+    spin = "/-\\|"[int(time.time() * 8) % 4]
+    suffix = f" {spin}" if ctx.is_running() else ""
+
+    if ctx.is_running(): name_color = 'bright_blue'
+    elif ctx.llm_suspended: name_color = 'green'
+    else: name_color = 'white'
+
+    buf.puts(x, y, ctx.name, txt_color=name_color, style='bold' if selected else None)
+    x += len(ctx.name)
+    buf.puts(x, y, toks, txt_color='bright_black')
+    x += len(toks)
+    buf.puts(x, y, suffix, txt_color='yellow')
 
 
 @overridable
@@ -571,29 +583,13 @@ def render_selection_left(buf, inpt, r):
         state.mode = "work"
 
     # draw list
-    now = time.time()
-    SPINNER = "/-\\|"
-    spin = SPINNER[int(now * 8) % len(SPINNER)]
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
         selected = (ctx is state.current)
         prefix = ">> " if selected else "   "
-        suffix = f" {spin}" if ctx.is_running() else ""
-        toks = f" ({ctx.token_count()//1000}k)"
-
-        if ctx.is_running(): name_color = 'yellow'
-        elif ctx.llm_suspended: name_color = 'green'
-        else: name_color = 'white'
-        ## THIS SHOULD BE EXTRACTED INTO ITS OWN FUNCTION.
-        ## (except for the `>>` part; that stays.)
-        col = x + 1
-        buf.puts(col, y + 1 + i, prefix, txt_color='red' if selected else None)
-        col += len(prefix)
-        buf.puts(col, y + 1 + i, ctx.name, txt_color=name_color, style='bold' if selected else None)
-        col += len(ctx.name)
-        buf.puts(col, y + 1 + i, toks, txt_color='bright_black')
-        col += len(toks)
-        buf.puts(col, y + 1 + i, suffix, txt_color='yellow')
+        row = y + 1 + i
+        buf.puts(x + 1, row, prefix, txt_color='red' if selected else None)
+        render_selection_name(buf, ctx, x + 1 + len(prefix), row)
 
 
 @overridable
