@@ -547,11 +547,17 @@ def make_work_input():
 
 # --- SELECTION MODE UI ---
 
+
+@overridable
+def render_selection_name():
+    ## PUT IN HERE
+    pass
+
+
 @overridable
 def render_selection_left(buf, inpt, r):
     x, y, w, h = r
     buf.rect_line(r, txt_color='blue')
-    buf.puts(x + 2, y, " Contexts ", txt_color='blue')
 
     ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
     idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
@@ -575,23 +581,25 @@ def render_selection_left(buf, inpt, r):
         suffix = f" {spin}" if ctx.is_running() else ""
         toks = f" ({ctx.token_count()//1000}k)"
 
-        if ctx.is_running(): txt_color = 'yellow'
-        elif now - ctx.last_invoke_time < 360: txt_color = 'white'
-        else: txt_color = None
-
-        line = f"{prefix}{ctx.name}{toks}{suffix}"
-        buf.puts(
-            x + 1, y + 1 + i, line[:w-2],
-            style='bold' if selected else ('dim' if not txt_color else None),
-            txt_color=txt_color
-        )
+        if ctx.is_running(): name_color = 'yellow'
+        elif ctx.llm_suspended: name_color = 'green'
+        else: name_color = 'white'
+        ## THIS SHOULD BE EXTRACTED INTO ITS OWN FUNCTION.
+        ## (except for the `>>` part; that stays.)
+        col = x + 1
+        buf.puts(col, y + 1 + i, prefix, txt_color='red' if selected else None)
+        col += len(prefix)
+        buf.puts(col, y + 1 + i, ctx.name, txt_color=name_color, style='bold' if selected else None)
+        col += len(ctx.name)
+        buf.puts(col, y + 1 + i, toks, txt_color='bright_black')
+        col += len(toks)
+        buf.puts(col, y + 1 + i, suffix, txt_color='yellow')
 
 
 @overridable
 def render_selection_right(buf, r):
     x, y, w, h = r
     buf.rect_line(r, txt_color='blue')
-    buf.puts(x + 2, y, " Info ", txt_color='blue')
 
     ctx = state.current
     # header
@@ -604,7 +612,7 @@ def render_selection_right(buf, r):
     filled = int(ratio * bar_w)
     bar = "█" * filled + "░" * (bar_w - filled)
     buf.puts(x + 2, y + 2, bar, txt_color='cyan')
-    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", style='dim')
+    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", txt_color='cyan')
 
 
     # messages
@@ -673,9 +681,12 @@ def _load_plugins():
     if not os.path.isdir(plugin_dir):
         return
     for path in glob.glob(os.path.join(plugin_dir, "*.py")):
+        filename = os.path.basename(path)
+        # plugin files starting with `_` arent loaded.
+        if filename.startswith("_"):
+            continue
         with open(path, "r", encoding="utf-8") as f:
             exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
-
 
 
 

@@ -5,7 +5,7 @@ from ex6 import Context, Message
 from _ex6.tool_test import read_file
 
 
-MODEL = "z-ai/glm-4.7-flash"
+MODEL = "openai/gpt-5-nano"
 
 c1 = Context("ctx1", messages=[
     Message(role="system", content="You are helpful."),

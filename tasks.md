@@ -34,6 +34,10 @@ IDEA: Maybe 2 types of override:
         - general text override (e.g. syntax-highlight. Only static content)
         - tool-rendering override (supports dynamic content)
 ^^^ idk, it seems weird. can we have a simpler way?
+
+The bottom line:
+We want to customize how we see the LLM's output (eg tool uses, syntax highlight) via plugins.  
+No
 ```
 
 - plugin that allows agents to read files
