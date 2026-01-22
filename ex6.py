@@ -106,7 +106,7 @@ def override(fn):
 class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
     current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
-    mode: str = "selection"
+    mode: Literal["selection", "work", "help"] = "selection"
 
 
 state = AppState()
@@ -504,8 +504,10 @@ def make_input(on_submit):
         while i < len(text) and not text[i].isalnum(): i += 1
         return i
 
-    def draw(buf, inpt, r):
+    def draw(buf: ScreenBuffer, inpt, r):
         nonlocal text, cursor
+        buf.rect_line(r, txt_color="bright_red")
+
         typed = inpt.consume_text()
         if typed:
             text = text[:cursor] + typed + text[cursor:]
@@ -529,27 +531,19 @@ def make_input(on_submit):
             on_submit(text)
             text, cursor = "", 0
 
-        blink = "█" if int(time.time() * 2) % 2 == 0 else " "
-        buf.puts(r[0], r[1], "> " + text[:cursor] + blink + text[cursor:], txt_color='white')
+        blink = "█" if int(time.time() * 3) % 2 == 0 else " "
+        # TODO: make it support multiline-inputs.
+        buf.puts(r[0]+1, r[1]+1, text[:cursor] + blink + text[cursor:], txt_color='white')
 
     return draw
 
-
-@overridable
-def make_work_input():
-    def on_submit(text):
-        if text.startswith("/"):
-            dispatch_command(text)
-        else:
-            state.current.invoke(text)
-    return make_input(on_submit)
 
 
 # --- SELECTION MODE UI ---
 
 
 @overridable
-def render_selection_name(buf, ctx, x, y):
+def render_selection_mode_context_name(buf, ctx, x, y):
     selected = ctx is state.current
     toks = f" ({ctx.token_count()//1000}k)"
     spin = "/-\\|"[int(time.time() * 8) % 4]
@@ -579,8 +573,6 @@ def render_selection_left(buf, inpt, r):
         state.current = ctxs[idx - 1]
     if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
         state.current = ctxs[idx + 1]
-    if inpt.consume('KEY_ENTER'):
-        state.mode = "work"
 
     # draw list
     for i, ctx in enumerate(ctxs):
@@ -589,7 +581,7 @@ def render_selection_left(buf, inpt, r):
         prefix = ">> " if selected else "   "
         row = y + 1 + i
         buf.puts(x + 1, row, prefix, txt_color='red' if selected else None)
-        render_selection_name(buf, ctx, x + 1 + len(prefix), row)
+        render_selection_mode_context_name(buf, ctx, x + 1 + len(prefix), row)
 
 
 @overridable
@@ -692,8 +684,13 @@ if __name__ == "__main__":
     term = Terminal()
     buf = ScreenBuffer(term.width, term.height)
     keys = []
-    selection_input = make_input(lambda t: None)
-    work_input = make_work_input()
+
+    def on_submit(text):
+        if text.startswith("/"):
+            dispatch_command(text)
+        else:
+            state.current.invoke(text)
+    input_box = make_input(on_submit)
 
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
         while True:
@@ -723,20 +720,23 @@ if __name__ == "__main__":
             if state.current not in state.contexts.values():
                 state.current = next(iter(state.contexts.values()))
 
-            main_r = Region(0, 0, term.width, term.height - 1)
-            input_r = Region(0, term.height - 1, term.width, 1)
+            term_r = Region(0,0, term.width, term.height)
 
-            if state.mode == "selection":
-                left, right = main_r.split_horizontal(1, 2)
+            main_r, input_r = term_r.split_vertical(10, 1)
+            #input_r = Region(0, term.height - 1, term.width, 1)
+
+            if state.mode == "work":
+                render_work_mode(buf, inpt, main_r)
+                input_box(buf, inpt, input_r)
+            elif state.mode == "selection":
+                left, right = main_r.split_horizontal(1, 3)
                 render_selection_left(buf, inpt, left)
                 render_selection_right(buf, right)
-                selection_input(buf, inpt, input_r)
-            else:  # work mode
-                if inpt.consume('KEY_ESCAPE'):
-                    state.mode = "selection"
-                else:
-                    render_work_mode(buf, inpt, main_r)
-                    work_input(buf, inpt, input_r)
+                input_box(buf, inpt, input_r)
+            else:
+                assert state.mode == "help"
+                # press h to toggle help.
+                # displays all keybinds for selection-mode
 
             buf.flush(term)
 
