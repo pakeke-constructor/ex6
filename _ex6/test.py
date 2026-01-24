@@ -4,6 +4,12 @@ import ex6
 
 s = '''
 
+SPINNER
+
+SPINNER
+
+SPINNER
+
 ```python
 def func(x: int):
     for i in range(10):
