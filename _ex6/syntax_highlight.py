@@ -17,15 +17,15 @@ TOKEN_COLORS = {
     Token.Punctuation: 'white',
 }
 
-def get_color(ttype):
+def get_color(ttype) -> str:
     while ttype:
         if ttype in TOKEN_COLORS: return TOKEN_COLORS[ttype]
         ttype = ttype.parent
     return 'white'
 
 
-def make_code_renderer(code, lang):
-    def render(buf, x, y, w):
+def make_code_renderer(code: str, lang: str) -> ex6.RenderFn:
+    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         try: lexer = get_lexer_by_name(lang)
         except: lexer = guess_lexer(code)
 
@@ -44,7 +44,7 @@ def make_code_renderer(code, lang):
 
 
 @ex6.output_renderer
-def syntax_highlight(output, ctx):
+def syntax_highlight(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     i = 0
     while i < len(output):
         line = output[i]

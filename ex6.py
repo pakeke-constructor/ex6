@@ -24,12 +24,18 @@ import glob
 _commands = {}
 _output_renderers = []
 
-def output_renderer(fn):
+# Type aliases for output rendering
+RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
+OutputLine = Union[str, RenderFn]
+OutputRendererFn = Callable[[list, 'Context'], None]  # fn(output, ctx) -> None
+
+def output_renderer(fn: OutputRendererFn) -> OutputRendererFn:
     '''
     used like:
 
     @ex6.output_renderer
-    def syntax_highlighting()
+    def syntax_highlighting(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+        ...
     '''
     _output_renderers.append(fn)
     return fn
