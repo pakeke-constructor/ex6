@@ -1,3 +1,15 @@
+
+'''
+
+QUESTION: "why does this file start with a `z`?
+
+ANS: Because we want it to run LAST.
+Or else itll overwrite everything lol
+
+'''
+
+
+
 import ex6
 import re
 

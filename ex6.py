@@ -680,7 +680,7 @@ def _load_plugins():
     plugin_dir = "_ex6"
     if not os.path.isdir(plugin_dir):
         return
-    for path in glob.glob(os.path.join(plugin_dir, "*.py")):
+    for path in sorted(glob.glob(os.path.join(plugin_dir, "*.py"))):
         filename = os.path.basename(path)
         # plugin files starting with `_` arent loaded.
         if filename.startswith("_"):
