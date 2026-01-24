@@ -25,5 +25,5 @@ def example_renderer(output, ctx):
     # output[:] = [l for l in output if l != '']
 
     # Insert custom header
-    # output.insert(0, lambda buf, x, y, w: (buf.puts(x, y, "=== OUTPUT ===", txt_color='cyan'), 1)[1])
+    # output.insert(0, "=== OUTPUT ===")
 
