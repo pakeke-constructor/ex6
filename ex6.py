@@ -22,6 +22,10 @@ import glob
 
 
 _commands = {}
+_output_renderers = []
+def output_renderer(fn):
+    _output_renderers.append(fn)
+    return fn
 
 
 
@@ -639,29 +643,24 @@ def render_work_mode(buf, inpt, r):
     buf.rect_line(r, txt_color='blue')
     buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
 
-    # Build lines from messages (most recent that fit)
-    lines = []
+    # Build output list from messages
+    output = []
     for msg in ctx.messages:
-        role = msg.role
-        # Use chunks for assistant msgs if available, else fallback to content
-        if role == "assistant" and msg.chunks:
-            content = _render_chunks(msg.chunks)
-        else:
-            content = msg.get_msg(ctx)
-        if role == "user": txt_color, s = "cyan", None
-        elif role == "assistant": txt_color, s = "white", None
-        else: txt_color, s = None, "dim"
-        lines.append((content, s, txt_color))
+        c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
+        output.extend(c.split('\n'))
     if ctx.is_running():
-        content = _render_chunks(ctx.llm_current_output) + "█"
-        lines.append((content, None, "yellow"))
+        output.extend((_render_chunks(ctx.llm_current_output) + "█").split('\n'))
 
-    # Render from top down, showing recent
+    for renderer in _output_renderers: renderer(output, ctx)
+
+    # Render: str → text, callable → fn(buf,x,y,w)->height
     row = y + 1
-    for content, s, txt_color in lines:
-        rows_used = buf.text_contained(content, (x+1, row, w-2, h-2-row+y), style=s, txt_color=txt_color)
-        row += rows_used
+    for line in output:
         if row >= y + h - 1: break
+        if callable(line):
+            row += line(buf, x+1, row, w-2)
+        else:
+            buf.text_contained(str(line), (x+1, row, w-2, 1), txt_color='white')
 
 
 def _load_plugins():
