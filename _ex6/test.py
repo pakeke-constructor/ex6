@@ -5,10 +5,17 @@ import ex6
 s = '''
 
 SPINNER
-
+SPINNER
 SPINNER
 
-SPINNER
+# hello.
+*I am italic.*
+### i am a 3rd heading!
+and im a `func()` call.
+- a
+- bbb
+- cccd
+
 
 ```python
 def func(x: int):
