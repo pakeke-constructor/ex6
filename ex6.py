@@ -23,7 +23,14 @@ import glob
 
 _commands = {}
 _output_renderers = []
+
 def output_renderer(fn):
+    '''
+    used like:
+
+    @ex6.output_renderer
+    def syntax_highlighting()
+    '''
     _output_renderers.append(fn)
     return fn
 
@@ -660,7 +667,7 @@ def render_work_mode(buf, inpt, r):
         if callable(line):
             row += line(buf, x+1, row, w-2)
         else:
-            buf.text_contained(str(line), (x+1, row, w-2, 1), txt_color='white')
+            row += buf.text_contained(str(line), (x+1, row, w-2, 1), txt_color='white')
 
 
 def _load_plugins():
