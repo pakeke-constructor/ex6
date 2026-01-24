@@ -735,6 +735,8 @@ if __name__ == "__main__":
                 render_work_mode(buf, inpt, main_r)
                 input_box(buf, inpt, input_r)
             elif state.mode == "selection":
+                if inpt.consume("KEY_ENTER"):
+                    state.mode = "work"
                 left, right = main_r.split_horizontal(1, 3)
                 render_selection_left(buf, inpt, left)
                 render_selection_right(buf, right)
