@@ -135,7 +135,7 @@ def invoke_llm(ctx):
     """Override this to use real LLM."""
     for _ in range(60):
         time.sleep(0.1)
-        yield ResponseChunk("text", "token ")
+        yield ResponseChunk("text", "token ", 1)
 
 
 @dataclass
@@ -156,7 +156,7 @@ class Message:
 class ResponseChunk:
     type: str  # "text", "cot", "tool"
     content: str = ""
-    tokens: int = 0  # for cot
+    tokens: int = 1  # for cot
 
 @dataclass
 class LLMResult:
@@ -677,6 +677,26 @@ def render_work_mode(buf, inpt, r):
         else:
             row += buf.text_contained(str(line), (x+1, row, w-2, 1), txt_color='white')
 
+@overridable
+def render_work_mode_input(buf, inpt, input_r, input_box):
+    ctx = state.current
+    if ctx.is_running():
+        spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
+        elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
+        chunks = ctx.llm_current_output
+        x = input_r[0] + 1
+        y = input_r[1] + 1
+        buf.puts(x, y, spin, txt_color='bright_yellow'); x += 4
+        if chunks:
+            toks = sum(c.tokens for c in chunks)
+            buf.puts(x, y, "thinking...", txt_color='blue'); x += 11
+            buf.puts(x, y, f" ({toks} toks, {elapsed}) ", txt_color='bright_black'); x += len(f" ({toks} toks, {elapsed}) ")
+        else:
+            buf.puts(x, y, "invoking...", txt_color='blue'); x += 11
+            buf.puts(x, y, f" ({elapsed}) ", txt_color='bright_black'); x += len(f" ({elapsed}) ")
+    else:
+        input_box(buf, inpt, input_r)
+
 
 def _load_plugins():
     plugin_dir = "_ex6"
@@ -741,7 +761,7 @@ if __name__ == "__main__":
 
             if state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
-                input_box(buf, inpt, input_r)
+                render_work_mode_input(buf, inpt, input_r, input_box)
                 if inpt.consume('KEY_ESCAPE'):
                     state.mode = "selection"
             elif state.mode == "selection":
