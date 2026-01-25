@@ -240,7 +240,8 @@ class Context:
     max_tokens: int = 200000
     llm_is_running: bool = False
     llm_current_output: list = field(default_factory=list)
-    last_invoke_time: float = 0
+    last_invoke_time_end: float = 0
+    last_invoke_time_start: float = 0
     llm_result: Optional[LLMResult] = None
     input_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -277,6 +278,7 @@ class Context:
         self.llm_is_running = True
 
         def do_llm():
+            self.last_invoke_time_start = time.time()
             self.llm_current_output = []
             for item in llm_fn(self):
                 if isinstance(item, ResponseChunk):
@@ -304,7 +306,7 @@ class Context:
                 self.llm_suspended = False
                 do_llm()
             self.llm_is_running = False
-            self.last_invoke_time = time.time()
+            self.last_invoke_time_end = time.time()
 
         threading.Thread(target=run, daemon=True).start()
     
