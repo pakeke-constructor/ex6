@@ -1,5 +1,4 @@
 
-'''
 import os
 import json
 import ex6
@@ -86,4 +85,4 @@ def invoke_llm(ctx: ex6.Context):
         yield ex6.ResponseChunk("tool", json.dumps(tc))
 
     yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason)
-'''
+
