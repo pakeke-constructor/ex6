@@ -48,11 +48,13 @@ def draw_line(buf, x0, y0, x1, y1, char='*', color='cyan', bg=None):
         if e2 < dx: err += dx; y0 += sy
 
 def draw_cube(buf, cx, cy, size, t, bg='black'):
-    ay = t * 3.0  # Y-axis only, faster spin
+    ax = t * 2.1
+    ay = t * 3.0
+    az = t * 0.9
     scale = size * 0.35
 
     # Rotate and project all vertices
-    pts = [project(rotate(v, 0, ay, 0), scale, cx, cy) for v in VERTS]
+    pts = [project(rotate(v, ax, ay, az), scale, cx, cy) for v in VERTS]
 
     # Draw edges
     for i, j in EDGES:
@@ -71,12 +73,13 @@ def render_work_mode(buf, inpt, r):
     # Cube dimensions
     cx = x + w // 2
     cy = y + h // 2
-    size = min(w, h * 2)
+    size = min(w, h * 2) * 0.8  # smaller cube
     scale = size * 0.35
 
-    # Cube extent with 2 units padding
-    cube_w = int(scale) + 4
-    cube_h = int(scale * 0.5) + 4
+    # Cube projected extent: max at z=2 gives 0.5*scale, so full width=scale, height=scale*0.5
+    # Add 2 for 1px padding on each side
+    cube_w = int(scale) + 2
+    cube_h = int(scale * 0.5) + 2
 
     # Background behind cube
     bx = cx - cube_w // 2
