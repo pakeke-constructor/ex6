@@ -563,7 +563,7 @@ def make_input(on_submit):
 def render_selection_mode_context_name(buf, ctx, x, y):
     selected = ctx is state.current
     toks = f" ({ctx.token_count()//1000}k)"
-    spin = "/-\\|"[int(time.time() * 8) % 4]
+    spin = "/—\\|"[int(time.time() * 12) % 4]
     suffix = f" {spin}" if ctx.is_running() else ""
 
     if ctx.is_running(): name_color = 'bright_blue'
@@ -740,6 +740,8 @@ if __name__ == "__main__":
             if state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
                 input_box(buf, inpt, input_r)
+                if inpt.consume('KEY_ESCAPE'):
+                    state.mode = "selection"
             elif state.mode == "selection":
                 if inpt.consume("KEY_ENTER"):
                     state.mode = "work"

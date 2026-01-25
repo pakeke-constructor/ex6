@@ -103,7 +103,7 @@ def invoke_llm(ctx):
 
 
 def render_spinner(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-    txt = "spinner! " + ("\\|/-"[math.floor(time.time()*5) % 4])
+    txt = "spinner! " + ("\\|/—"[math.floor(time.time()*5) % 4])
     buf.puts(x, y, txt, txt_color='red')
     lines_used = 1
     return lines_used
