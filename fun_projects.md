@@ -36,6 +36,6 @@ Generates cold emails. Monitors leads. Runs automatically
 
 - Auto ecommerce operation (DSers). QR code affiliate
 
-
+- smartpages.ai; converts pdfs/docx into formats LLMs can read
 
 

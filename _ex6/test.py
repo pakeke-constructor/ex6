@@ -99,7 +99,7 @@ def func(x: int):
 def invoke_llm(ctx):
     """Override this to use real LLM."""
     time.sleep(2)
-    for i in range(600):
+    for i in range(40):
         yield ex6.ResponseChunk("text", "tok ")
         time.sleep(0.03)
     yield ex6.ResponseChunk("text", s)

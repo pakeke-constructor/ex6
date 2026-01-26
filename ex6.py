@@ -689,11 +689,13 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
         buf.puts(x, y, spin, txt_color='bright_yellow'); x += 4
         if chunks:
             toks = sum(c.tokens for c in chunks)
-            buf.puts(x, y, "thinking...", txt_color='blue'); x += 11
-            buf.puts(x, y, f" ({toks} toks, {elapsed}) ", txt_color='bright_black'); x += len(f" ({toks} toks, {elapsed}) ")
+            last_type = chunks[-1].type
+            label = "thinking..." if last_type == "cot" else "outputting..."
+            buf.puts(x, y, label, txt_color='blue'); x += len(label)
+            buf.puts(x, y, f" ({toks} toks, {elapsed}) ", txt_color='bright_black')
         else:
             buf.puts(x, y, "invoking...", txt_color='blue'); x += 11
-            buf.puts(x, y, f" ({elapsed}) ", txt_color='bright_black'); x += len(f" ({elapsed}) ")
+            buf.puts(x, y, f" ({elapsed}) ", txt_color='bright_black')
     else:
         input_box(buf, inpt, input_r)
 
