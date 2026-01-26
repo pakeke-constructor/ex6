@@ -17,12 +17,23 @@ Be kinda like claude-code.
 - ~~markdown renderer (pygments)~~
 - ~~python/code block renderer (pygments)~~
 
+- ~~better animations for when llm is "loading"~~
 
-- better animations for when llm is "loading"
 
 - implement cloudflares `code-mode` w/ sandbox
 
 - plugin that allows agents to read files
+- plugin allowing agents to read function headers / class headers
+
+- plugin: agents can glob files
+
+- plugin: agents UPDATE files (search/replace)
+- plugin: agents UPDATE files (replace function)
+- plugin: agents WRITE files (create new, wipe existing)
+
+
+- plugin: create *generic* system prompt; copy from claude-code.
+
 
 - choice/options plugin, like claude-code.
 
