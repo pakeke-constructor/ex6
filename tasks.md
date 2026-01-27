@@ -22,6 +22,17 @@ Be kinda like claude-code.
 
 - implement cloudflares `code-mode` w/ sandbox
 
+
+TODO: code-mode implementation is currently ugly as fuck.
+-> ex6.PASS_TOOLS=False   (WTF IS THIS??? find a nicer way to avoid pass.)
+
+-> IDEA: maybe we have a `code_mode.create_system_prompt(tool_list)`, takes a list of python tools, creates system-prompt from it?
+    -> auxiliary question: How to define namespace for code-mode?
+    -> ANSWER: 
+
+-> import resolution must be fixed. currently, is terrible.
+
+
 - plugin that allows agents to read files
 - plugin allowing agents to read function headers / class headers
 
