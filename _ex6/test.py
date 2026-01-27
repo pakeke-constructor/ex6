@@ -5,6 +5,7 @@ from ex6 import Context, Message
 import time
 import math
 
+from _ex6.tools_code_mode import tool_system_prompt
 
 
 def read_file(ctx: ex6.Context, path: str) -> str:
@@ -56,7 +57,6 @@ c1 = Context("ctx1", messages=[
 Context("ctx2", model=MODEL)
 Context("foobar", model=MODEL)
 
-from _ex6.tools_code_mode import tool_system_prompt
 
 # Example context with file-read tool (code-mode)
 Context("file_reader", messages=[
