@@ -28,7 +28,7 @@ TODO: code-mode implementation is currently ugly as fuck.
 
 -> IDEA: maybe we have a `code_mode.create_system_prompt(tool_list)`, takes a list of python tools, creates system-prompt from it?
     -> auxiliary question: How to define namespace for code-mode?
-    -> ANSWER: 
+-> ANSWER: Dont overcomplicate it. Just hardcode `code-mode` inside of `litellm` module. (Allow custom tool-prompts tho.)
 
 -> import resolution must be fixed. currently, is terrible.
 
