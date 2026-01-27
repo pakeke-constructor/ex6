@@ -2,6 +2,11 @@
 
 
 ## tool-blocks:
+
+Inspired by cloudflare's `code-mode`.
+https://blog.cloudflare.com/code-mode/
+
+
 The better way to do function calling for LLMs.
 
 Instead of using `tools` properly in the API,

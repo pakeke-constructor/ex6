@@ -11,7 +11,7 @@ from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional,Any
 import threading
 import inspect
 from typing import get_origin, get_args
@@ -232,6 +232,36 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 
 
 
+@overridable
+def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
+    '''
+    returns boolean; whether the LLM should loop.
+    (by default; the LLM loops when there are tool-calls.)
+
+    This function can be overridden if you have a special way of calling tools.
+    (e.g cloudflare's code-mode  https://blog.cloudflare.com/code-mode/ )
+    '''
+    if not llm_result.tool_calls:
+        return False
+    
+    tools = ctx.get_tools()
+    threads = []
+    for tc in llm_result.tool_calls:
+        fn = tools.get(tc["name"])
+        if not fn: continue
+        t = threading.Thread(
+            target=fn,
+            args=(ctx, tc["id"]),
+            kwargs=_check_tool_args(fn, tc["args"])
+        )
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join()
+    return True
+
+
+
 @dataclass
 class Context:
     name: str
@@ -246,6 +276,7 @@ class Context:
     input_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
+    data: dict[str,Any] = field(default_factory=dict)
 
     def token_count(self) -> int:
         if self.llm_result:
@@ -290,21 +321,12 @@ class Context:
             self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
 
         def run():
+            should_loop = True
             do_llm()
-            while self.llm_result and self.llm_result.tool_calls:
+            while should_loop and self.llm_result:
                 self.llm_suspended = True
-                tools = self.get_tools()
-                threads = []
-                for tc in self.llm_result.tool_calls:
-                    fn = tools.get(tc["name"])
-                    if fn:
-                        t = threading.Thread(target=fn, args=(self, tc["id"]), kwargs=_check_tool_args(fn, tc["args"]))
-                        t.start()
-                        threads.append(t)
-                for t in threads:
-                    t.join()
+                should_loop = call_tools(self, self.llm_result)
                 self.llm_suspended = False
-                do_llm()
             self.llm_is_running = False
             self.last_invoke_time_end = time.time()
 
