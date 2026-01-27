@@ -47,6 +47,10 @@ TODO: code-mode implementation is currently ugly as fuck.
 - plugin: create *generic* system prompt; copy from claude-code.
 
 
+- system-reminders infrastructure:
+- sys-reminder: notify LLMs if a file has been modified
+
+
 - choice/options plugin, like claude-code.
 
 - add filesystem api/getter? maybe `ex6.get_filesystem()`?
