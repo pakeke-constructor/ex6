@@ -195,20 +195,18 @@ _TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", li
 
 
 def _validate_tool_sig(name: str, fn: Callable):
-    """Ensure tool has (ctx: Context, tool_call_id: str, ...) signature."""
+    """Ensure tool has (ctx: Context, ...) signature."""
     params = list(inspect.signature(fn).parameters.values())
-    if len(params) < 2:
-        raise TypeError(f"Tool '{name}' must have at least 2 params: (ctx, tool_call_id)")
+    if len(params) < 1:
+        raise TypeError(f"Tool '{name}' must have at least 1 param: (ctx)")
     if params[0].annotation not in (Context, 'Context', inspect.Parameter.empty):
         raise TypeError(f"Tool '{name}' first param must be ctx: Context")
-    if params[1].annotation not in (str, inspect.Parameter.empty):
-        raise TypeError(f"Tool '{name}' second param must be tool_call_id: str")
 
 
 def tool_to_schema(name: str, fn: Callable) -> dict:
     _validate_tool_sig(name, fn)
     sig = inspect.signature(fn)
-    params = list(sig.parameters.values())[2:]  # skip ctx, tool_call_id
+    params = list(sig.parameters.values())[1:]  # skip ctx
     props = {}
     required = []
 
@@ -243,21 +241,25 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     '''
     if not llm_result.tool_calls:
         return False
-    
+
     tools = ctx.get_tools()
     threads = []
+    results = []
     for tc in llm_result.tool_calls:
         fn = tools.get(tc["name"])
         if not fn: continue
-        t = threading.Thread(
-            target=fn,
-            args=(ctx, tc["id"]),
-            kwargs=_check_tool_args(fn, tc["args"])
-        )
+        result = {"id": tc["id"], "value": None}
+        results.append(result)
+        def run_tool(fn=fn, tc=tc, result=result):
+            result["value"] = fn(ctx, **_check_tool_args(fn, tc["args"]))
+        t = threading.Thread(target=run_tool)
         t.start()
         threads.append(t)
     for t in threads:
         t.join()
+    # Add tool results as messages
+    for r in results:
+        ctx.messages.append(Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
     return True
 
 
@@ -299,10 +301,6 @@ class Context:
     def get_tool_schemas(self) -> list[dict]:
         return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
-    def add_tool_result(self, tool_call_id: str, content: str):
-        with self._msg_lock:
-            self.messages.append(Message(role="tool", content=content, tool_call_id=tool_call_id))
-
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
@@ -322,8 +320,9 @@ class Context:
 
         def run():
             should_loop = True
-            do_llm()
-            while should_loop and self.llm_result:
+            while should_loop:
+                do_llm()
+                if not self.llm_result: break
                 self.llm_suspended = True
                 should_loop = call_tools(self, self.llm_result)
                 self.llm_suspended = False
