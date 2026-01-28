@@ -233,7 +233,8 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 @overridable
 def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     '''
-    returns boolean; whether the LLM should loop.
+    Blocks the thread until tools are complete.
+    Then, returns boolean; whether the LLM should loop.
     (by default; the LLM loops when there are tool-calls.)
 
     This function can be overridden if you have a special way of calling tools.
