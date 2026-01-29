@@ -22,6 +22,101 @@ Be kinda like claude-code.
 
 - implement cloudflares `code-mode` w/ sandbox
 
+I want to implement cloudflare's "code mode".
+Basically; instead of direct tool-calls, LLMs should emit a ```tools ``` block.
+eg:
+```tools
+# regular tool calls:
+read_file("a.py")
+write_file("a.py", content)
+
+# can use a loop too!
+for i in range(3):
+    make_subagent("do foobar")
+```
+
+Now; this has technically already been partially implemented.  
+However, there's a few issues:
+- it's been done in the `tools_code_mode.py` plugin, which is a bad place to put it.  
+- We should use simple `eval` instead of complex AST parsing
+- We should use RestrictedPython (DONT DO THAT NOW THO, JUST CREATE A `eval_sandboxed` wrapper for now)
+- tools should be wrapped automatically to be ran as threads. Wrap the functions themselves, then add them to the `eval` env.
+
+
+
+For RestrictedPython, do the following:
+```py
+from RestrictedPython.Guards import guarded_getattr
+
+SAFE_BUILTINS = {
+    "None": None,
+    "True": True,
+    "False": False,
+
+    "int": int,
+    "float": float,
+    "bool": bool,
+    "complex": complex,
+    "abs": abs,
+    "round": round,
+    "pow": pow,
+
+    "list": list,
+    "tuple": tuple,
+    "set": set,
+    "dict": dict,
+    "frozenset": frozenset,
+
+    "range": range,
+    "len": len,
+    "enumerate": enumerate,
+    "zip": zip,
+
+    "min": min,
+    "max": max,
+    "sum": sum,
+    "all": all,
+    "any": any,
+
+    "str": str,
+    "repr": repr,
+    "format": format,
+
+    "Exception": Exception,
+    "ValueError": ValueError,
+    "TypeError": TypeError,
+}
+
+globals = {
+    "__builtins__": SAFE_BUILTINS,
+}
+
+
+def no_private_getattr(obj, name):
+    if name.startswith("_"):
+        raise AttributeError
+    return guarded_getattr(obj, name)
+
+globals["_getattr_"] = no_private_getattr
+
+def no_import(*args, **kwargs):
+    raise ImportError("imports disabled")
+
+globals["__import__"] = no_import
+
+```
+
+
+maybe can block for results too...?
+```tools
+res = read_file("foo.py")
+make_subagent("find all entities in this file: " + res.get())
+# ^^^ the `res.get()` thing should block until got results.
+```
+NOTE: IT DOESNT NEED TO BE `res.get()`.  
+We should ideally use a builtin python abstraction.
+
+
 -> ANSWER: Dont overcomplicate it. Just hardcode `code-mode` inside of `litellm` module. (Allow custom tool-prompts tho.)
 
 -> import resolution must be fixed. currently, is terrible.
