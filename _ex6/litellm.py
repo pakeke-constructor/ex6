@@ -238,3 +238,4 @@ def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
         ctx.messages.append(ex6.Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
 
     return True
+

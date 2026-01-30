@@ -5,7 +5,6 @@ from ex6 import Context, Message
 import time
 import math
 
-from _ex6.tools_code_mode import tool_system_prompt
 
 
 def read_file(ctx: ex6.Context, path: str) -> str:
@@ -60,7 +59,6 @@ Context("foobar", model=MODEL)
 
 # Example context with file-read tool (code-mode)
 Context("file_reader", messages=[
-    tool_system_prompt,
     Message(role="system", content="You can read files.", tools={"read_file": read_file}),
 ], model=MODEL)
 
@@ -101,7 +99,7 @@ read_file("test.txt")
 
 '''
 
-@ex6.override
+#@ex6.override
 def invoke_llm(ctx):
     """Override this to use real LLM."""
     time.sleep(2)
