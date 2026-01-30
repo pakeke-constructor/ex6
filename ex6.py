@@ -753,8 +753,10 @@ def _load_plugins():
             continue
         module_name = f"_ex6.{filename[:-3]}"
         spec = importlib.util.spec_from_file_location(module_name, path)
+        assert spec
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
+        assert spec.loader
         spec.loader.exec_module(module)
 
 
