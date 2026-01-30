@@ -39,7 +39,7 @@ Now; this has technically already been partially implemented.
 However, there's a few issues:
 - it's been done in the `tools_code_mode.py` plugin, which is a bad place to put it.  
 - We should use simple `eval` instead of complex AST parsing
-- We should use RestrictedPython (DONT DO THAT NOW THO, JUST CREATE A `eval_sandboxed` wrapper for now)
+- We should use RestrictedPython (DONT DO THAT NOW, JUST CREATE A `eval_sandboxed` wrapper for now)
 - tools should be wrapped automatically to be ran as threads. Wrap the functions themselves, then add them to the `eval` env.
 
 
