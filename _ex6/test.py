@@ -1,5 +1,6 @@
 
 
+from _ex6.litellm import tool_system_prompt
 import ex6
 from ex6 import Context, Message
 import time
@@ -45,9 +46,10 @@ tool_system = ex6.Message(
 
 
 
-MODEL = "openai/gpt-5-nano"
+MODEL = "openrouter/openai/gpt-5.1-codex-mini"
 
 c1 = Context("ctx1", messages=[
+    tool_system_prompt,
     Message(role="system", content="You are helpful."),
     Message(role="user", content="hello"),
     Message(role="assistant", content="Hi! How can I help?"),
@@ -59,6 +61,7 @@ Context("foobar", model=MODEL)
 
 # Example context with file-read tool (code-mode)
 Context("file_reader", messages=[
+    tool_system_prompt,
     Message(role="system", content="You can read files.", tools={"read_file": read_file}),
 ], model=MODEL)
 

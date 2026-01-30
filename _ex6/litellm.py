@@ -7,7 +7,6 @@ from litellm import completion, completion_cost
 from datetime import date
 
 
-
 # TODO:
 # TODO:
 # TODO:
@@ -68,14 +67,23 @@ def invoke_llm(ctx: ex6.Context):
         return
 
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
-    tools = ctx.get_tool_schemas()
 
-    response = completion(
-        model=ctx.model,
-        messages=messages,
-        stream=True,
-        tools=tools if tools else None
-    )
+    # If code mode prompt is in context, don't pass native tools
+    use_code_mode = tool_system_prompt in ctx.messages
+    tools = None if use_code_mode else (ctx.get_tool_schemas() or None)
+
+    try:
+        response = completion(
+            model=ctx.model,
+            messages=messages,
+            stream=True,
+            tools=tools,
+            timeout=30,
+            request_timeout=30,
+        )
+    except Exception as e:
+        yield ex6.LLMResult(error=str(e))
+        return
 
     input_tokens, output_tokens = 0, 0
     finish_reason = "stop"
@@ -157,9 +165,9 @@ def _build_tool_docs(ctx: ex6.Context) -> str:
     """Generate tool documentation for system prompt."""
     tools = ctx.get_tools()
     if not tools:
-        return "No tools available."
-    lines = ["You have access to tools. To call them, emit a ```tools block:", "```tools"]
-    lines.append('read_file("path")  # example')
+        return "" # no tools available
+    lines = ["You have access to tools. To call them, emit a ```tools ``` block:", "```tools"]
+    lines.append('read_file("path")  # reads path')
     lines.append("for f in files:    # loops work too")
     lines.append('    read_file(f)')
     lines.append("```")

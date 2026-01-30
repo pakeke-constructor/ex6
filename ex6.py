@@ -726,13 +726,23 @@ def _load_plugins():
     plugin_dir = "_ex6"
     if not os.path.isdir(plugin_dir):
         return
+    import importlib.util
+    import types
+    # Register _ex6 as a package so imports work
+    if "_ex6" not in sys.modules:
+        pkg = types.ModuleType("_ex6")
+        pkg.__path__ = [os.path.abspath(plugin_dir)]
+        sys.modules["_ex6"] = pkg
     for path in sorted(glob.glob(os.path.join(plugin_dir, "*.py"))):
         filename = os.path.basename(path)
         # plugin files starting with `_` arent loaded.
         if filename.startswith("_"):
             continue
-        with open(path, "r", encoding="utf-8") as f:
-            exec(compile(f.read(), path, "exec"), {"__name__": "__plugin__", "__file__": path})
+        module_name = f"_ex6.{filename[:-3]}"
+        spec = importlib.util.spec_from_file_location(module_name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
 
 
 
