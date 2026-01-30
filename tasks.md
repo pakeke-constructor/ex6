@@ -22,20 +22,7 @@ Be kinda like claude-code.
 
 - ~~implement cloudflares `code-mode` w/ sandbox~~
 
-
-maybe can block for results too...?
-```tools
-res = read_file("foo.py")
-make_subagent("find all entities in this file: " + res.get())
-# ^^^ the `res.get()` thing should block until got results.
-```
-NOTE: IT DOESNT NEED TO BE `res.get()`.  
-We should ideally use a builtin python abstraction.
-
-
--> ANSWER: Dont overcomplicate it. Just hardcode `code-mode` inside of `litellm` module. (Allow custom tool-prompts tho.)
-
--> import resolution must be fixed. currently, is terrible.
+- ~~import resolution must be fixed. currently, is terrible.~~
 
 - Make ```tool ``` blocks (code-mode) rendered nicely
 
@@ -68,6 +55,15 @@ We should ideally use a builtin python abstraction.
 - multiline input (shift-enter)
 
 - Make it look prettier (currently looks shit.)
+
+- tools can block for results too..?
+```tools
+res = read_file("foo.py")
+make_subagent("find all entities in this file: " + res.get())
+# ^^^ the `res.get()` thing should block until got results.
+```
+NOTE: IT DOESNT NEED TO BE `res.get()`.  
+We should ideally use a builtin python abstraction.
 
 
 
