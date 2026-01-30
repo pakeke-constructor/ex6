@@ -1,11 +1,24 @@
 
 import os
 import sys
+import logging
+import tempfile
+from pathlib import Path
 
 os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
 # (if using SSH, you might want to set this higher. Ask some LLM to explain why.)
 
 sys.modules['ex6'] = sys.modules[__name__]  # so plugins can `import ex6`
+
+# Setup logging to temp directory
+_log_dir = Path(tempfile.gettempdir()) / "ex6"
+_log_dir.mkdir(exist_ok=True)
+logging.basicConfig(
+    filename=_log_dir / "ex6.log",
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+log = logging.getLogger("ex6")
 
 from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
@@ -15,7 +28,7 @@ from typing import Optional,Any
 import threading
 import inspect
 from typing import get_origin, get_args
-import copy 
+import copy
 import time
 import glob
 

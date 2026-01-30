@@ -82,6 +82,7 @@ def invoke_llm(ctx: ex6.Context):
             request_timeout=30,
         )
     except Exception as e:
+        ex6.log.error(f"completion failed: {e}")
         yield ex6.LLMResult(error=str(e))
         return
 
@@ -154,7 +155,11 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
         result = {"call": call_str, "value": None}
         results.append(result)
         def run():
-            result["value"] = fn(ctx, *args, **kwargs)
+            try:
+                result["value"] = fn(ctx, *args, **kwargs)
+            except Exception as e:
+                ex6.log.error(f"tool {call_str} failed: {e}")
+                result["value"] = f"ERROR: {e}"
         t = threading.Thread(target=run)
         t.start()
         threads.append(t)
@@ -207,7 +212,10 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
     for name, fn in tools.items():
         env[name] = _wrap_tool_threaded(fn, ctx, results, threads)
 
-    exec_sandboxed(code, env)
+    try:
+        exec_sandboxed(code, env)
+    except Exception as e:
+        ex6.log.error(f"code mode exec failed: {e}")
 
     for t in threads:
         t.join()
@@ -234,7 +242,11 @@ def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
         result = {"id": tc["id"], "value": None}
         results.append(result)
         def run_tool(fn=fn, tc=tc, result=result):
-            result["value"] = fn(ctx, **tc["args"])
+            try:
+                result["value"] = fn(ctx, **tc["args"])
+            except Exception as e:
+                ex6.log.error(f"tool {tc['name']} failed: {e}")
+                result["value"] = f"ERROR: {e}"
         t = threading.Thread(target=run_tool)
         t.start()
         threads.append(t)
