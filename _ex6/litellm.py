@@ -5,6 +5,7 @@ import inspect
 import ex6
 from litellm import completion, completion_cost
 from datetime import date
+from RestrictedPython import compile_restricted
 
 
 # TODO:
@@ -143,9 +144,32 @@ def extract_tools_block(content: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+# Sandbox setup
+SAFE_BUILTINS = {
+    "None": None, "True": True, "False": False,
+    "int": int, "float": float, "bool": bool, "complex": complex,
+    "abs": abs, "round": round, "pow": pow,
+    "list": list, "tuple": tuple, "set": set, "dict": dict, "frozenset": frozenset,
+    "range": range, "len": len, "enumerate": enumerate, "zip": zip,
+    "min": min, "max": max, "sum": sum, "all": all, "any": any,
+    "str": str, "repr": repr, "format": format,
+    "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
+}
+
+def _no_import(*args, **kwargs):
+    raise ImportError("imports disabled")
+
+
 def exec_sandboxed(code: str, env: dict):
-    """Execute code. Placeholder for RestrictedPython later."""
-    exec(code, env)
+    """Execute code in RestrictedPython sandbox."""
+    sandbox_globals = {"__builtins__": SAFE_BUILTINS.copy()}
+    sandbox_globals["__import__"] = _no_import
+    sandbox_globals.update(env)  # add tools
+
+    byte_code = compile_restricted(code, '<tools>', 'exec')
+    if byte_code.errors:
+        raise SyntaxError(f"restricted compile: {byte_code.errors}")
+    exec(byte_code.code, sandbox_globals)
 
 
 def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
@@ -208,7 +232,7 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
     tools = ctx.get_tools()
     results, threads = [], []
 
-    env = {"__builtins__": __builtins__}
+    env = {}
     for name, fn in tools.items():
         env[name] = _wrap_tool_threaded(fn, ctx, results, threads)
 

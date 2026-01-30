@@ -44,69 +44,6 @@ However, there's a few issues:
 
 
 
-For RestrictedPython, do the following:
-```py
-from RestrictedPython.Guards import guarded_getattr
-
-SAFE_BUILTINS = {
-    "None": None,
-    "True": True,
-    "False": False,
-
-    "int": int,
-    "float": float,
-    "bool": bool,
-    "complex": complex,
-    "abs": abs,
-    "round": round,
-    "pow": pow,
-
-    "list": list,
-    "tuple": tuple,
-    "set": set,
-    "dict": dict,
-    "frozenset": frozenset,
-
-    "range": range,
-    "len": len,
-    "enumerate": enumerate,
-    "zip": zip,
-
-    "min": min,
-    "max": max,
-    "sum": sum,
-    "all": all,
-    "any": any,
-
-    "str": str,
-    "repr": repr,
-    "format": format,
-
-    "Exception": Exception,
-    "ValueError": ValueError,
-    "TypeError": TypeError,
-}
-
-globals = {
-    "__builtins__": SAFE_BUILTINS,
-}
-
-
-def no_private_getattr(obj, name):
-    if name.startswith("_"):
-        raise AttributeError
-    return guarded_getattr(obj, name)
-
-globals["_getattr_"] = no_private_getattr
-
-def no_import(*args, **kwargs):
-    raise ImportError("imports disabled")
-
-globals["__import__"] = no_import
-
-```
-
-
 maybe can block for results too...?
 ```tools
 res = read_file("foo.py")
