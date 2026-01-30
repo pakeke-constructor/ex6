@@ -58,6 +58,10 @@ We should ideally use a builtin python abstraction.
 
 -> import resolution must be fixed. currently, is terrible.
 
+- Make ```tool ``` blocks (code-mode) rendered nicely
+
+- Make LLM output better, cleaner, clearer.
+
 - plugin that allows agents to read files
 - plugin allowing agents to read function headers / class headers
     - (Kotlin, Lua, Python)
