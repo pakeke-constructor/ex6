@@ -20,28 +20,7 @@ Be kinda like claude-code.
 - ~~better animations for when llm is "loading"~~
 
 
-- implement cloudflares `code-mode` w/ sandbox
-
-I want to implement cloudflare's "code mode".
-Basically; instead of direct tool-calls, LLMs should emit a ```tools ``` block.
-eg:
-```tools
-# regular tool calls:
-read_file("a.py")
-write_file("a.py", content)
-
-# can use a loop too!
-for i in range(3):
-    make_subagent("do foobar")
-```
-
-Now; this has technically already been partially implemented.  
-However, there's a few issues:
-- it's been done in the `tools_code_mode.py` plugin, which is a bad place to put it.  
-- We should use simple `eval` instead of complex AST parsing
-- We should use RestrictedPython (DONT DO THAT NOW, JUST CREATE A `eval_sandboxed` wrapper for now)
-- tools should be wrapped automatically to be ran as threads. Wrap the functions themselves, then add them to the `eval` env.
-
+- ~~implement cloudflares `code-mode` w/ sandbox~~
 
 
 maybe can block for results too...?
