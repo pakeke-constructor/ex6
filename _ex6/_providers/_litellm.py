@@ -1,4 +1,7 @@
 import json
+import re
+import threading
+import inspect
 import ex6
 from litellm import completion, completion_cost
 from datetime import date
@@ -121,3 +124,117 @@ def invoke_llm(ctx: ex6.Context):
             pass
 
     yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
+
+
+# ==================== CODE MODE ====================
+
+def extract_tools_block(content: str) -> str | None:
+    """Extract ```tools block from content."""
+    m = re.search(r'```tools\s*\n(.*?)```', content, re.DOTALL)
+    return m.group(1).strip() if m else None
+
+
+def exec_sandboxed(code: str, env: dict):
+    """Execute code. Placeholder for RestrictedPython later."""
+    exec(code, env)
+
+
+def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
+    """Wrap tool to run in thread. Appends result dict to results list."""
+    def wrapper(*args, **kwargs):
+        call_str = f'{fn.__name__}({", ".join(repr(a) for a in args)})'
+        result = {"call": call_str, "value": None}
+        results.append(result)
+        def run():
+            result["value"] = fn(ctx, *args, **kwargs)
+        t = threading.Thread(target=run)
+        t.start()
+        threads.append(t)
+    return wrapper
+
+
+def _build_tool_docs(ctx: ex6.Context) -> str:
+    """Generate tool documentation for system prompt."""
+    tools = ctx.get_tools()
+    if not tools:
+        return "No tools available."
+    lines = ["You have access to tools. To call them, emit a ```tools block:", "```tools"]
+    lines.append('read_file("path")  # example')
+    lines.append("for f in files:    # loops work too")
+    lines.append('    read_file(f)')
+    lines.append("```")
+    lines.append("")
+    lines.append("Available tools:")
+    for name, fn in tools.items():
+        sig = inspect.signature(fn)
+        params = list(sig.parameters.values())[1:]  # skip ctx
+        args = ", ".join(p.name for p in params)
+        doc = (fn.__doc__ or "").split('\n')[0].strip()
+        lines.append(f"  {name}({args}) - {doc}")
+    return "\n".join(lines)
+
+
+tool_system_prompt = ex6.Message(role="system", content=_build_tool_docs)
+
+
+@ex6.override
+def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
+    # Get last assistant message
+    content = ""
+    for msg in reversed(ctx.messages):
+        if msg.role == "assistant":
+            content = msg.content if isinstance(msg.content, str) else ""
+            break
+
+    code = extract_tools_block(content)
+    if not code:
+        # Fall back to native tool calls
+        return _call_tools_native(ctx, llm_result)
+
+    # Code mode
+    tools = ctx.get_tools()
+    results, threads = [], []
+
+    env = {"__builtins__": __builtins__}
+    for name, fn in tools.items():
+        env[name] = _wrap_tool_threaded(fn, ctx, results, threads)
+
+    exec_sandboxed(code, env)
+
+    for t in threads:
+        t.join()
+
+    if results:
+        parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
+        ctx.messages.append(ex6.Message(role="user", content="\n\n".join(parts)))
+
+    return len(results) > 0
+
+
+def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
+    """Native tool calling (OpenAI-style tool_calls)."""
+    if not llm_result.tool_calls:
+        return False
+
+    tools = ctx.get_tools()
+    threads, results = [], []
+
+    for tc in llm_result.tool_calls:
+        fn = tools.get(tc["name"])
+        if not fn:
+            continue
+        result = {"id": tc["id"], "value": None}
+        results.append(result)
+        def run_tool(fn=fn, tc=tc, result=result):
+            result["value"] = fn(ctx, **tc["args"])
+        t = threading.Thread(target=run_tool)
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    for r in results:
+        ctx.messages.append(ex6.Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
+
+    return True
