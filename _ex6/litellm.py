@@ -2,6 +2,7 @@ import json
 import re
 import threading
 import inspect
+import time
 import ex6
 from litellm import completion, completion_cost
 from datetime import date
@@ -195,7 +196,7 @@ def _build_tool_docs(ctx: ex6.Context) -> str:
     tools = ctx.get_tools()
     if not tools:
         return "" # no tools available
-    lines = ["You have access to tools. To call them, emit a ```tools ``` block:", "```tools"]
+    lines = ["# Tools/Functions\nYou have access to tools via code-blocks.\nTo call them, emit a ```tools ``` block, like so:", "```tools"]
     lines.append('read_file("path")  # reads path')
     lines.append("for f in files:    # loops work too")
     lines.append('    read_file(f)')
@@ -231,6 +232,7 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
     # Code mode
     tools = ctx.get_tools()
     results, threads = [], []
+    ctx.data["litellm:tool_results"] = results  # expose for renderer
 
     env = {}
     for name, fn in tools.items():
@@ -243,6 +245,7 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
 
     for t in threads:
         t.join()
+    ctx.data.pop("litellm:tool_results", None)
 
     if results:
         parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
@@ -282,4 +285,40 @@ def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
         ctx.messages.append(ex6.Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
 
     return True
+
+
+
+SPINNER = ['/', '-', '\\', '|']
+
+def make_tools_renderer(ctx: ex6.Context) -> ex6.RenderFn:
+    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
+        results = ctx.data.get("litellm:tool_results", [])
+        if not results:
+            return 0
+        frame = int(time.time() * 8) % 4
+        for i, r in enumerate(results):
+            done = r["value"] is not None
+            icon = 'x' if done else SPINNER[frame]
+            line = f"[{icon}] {r['call']}"[:w]
+            for j, ch in enumerate(line):
+                buf.put(x + j, y + i, ch, txt_color='red')
+        return len(results)
+    return render
+
+
+@ex6.output_renderer
+def render_tools_block(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+    i = 0
+    while i < len(output):
+        line = output[i]
+        if isinstance(line, str) and line.startswith('```tools'):
+            j = i + 1
+            while j < len(output):
+                if isinstance(output[j], str) and output[j].strip() == '```':
+                    break
+                j += 1
+            del output[i:j+1]
+            output.insert(i, make_tools_renderer(ctx))
+        i += 1
+
 
