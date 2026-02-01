@@ -134,7 +134,9 @@ def invoke_llm(ctx: ex6.Context):
         except:
             pass
 
-    yield ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
+    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
+    _log_invoke(ctx, messages, result)
+    yield result
 
 
 # ==================== CODE MODE ====================
@@ -320,5 +322,32 @@ def render_tools_block(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
             del output[i:j+1]
             output.insert(i, make_tools_renderer(ctx))
         i += 1
+
+
+def _log_invoke(ctx, messages, result):
+    from datetime import datetime
+    import random
+    folder = ex6.get_folder() / "logs"
+    folder.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    fname = f"invoke-{ts}-{random.randint(1000,9999)}.txt"
+
+    lines = [
+        "============",
+        f"model: {ctx.model}",
+        f"input_tokens: {result.input_tokens}",
+        f"output_tokens: {result.output_tokens}",
+        f"cost: ${result.cost:.4f}" if result.cost else "cost: N/A",
+        f"finish_reason: {result.finish_reason}",
+        "============",
+        "",
+        "=== CONTEXT ===",
+    ]
+    for m in messages:
+        lines.append(f"[{m['role']}]")
+        lines.append(m['content'])
+        lines.append("")
+
+    (folder / fname).write_text("\n".join(lines), encoding="utf-8")
 
 

@@ -107,6 +107,15 @@ def dispatch_command(text: str):
 
 
 
+def get_folder() -> Path:
+    """Returns app data folder: %APPDATA%/ex6 on Windows, ~/.ex6 on Unix."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("APPDATA", Path.home()))
+    else:
+        base = Path.home()
+    folder = base / "ex6"
+    folder.mkdir(exist_ok=True)
+    return folder
 
 
 

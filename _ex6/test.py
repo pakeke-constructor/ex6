@@ -38,10 +38,18 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
     return result[0] or ""
 
 
-tool_system = ex6.Message(
-    role="system",
-    content="You can read files (read_file) or ask the user questions (ask_user).",
-    tools={"read_file": read_file, "ask_user": ask_user}
+coding_agent_system_prompt = ex6.Message(
+role ="system",
+content="""
+# Role and Goal:
+You are an intelligent coding assistant, working alongside an experienced engineer.
+You will be asked to assist with activities such as debugging code, refactoring functions, and implementing new solutions to the engineer's problemms.
+
+# Guidelines:
+- Be as concise as possible.
+- Avoid bloated "apologetic language" like "You are absolutely right!"
+- If you are using an API or module, you *MUST* look for the actual function/class definition before you use it. Sometimes the user will provide a tool to search the docs.
+"""
 )
 
 
@@ -49,6 +57,7 @@ tool_system = ex6.Message(
 MODEL = "openrouter/openai/gpt-5.1-codex-mini"
 
 c1 = Context("ctx1", messages=[
+    coding_agent_system_prompt,
     tool_system_prompt,
     Message(role="system", content="You are helpful."),
     Message(role="user", content="hello"),
@@ -61,6 +70,7 @@ Context("foobar", model=MODEL)
 
 # Example context with file-read tool (code-mode)
 Context("file_reader", messages=[
+    coding_agent_system_prompt,
     tool_system_prompt,
     Message(role="system", content="You can read files.", tools={"read_file": read_file}),
 ], model=MODEL)
