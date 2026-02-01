@@ -24,6 +24,11 @@ Be kinda like claude-code.
 
 - ~~import resolution must be fixed. currently, is terrible.~~
 
+
+- FIX TOOL BLOCKS. LLMs output tool-blocks correctly; but tools arent being called.
+
+- Add logs INSIDE the tool. (So its not annoying to see outputs)
+
 - Make ```tool ``` blocks (code-mode) rendered nicely
 
 - Make LLM output better, cleaner, clearer.
@@ -36,8 +41,8 @@ Be kinda like claude-code.
 - plugin: agents can glob files
 
 - plugin: agents UPDATE files (search/replace)
-- plugin: agents UPDATE files (replace function)
-- plugin: agents WRITE files (create new, wipe existing)
+- plugin: agents UPDATE functions (replace function)
+- plugin: agents WRITE files (create new, replace existing)
 
 
 - plugin: create *generic* system prompt; copy from claude-code.
