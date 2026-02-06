@@ -240,13 +240,10 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
     for name, fn in tools.items():
         env[name] = _wrap_tool_threaded(fn, ctx, results, threads)
 
-    ex6.log.info(f"code mode: executing code:\n{code}")
-    ex6.log.info(f"code mode: available tools: {list(env.keys())}")
     try:
         exec_sandboxed(code, env)
     except Exception as e:
         ex6.log.error(f"code mode exec failed: {e}")
-    ex6.log.info(f"code mode: results after exec: {results}")
 
     for t in threads:
         t.join()

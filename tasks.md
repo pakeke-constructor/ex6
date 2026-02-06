@@ -29,8 +29,8 @@ Be kinda like claude-code.
 
 - ~~Make ```tool ``` blocks (code-mode) rendered nicely~~
 
+- ~~Make full LLM output viewable INSIDE ex6 (toggle, scrollable)~~
 
-- Make full LLM output viewable INSIDE ex6 (toggle, scrollable)
 
 - Make logs viewable INSIDE ex6. (So its not annoying)
 
@@ -38,6 +38,8 @@ Be kinda like claude-code.
 - Compress sys-prompts when viewing in compact-mode
 
 - Make LLM output better, cleaner, clearer.
+
+- Proper text wrapping
 
 - plugin that allows agents to read files
 - plugin allowing agents to read function headers / class headers
@@ -75,15 +77,4 @@ make_subagent("find all entities in this file: " + res.get())
 ```
 NOTE: IT DOESNT NEED TO BE `res.get()`.  
 We should ideally use a builtin python abstraction.
-
-
-
-## Potentially Difficult task:
-How should we handle scheduling?  
-As in; main-agent spins up 2 subagents.  
-How do we know when to resume the main agent?
-
-ANSWER: simple; is just normal tool-usage :)
-Very very elegant.
-
 
