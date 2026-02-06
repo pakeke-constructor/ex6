@@ -6,7 +6,7 @@ import time
 import ex6
 from litellm import completion, completion_cost
 from datetime import date
-from RestrictedPython import compile_restricted
+from RestrictedPython import compile_restricted_exec
 
 
 # TODO:
@@ -169,10 +169,10 @@ def exec_sandboxed(code: str, env: dict):
     sandbox_globals["__import__"] = _no_import
     sandbox_globals.update(env)  # add tools
 
-    byte_code = compile_restricted(code, '<tools>', 'exec')
-    if byte_code.errors:
-        raise SyntaxError(f"restricted compile: {byte_code.errors}")
-    exec(byte_code.code, sandbox_globals)
+    result = compile_restricted_exec(code, '<tools>')
+    if result.errors:
+        raise SyntaxError(f"restricted compile: {result.errors}")
+    exec(result.code, sandbox_globals)
 
 
 def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
@@ -240,10 +240,13 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
     for name, fn in tools.items():
         env[name] = _wrap_tool_threaded(fn, ctx, results, threads)
 
+    ex6.log.info(f"code mode: executing code:\n{code}")
+    ex6.log.info(f"code mode: available tools: {list(env.keys())}")
     try:
         exec_sandboxed(code, env)
     except Exception as e:
         ex6.log.error(f"code mode exec failed: {e}")
+    ex6.log.info(f"code mode: results after exec: {results}")
 
     for t in threads:
         t.join()
