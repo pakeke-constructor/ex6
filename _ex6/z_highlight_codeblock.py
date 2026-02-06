@@ -48,14 +48,14 @@ def syntax_highlight(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     i = 0
     while i < len(output):
         line = output[i]
-        if isinstance(line, str) and line.startswith('```'):
-            lang = line[3:].strip() or 'text'
+        if isinstance(line, tuple) and line[1].startswith('```'):
+            lang = line[1][3:].strip() or 'text'
             # collect code lines until closing ```
             j, code_lines = i + 1, []
             while j < len(output):
                 s = output[j]
-                if isinstance(s, str) and s.strip() == '```': break
-                code_lines.append(output[j] if isinstance(output[j], str) else '')
+                if isinstance(s, tuple) and s[1].strip() == '```': break
+                code_lines.append(output[j][1] if isinstance(output[j], tuple) else '')
                 j += 1
             # replace block with renderer
             del output[i:j+1]

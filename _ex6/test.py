@@ -135,7 +135,7 @@ def render_spinner(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
 def example_renderer(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     # Replace lines containing "SPINNER" with a red spinner
     for i, line in enumerate(output):
-        if isinstance(line, str) and "SPINNER" in line:
+        if isinstance(line, tuple) and "SPINNER" in line[1]:
             # if line contains `SPINNER`, replace line with a spinner!
             output[i] = render_spinner
 

@@ -311,15 +311,15 @@ def render_tools_block(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     i = 0
     while i < len(output):
         line = output[i]
-        if isinstance(line, str) and line.startswith('```tools'):
+        if isinstance(line, tuple) and line[1].startswith('```tools'):
             # Find end of block and extract code
             j = i + 1
             code_lines = []
             while j < len(output):
-                if isinstance(output[j], str) and output[j].strip() == '```':
+                if isinstance(output[j], tuple) and output[j][1].strip() == '```':
                     break
-                if isinstance(output[j], str):
-                    code_lines.append(output[j])
+                if isinstance(output[j], tuple):
+                    code_lines.append(output[j][1])
                 j += 1
             code = '\n'.join(code_lines)
             del output[i:j+1]
@@ -346,17 +346,17 @@ def render_tool_results(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     i = 0
     while i < len(output):
         line = output[i]
-        if isinstance(line, str) and line.startswith('<tool_result '):
+        if isinstance(line, tuple) and line[1].startswith('<tool_result '):
             # Parse: <tool_result call_here>
-            call = line[13:].rstrip('>')
+            call = line[1][13:].rstrip('>')
             # Collect content until </tool_result>
             j = i + 1
             content_lines = []
             while j < len(output):
-                if isinstance(output[j], str) and output[j].strip() == '</tool_result>':
+                if isinstance(output[j], tuple) and output[j][1].strip() == '</tool_result>':
                     break
-                if isinstance(output[j], str):
-                    content_lines.append(output[j])
+                if isinstance(output[j], tuple):
+                    content_lines.append(output[j][1])
                 j += 1
             content = '\n'.join(content_lines)
             del output[i:j+1]

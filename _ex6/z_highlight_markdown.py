@@ -51,9 +51,10 @@ def make_md_renderer(line: str) -> ex6.RenderFn:
 @ex6.output_renderer
 def markdown_highlight(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     for i, line in enumerate(output):
-        if not isinstance(line, str): continue
+        if not isinstance(line, tuple): continue
+        text = line[1]
         # Check if line has any markdown
         for pattern, _, _ in PATTERNS:
-            if re.search(pattern, line):
-                output[i] = make_md_renderer(line)
+            if re.search(pattern, text):
+                output[i] = make_md_renderer(text)
                 break

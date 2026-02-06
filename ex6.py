@@ -37,7 +37,7 @@ _output_renderers = []
 
 # Type aliases for output rendering
 RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
-OutputLine = Union[str, RenderFn]
+OutputLine = Union[Tuple[str, str], RenderFn]  # (role, text) or render fn
 OutputRendererFn = Callable[[list, 'Context'], None]  # fn(output, ctx) -> None
 
 def output_renderer(fn: OutputRendererFn) -> OutputRendererFn:
@@ -723,23 +723,29 @@ def render_work_mode(buf, inpt, r):
     # Build output list from messages
     output = []
     for msg in ctx.messages:
-        output.append('')
+        output.append(('', ''))
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
-        output.extend(c.split('\n'))
+        for line in c.split('\n'):
+            output.append((msg.role, line))
     if ctx.is_running() and not ctx.llm_suspended:
-        output.append('')
-        output.extend((_render_chunks(ctx.llm_current_output) + "█").split('\n'))
+        output.append(('', ''))
+        for line in (_render_chunks(ctx.llm_current_output) + "█").split('\n'):
+            output.append(('assistant', line))
 
     for renderer in _output_renderers: renderer(output, ctx)
 
-    # Render: str → text, callable → fn(buf,x,y,w)->height
+    # Render: (role,str) → text, callable → fn(buf,x,y,w)->height
     row = y + 1
     for line in output:
         if row >= y + h - 1: break
         if callable(line):
             row += line(buf, x+1, row, w-2)
         else:
-            row += buf.text_contained(str(line), (x+1, row, w-2, 1), txt_color='white')
+            role, text = line
+            bg = 'bright_black' if role == 'user' else None
+            if bg:
+                buf.puts(x+1, row, ' '*(w-2), bg_color=bg)
+            row += buf.text_contained(text, (x+1, row, w-2, 1), txt_color='white', bg_color=bg)
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
