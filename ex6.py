@@ -1,24 +1,22 @@
 
 import os
 import sys
-import logging
-import tempfile
 from pathlib import Path
+from collections import deque
+from datetime import datetime
 
 os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
 # (if using SSH, you might want to set this higher. Ask some LLM to explain why.)
 
 sys.modules['ex6'] = sys.modules[__name__]  # so plugins can `import ex6`
 
-# Setup logging to temp directory
-_log_dir = Path(tempfile.gettempdir()) / "ex6"
-_log_dir.mkdir(exist_ok=True)
-logging.basicConfig(
-    filename=_log_dir / "ex6.log",
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-log = logging.getLogger("ex6")
+# Debug ring buffer
+_debug_buffer = deque(maxlen=1000)
+
+def debug_print(*args, **kwargs):
+    ts = datetime.now().strftime("%H:%M:%S")
+    msg = " ".join(str(a) for a in args)
+    _debug_buffer.append(f"[{ts}] {msg}")
 
 from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
@@ -104,6 +102,17 @@ def dispatch_command(text: str):
         else:
             parsed.append(None)
     return fn(*parsed)
+
+
+@command
+def debug():
+    enter_scroll_mode()
+    print("="*30)
+    print("DEBUG LOG")
+    print("="*30)
+    print(f"({len(_debug_buffer)} entries)\n")
+    for line in _debug_buffer:
+        print(line)
 
 
 
