@@ -301,10 +301,10 @@ def make_tools_renderer(code: str, ctx: ex6.Context) -> ex6.RenderFn:
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         frame = int(time.time() * 8) % 4
         running = ctx.llm_suspended  # tools are running
-        icon = SPINNER[frame] if running else 'x'
+        icon = SPINNER[frame] if running else '...'
         for i, call in enumerate(lines):
-            buf.puts(x, y + i, f"[{icon}]", txt_color='red', style='bold')
-            buf.puts(x + 4, y + i, call[:w-4], txt_color='blue')
+            buf.puts(x, y + i, f"[{icon}]", txt_color='yellow', style='bold')
+            buf.puts(x + 6, y + i, call[:w-4], txt_color='blue')
         return len(lines)
     return render
 
@@ -327,6 +327,43 @@ def render_tools_block(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
             code = '\n'.join(code_lines)
             del output[i:j+1]
             output.insert(i, make_tools_renderer(code, ctx))
+        i += 1
+
+
+def make_tool_result_renderer(call: str, content: str) -> ex6.RenderFn:
+    is_error = content.startswith("ERROR:")
+    preview = content[:50].replace('\n', ' ')
+    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
+        if is_error:
+            buf.puts(x, y, "[x]", txt_color='red', style='bold')
+        else:
+            buf.puts(x, y, "[v]", txt_color='green', style='bold')
+        buf.puts(x + 4, y, call, txt_color='blue')
+        buf.puts(x + 5 + len(call), y, preview[:w - 6 - len(call)], txt_color='bright_black')
+        return 1
+    return render
+
+
+@ex6.output_renderer
+def render_tool_results(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+    i = 0
+    while i < len(output):
+        line = output[i]
+        if isinstance(line, str) and line.startswith('<tool_result '):
+            # Parse: <tool_result call_here>
+            call = line[13:].rstrip('>')
+            # Collect content until </tool_result>
+            j = i + 1
+            content_lines = []
+            while j < len(output):
+                if isinstance(output[j], str) and output[j].strip() == '</tool_result>':
+                    break
+                if isinstance(output[j], str):
+                    content_lines.append(output[j])
+                j += 1
+            content = '\n'.join(content_lines)
+            del output[i:j+1]
+            output.insert(i, make_tool_result_renderer(call, content))
         i += 1
 
 
