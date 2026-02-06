@@ -145,10 +145,19 @@ def override(fn):
 class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
     current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
-    mode: Literal["selection", "work", "help"] = "selection"
+    mode: Literal["selection", "work", "help", "scroll"] = "selection"
+    _prev_mode: str = "selection"  # for restoring after scroll
 
 
 state = AppState()
+term = None
+
+def enter_scroll_mode():
+    """Exit fullscreen for scroll mode. Caller prints, main loop handles re-entry."""
+    if state.mode == "scroll": return
+    state._prev_mode = state.mode
+    state.mode = "scroll"
+    print(term.exit_fullscreen, end='', flush=True)
 
 
 
@@ -817,7 +826,11 @@ if __name__ == "__main__":
             main_r, input_r = term_r.split_vertical(10, 1)
             #input_r = Region(0, term.height - 1, term.width, 1)
 
-            if state.mode == "work":
+            if state.mode == "scroll":
+                if inpt._keys:  # any key exits scroll mode
+                    state.mode = state._prev_mode
+                    print(term.enter_fullscreen, end='', flush=True)
+            elif state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
                 render_work_mode_input(buf, inpt, input_r, input_box)
                 if inpt.consume('KEY_ESCAPE'):
@@ -833,6 +846,7 @@ if __name__ == "__main__":
                 assert state.mode == "help"
                 # press h to toggle help.
                 # displays all keybinds for selection-mode
-
-            buf.flush(term)
+            
+            if state.mode != "scroll":
+                buf.flush(term)
 

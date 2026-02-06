@@ -25,12 +25,17 @@ Be kinda like claude-code.
 - ~~import resolution must be fixed. currently, is terrible.~~
 
 
-~~- FIX TOOL BLOCKS. LLMs output tool-blocks correctly; but tools arent being called.~~
+- ~~FIX TOOL BLOCKS. LLMs output tool-blocks correctly; but tools arent being called.~~
 
-- Make ```tool ``` blocks (code-mode) rendered nicely
+- ~~Make ```tool ``` blocks (code-mode) rendered nicely~~
 
-- Make full LLM output viewable INSIDE ex6 (toggle)
+
+- Make full LLM output viewable INSIDE ex6 (toggle, scrollable)
+
 - Make logs viewable INSIDE ex6. (So its not annoying)
+
+- Put spacing between user/assistant messages
+- Compress sys-prompts when viewing in compact-mode
 
 - Make LLM output better, cleaner, clearer.
 

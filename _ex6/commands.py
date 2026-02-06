@@ -34,3 +34,15 @@ def crash():
     raise RuntimeError("Crash!")
 
 
+
+@ex6.command
+def show_ctx():
+    ex6.enter_scroll_mode()
+    ## TODO: print out context window in raw-text.
+    # system-prompt = blue
+    # user-prompt = green
+    # assistant = red
+
+    # DONT PRINT ANYTHING ELSE.
+
+
