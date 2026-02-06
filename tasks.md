@@ -31,8 +31,8 @@ Be kinda like claude-code.
 
 - ~~Make full LLM output viewable INSIDE ex6 (toggle, scrollable)~~
 
+- ~~Make logs viewable INSIDE ex6. (So its not annoying)~~
 
-- Make logs viewable INSIDE ex6. (So its not annoying)
 
 - Put spacing between user/assistant messages
 - Compress sys-prompts when viewing in compact-mode
