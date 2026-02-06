@@ -303,8 +303,8 @@ def make_tools_renderer(code: str, ctx: ex6.Context) -> ex6.RenderFn:
         running = ctx.llm_suspended  # tools are running
         icon = SPINNER[frame] if running else 'x'
         for i, call in enumerate(lines):
-            txt = f"[{icon}] {call}"[:w]
-            buf.puts(x, y + i, txt, txt_color='red', style='bold')
+            buf.puts(x, y + i, f"[{icon}]", txt_color='red', style='bold')
+            buf.puts(x + 4, y + i, call[:w-4], txt_color='blue')
         return len(lines)
     return render
 
