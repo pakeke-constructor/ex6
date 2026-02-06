@@ -295,19 +295,17 @@ def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
 
 SPINNER = ['/', '-', '\\', '|']
 
-def make_tools_renderer(ctx: ex6.Context) -> ex6.RenderFn:
+def make_tools_renderer(code: str, ctx: ex6.Context) -> ex6.RenderFn:
+    # Parse code lines as tool calls to display
+    lines = [ln.strip() for ln in code.strip().split('\n') if ln.strip()]
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-        results = ctx.data.get("litellm:tool_results", [])
-        if not results:
-            return 0
         frame = int(time.time() * 8) % 4
-        for i, r in enumerate(results):
-            done = r["value"] is not None
-            icon = 'x' if done else SPINNER[frame]
-            line = f"[{icon}] {r['call']}"[:w]
-            for j, ch in enumerate(line):
-                buf.put(x + j, y + i, ch, txt_color='red')
-        return len(results)
+        running = ctx.llm_suspended  # tools are running
+        icon = SPINNER[frame] if running else 'x'
+        for i, call in enumerate(lines):
+            txt = f"[{icon}] {call}"[:w]
+            buf.puts(x, y + i, txt, txt_color='red', style='bold')
+        return len(lines)
     return render
 
 
@@ -317,13 +315,18 @@ def render_tools_block(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     while i < len(output):
         line = output[i]
         if isinstance(line, str) and line.startswith('```tools'):
+            # Find end of block and extract code
             j = i + 1
+            code_lines = []
             while j < len(output):
                 if isinstance(output[j], str) and output[j].strip() == '```':
                     break
+                if isinstance(output[j], str):
+                    code_lines.append(output[j])
                 j += 1
+            code = '\n'.join(code_lines)
             del output[i:j+1]
-            output.insert(i, make_tools_renderer(ctx))
+            output.insert(i, make_tools_renderer(code, ctx))
         i += 1
 
 

@@ -707,7 +707,7 @@ def render_work_mode(buf, inpt, r):
     for msg in ctx.messages:
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         output.extend(c.split('\n'))
-    if ctx.is_running():
+    if ctx.is_running() and not ctx.llm_suspended:
         output.extend((_render_chunks(ctx.llm_current_output) + "█").split('\n'))
 
     for renderer in _output_renderers: renderer(output, ctx)
