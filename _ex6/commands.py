@@ -38,11 +38,16 @@ def crash():
 @ex6.command
 def show_ctx():
     ex6.enter_scroll_mode()
-    ## TODO: print out context window in raw-text.
-    # system-prompt = blue
-    # user-prompt = green
-    # assistant = red
-
-    # DONT PRINT ANYTHING ELSE.
+    print("="*30)
+    print("CONTEXT WINDOW")
+    print("="*30)
+    print("\n\n")
+    term = ex6.state.term
+    colors = {"system": term.blue, "user": term.green, "assistant": term.red, "tool": term.yellow}
+    ctx = ex6.state.current
+    for msg in ctx.messages:
+        content = msg.get_msg(ctx) if callable(msg.content) else msg.content
+        color = colors.get(msg.role, lambda x: x)
+        print(f"{color(f'[{msg.role}]')}\n{color(content)}\n")
 
 

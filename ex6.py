@@ -147,17 +147,17 @@ class AppState:
     current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
     mode: Literal["selection", "work", "help", "scroll"] = "selection"
     _prev_mode: str = "selection"  # for restoring after scroll
+    term: 'Terminal' = None  # set in main
 
 
 state = AppState()
-term = None
 
 def enter_scroll_mode():
     """Exit fullscreen for scroll mode. Caller prints, main loop handles re-entry."""
     if state.mode == "scroll": return
     state._prev_mode = state.mode
     state.mode = "scroll"
-    print(term.exit_fullscreen, end='', flush=True)
+    print(state.term.exit_fullscreen, end='', flush=True)
 
 
 
@@ -782,7 +782,8 @@ def _load_plugins():
 if __name__ == "__main__":
     _load_plugins()
 
-    term = Terminal()
+    state.term = Terminal()
+    term = state.term
     buf = ScreenBuffer(term.width, term.height)
     keys = []
 

@@ -73,7 +73,7 @@ Context("foobar", model=MODEL)
 Context("file_reader", messages=[
     coding_agent_system_prompt,
     tool_system_prompt,
-    Message(role="system", content="You can read files.", tools={"read_file": read_file}),
+    Message(role="system", content="", tools={"read_file": read_file}),
 ], model=MODEL)
 
 ex6.state.current = c1
