@@ -33,17 +33,13 @@ Be kinda like claude-code.
 
 - ~~Make logs viewable INSIDE ex6. (So its not annoying)~~
 
-
-- Put spacing between user/assistant messages
-- Compress sys-prompts when viewing in compact-mode
-
-- Make LLM output better, cleaner, clearer.
-
-- Proper text wrapping
+- ~~Put spacing between user/assistant messages~~
 
 - plugin that allows agents to read files
 - plugin allowing agents to read function headers / class headers
     - (Kotlin, Lua, Python)
+    - (Use Tree-Sitter)
+
 - plugin for agents to read specific function body
 
 - plugin: agents can glob files
@@ -52,6 +48,20 @@ Be kinda like claude-code.
 - plugin: agents UPDATE functions (replace function)
 - plugin: agents WRITE files (create new, replace existing)
 
+- make txt flow bottom -> top in work-mode, instead of top->bottom?
+
+
+## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
+
+
+- Compress sys-prompts when viewing in compact-mode
+
+- Make LLM output better, cleaner, clearer.
+
+- Proper text wrapping
+
+
+- plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
 
 - plugin: create *generic* system prompt; copy from claude-code.
 
@@ -68,6 +78,15 @@ Be kinda like claude-code.
 - multiline input (shift-enter)
 
 - Make it look prettier (currently looks shit.)
+
+- COOL IDEA: Have in-editor-LLM invocation, like _99 from primeagen.
+^^^ we should implement this by typing a comment, maybe? like:
+```lua
+local function foo()--[[
+;LLM returns a random prime number lower than 1000
+]]end
+```
+
 
 - tools can block for results too..?
 ```tools
