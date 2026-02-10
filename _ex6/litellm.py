@@ -312,14 +312,19 @@ def render_tools_block(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
     while i < len(output):
         line = output[i]
         if isinstance(line, tuple) and line[1].startswith('```tools'):
-            # Find end of block and extract code
+            role = line[0]
             j = i + 1
             code_lines = []
             while j < len(output):
-                if isinstance(output[j], tuple) and output[j][1].strip() == '```':
+                ln = output[j]
+                # stop at role boundary (unclosed block)
+                if isinstance(ln, tuple) and ln[0] != role:
+                    j -= 1  # don't consume the boundary line
                     break
-                if isinstance(output[j], tuple):
-                    code_lines.append(output[j][1])
+                if isinstance(ln, tuple) and ln[1].strip() == '```':
+                    break
+                if isinstance(ln, tuple):
+                    code_lines.append(ln[1])
                 j += 1
             code = '\n'.join(code_lines)
             del output[i:j+1]
