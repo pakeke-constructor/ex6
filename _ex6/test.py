@@ -1,6 +1,7 @@
 
 
 from _ex6.litellm import tool_system_prompt
+from _ex6.tools import read_headers, read_function
 import ex6
 from ex6 import Context, Message
 import time
@@ -74,6 +75,16 @@ Context("file_reader", messages=[
     coding_agent_system_prompt,
     tool_system_prompt,
     Message(role="system", content="", tools={"read_file": read_file}),
+], model=MODEL)
+
+# Context with code-reading tools
+Context("code_reader", messages=[
+    coding_agent_system_prompt,
+    tool_system_prompt,
+    Message(role="system", content="", tools={
+        "read_headers": read_headers,
+        "read_function": read_function,
+    }),
 ], model=MODEL)
 
 ex6.state.current = c1

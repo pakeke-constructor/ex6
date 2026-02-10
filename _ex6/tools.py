@@ -7,25 +7,85 @@ Basic tools for ex6.
 includes:
 
 - reading/writing/updating files
-- reading/writing function bodies
+- reading function bodies
 - reading class/func headers
 - glob
-- pulling skills
 
 
 '''
 
 import ex6
 import os
-import ast
 import glob as _glob
+import importlib
+import tree_sitter
 
 
-def _node_start(node):
-    """Line index where a node starts (includes decorators)."""
-    if hasattr(node, 'decorator_list') and node.decorator_list:
-        return node.decorator_list[0].lineno - 1
-    return node.lineno - 1
+LANG_MODULES = {
+    '.py': 'tree_sitter_python', '.pyw': 'tree_sitter_python',
+    '.js': 'tree_sitter_javascript', '.mjs': 'tree_sitter_javascript',
+    '.ts': 'tree_sitter_typescript', '.tsx': 'tree_sitter_typescript',
+    '.jsx': 'tree_sitter_javascript',
+    '.go': 'tree_sitter_go',
+    '.rs': 'tree_sitter_rust',
+    '.c': 'tree_sitter_c', '.h': 'tree_sitter_c',
+    '.cpp': 'tree_sitter_cpp', '.hpp': 'tree_sitter_cpp', '.cc': 'tree_sitter_cpp',
+    '.java': 'tree_sitter_java',
+    '.rb': 'tree_sitter_ruby',
+    '.cs': 'tree_sitter_c_sharp',
+}
+
+DEFINITION_TYPES = {
+    'tree_sitter_python': ['function_definition', 'class_definition'],
+    'tree_sitter_javascript': ['function_declaration', 'class_declaration', 'method_definition'],
+    'tree_sitter_typescript': ['function_declaration', 'class_declaration', 'method_definition'],
+    'tree_sitter_go': ['function_declaration', 'method_declaration', 'type_declaration'],
+    'tree_sitter_rust': ['function_item', 'struct_item', 'enum_item', 'impl_item', 'trait_item'],
+    'tree_sitter_c': ['function_definition', 'struct_specifier'],
+    'tree_sitter_cpp': ['function_definition', 'class_specifier', 'struct_specifier'],
+    'tree_sitter_java': ['method_declaration', 'class_declaration', 'interface_declaration'],
+    'tree_sitter_ruby': ['method', 'class', 'module'],
+    'tree_sitter_c_sharp': ['method_declaration', 'class_declaration', 'interface_declaration'],
+}
+
+
+def _parse_file(file):
+    ext = os.path.splitext(file)[1].lower()
+    mod_name = LANG_MODULES.get(ext)
+    if not mod_name:
+        raise ValueError(f"Unsupported file type: {ext}")
+    mod = importlib.import_module(mod_name)
+    lang = tree_sitter.Language(mod.language())
+    parser = tree_sitter.Parser(lang)
+    with open(file, "rb") as f:
+        source = f.read()
+    return parser.parse(source), source, mod_name
+
+
+def _get_name(node):
+    """Get the name of a definition node."""
+    n = node.child_by_field_name('name')
+    return n.text.decode() if n else None
+
+
+def _signature(node, source):
+    """Extract signature (start of node to start of body), plus first docstring line."""
+    body = node.child_by_field_name('body')
+    if body:
+        sig = source[node.start_byte:body.start_byte].decode().rstrip().rstrip(':')
+    else:
+        sig = source[node.start_byte:node.end_byte].decode().split('\n')[0]
+    # append first docstring/comment if present
+    if body and body.children:
+        first = body.children[0]
+        if first.type in ('expression_statement', 'comment'):
+            child = first.children[0] if first.children else first
+            if child.type == 'string' or child.type == 'comment':
+                doc = child.text.decode().strip().strip('"\' \n')
+                first_line = doc.split('\n')[0].strip()
+                if first_line:
+                    sig += f'  # {first_line}'
+    return sig
 
 
 def read_file(ctx: ex6.Context, file: str) -> str:
@@ -67,44 +127,34 @@ def find_files(ctx: ex6.Context, pattern: str) -> str:
 
 def read_headers(ctx: ex6.Context, file: str) -> str:
     """Read class/function signatures from a file (no bodies)."""
-    with open(file, "r") as f:
-        source = f.read()
-    tree = ast.parse(source)
-    lines = source.split('\n')
+    tree, source, mod_name = _parse_file(file)
+    def_types = DEFINITION_TYPES.get(mod_name, [])
     out = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            sig = lines[node.lineno - 1].rstrip()
-            doc = ast.get_docstring(node)
-            if doc:
-                sig += f'  # {doc.split(chr(10))[0]}'
-            out.append(sig)
+
+    def collect(node):
+        for child in node.children:
+            if child.type in def_types:
+                out.append(_signature(child, source))
+            collect(child)
+
+    collect(tree.root_node)
     return "\n".join(out) if out else "No classes/functions found."
 
 
 def read_function(ctx: ex6.Context, file: str, name: str) -> str:
     """Read a function or class body by name from a file."""
-    with open(file, "r") as f:
-        source = f.read()
-    tree = ast.parse(source)
-    lines = source.split('\n')
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
-            return "\n".join(lines[_node_start(node) : node.end_lineno])
-    return f"ERROR: '{name}' not found in {file}"
+    tree, source, mod_name = _parse_file(file)
+    def_types = DEFINITION_TYPES.get(mod_name, [])
 
+    def find(node):
+        for child in node.children:
+            if child.type in def_types and _get_name(child) == name:
+                return source[child.start_byte:child.end_byte].decode()
+            result = find(child)
+            if result:
+                return result
+        return None
 
-def write_function(ctx: ex6.Context, file: str, name: str, code: str) -> str:
-    """Replace a function or class by name in a file with new code."""
-    with open(file, "r") as f:
-        source = f.read()
-    tree = ast.parse(source)
-    lines = source.split('\n')
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
-            before = lines[:_node_start(node)]
-            after = lines[node.end_lineno:]
-            with open(file, "w") as f:
-                f.write("\n".join(before + code.split('\n') + after))
-            return f"Replaced '{name}' in {file}"
-    return f"ERROR: '{name}' not found in {file}"
+    result = find(tree.root_node)
+    return result if result else f"ERROR: '{name}' not found in {file}"
+
