@@ -761,8 +761,6 @@ def _render_chunks(chunks):
 def render_work_mode(buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
-    buf.rect_line(r, txt_color='blue')
-    buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
 
     # Build output list from messages
     output = []
@@ -790,13 +788,15 @@ def render_work_mode(buf, inpt, r):
             bg = 'bright_black' if role == 'user' else None
             lines = buf.print_wrapped(text, x+1, row, w-2, txt_color='white', bg_color=bg)
             if bg:
-                for r in range(lines):
-                    if 0 <= row+r < buf.h:
+                for i in range(lines):
+                    if 0 <= row+i < buf.h:
                         for c in range(w-2):
-                            if buf.bg_colors[row+r][x+1+c] is None:
-                                buf.bg_colors[row+r][x+1+c] = bg
+                            if buf.bg_colors[row+i][x+1+c] is None:
+                                buf.bg_colors[row+i][x+1+c] = bg
             row += lines
     ctx._prev_height = row - (y + 1 - scroll_offset)
+    buf.rect_line(r, txt_color='blue')
+    buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
