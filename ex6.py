@@ -155,7 +155,7 @@ class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
     current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
     mode: Literal["selection", "work", "help", "scroll"] = "selection"
-    _prev_mode: str = "selection"  # for restoring after scroll
+    _prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"  # for restoring after scroll
     term: 'Terminal' = None  # set in main
 
 
@@ -468,7 +468,31 @@ class ScreenBuffer:
         for i in range(h):
             self.put(x, y + i, '│', style, txt_color, bg_color)
 
-    def text_contained(self, txt: str, r: Rect, style=None, txt_color=None, bg_color=None, wrap=True, newlines=True) -> int:
+    def print_wrapped(self, txt: str, x: int, y: int, w: int, style=None, txt_color=None, bg_color=None) -> int:
+        """Write text with word-wrapping at width w. Returns number of lines consumed."""
+        lines = txt.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        row = 0
+        for line in lines:
+            if not line:
+                row += 1; continue
+            col = 0
+            words = line.split(' ')
+            for wi, word in enumerate(words):
+                if col > 0 and col + len(word) > w:
+                    row += 1; col = 0
+                for c in word:
+                    if col >= w: row += 1; col = 0
+                    self.put(x + col, y + row, c, style, txt_color, bg_color)
+                    col += 1
+                if wi < len(words) - 1 and col < w:
+                    col += 1  # space
+            row += 1
+        return max(row, 1)
+
+    def writer(self, x, y, w):
+        return WrapWriter(self, x, y, w)
+
+    def print_contained(self, txt: str, r: Rect, style=None, txt_color=None, bg_color=None, wrap=True, newlines=True) -> int:
         x, y, w, h = r
         if not newlines:
             txt = txt.replace('\n', ' ')
@@ -483,6 +507,25 @@ class ScreenBuffer:
         return row + 1 if col > 0 or row == 0 else row
 
 
+
+
+class WrapWriter:
+    def __init__(self, buf, x, y, w):
+        self.buf, self.x, self.y, self.w = buf, x, y, w
+        self.cx, self.cy = 0, 0
+
+    def put(self, ch, style=None, txt_color=None, bg_color=None):
+        if self.cx >= self.w:
+            self.cy += 1; self.cx = 0
+        self.buf.put(self.x + self.cx, self.y + self.cy, ch, style, txt_color, bg_color)
+        self.cx += 1
+
+    def newline(self):
+        self.cy += 1; self.cx = 0
+
+    @property
+    def lines(self):
+        return self.cy + 1 if self.cx > 0 else max(self.cy, 1)
 
 
 class Region(tuple):
@@ -743,9 +786,13 @@ def render_work_mode(buf, inpt, r):
         else:
             role, text = line
             bg = 'bright_black' if role == 'user' else None
+            lines = buf.print_wrapped(text, x+1, row, w-2, txt_color='white', bg_color=bg)
             if bg:
-                buf.puts(x+1, row, ' '*(w-2), bg_color=bg)
-            row += buf.text_contained(text, (x+1, row, w-2, 1), txt_color='white', bg_color=bg)
+                for r in range(lines):
+                    for c in range(w-2):
+                        if buf.bg_colors[row+r][x+1+c] is None:
+                            buf.bg_colors[row+r][x+1+c] = bg
+            row += lines
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):

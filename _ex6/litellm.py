@@ -198,13 +198,23 @@ def _build_tool_docs(ctx: ex6.Context) -> str:
     tools = ctx.get_tools()
     if not tools:
         return "" # no tools available
-    lines = ["# Tools/Functions\nYou have access to tools via code-blocks.\nTo call them, emit a ```tools ``` block, like so:", "```tools"]
-    lines.append('read_file("path")  # reads path')
-    lines.append("for f in files:    # loops work too")
+    lines = [
+    "# Tools/Functions",
+    "You have access to tools via tool-blocks.",
+    "tool-blocks are sandboxed python scripts, with a bunch of functions for you to use.",
+    "To call them, emit a ```tools ``` block-",
+    "",
+    "## EXAMPLE:",
+    "User: Can you read the files I talked about?",
+    "Assistant: Let me read the files:",
+    "```tools",
+    ]
+    lines.append('read_file("path")')
+    lines.append("for f in files:")
     lines.append('    read_file(f)')
     lines.append("```")
-    lines.append("")
-    lines.append("Available tools:")
+    lines.append(" ================ ")
+    lines.append("# Available Tools:")
     for name, fn in tools.items():
         sig = inspect.signature(fn)
         params = list(sig.parameters.values())[1:]  # skip ctx

@@ -29,17 +29,13 @@ def make_code_renderer(code: str, lang: str) -> ex6.RenderFn:
         try: lexer = get_lexer_by_name(lang)
         except: lexer = guess_lexer(code)
 
-        row, col = 0, 0
+        wr = buf.writer(x, y, w)
         for ttype, text in lexer.get_tokens(code):
             color = get_color(ttype)
             for ch in text:
-                if ch == '\n':
-                    row += 1
-                    col = 0
-                elif col < w:
-                    buf.put(x + col, y + row, ch, txt_color=color)
-                    col += 1
-        return row + 1
+                if ch == '\n': wr.newline()
+                else: wr.put(ch, txt_color=color)
+        return wr.lines
     return render
 
 

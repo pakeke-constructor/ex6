@@ -49,8 +49,8 @@ Be kinda like claude-code.
 
 - ~~plugin: agents WRITE files (create new, replace existing)~~
 - ~~plugin: agents UPDATE files (search/replace)~~
-- plugin: agents UPDATE files (add lines without deleting anything)
-- plugin: agents UPDATE functions (replace function)
+- ~~plugin: agents UPDATE files (add lines without deleting anything)~~
+- ~~plugin: agents UPDATE functions (replace function)~~
 
 - make txt flow bottom -> top in work-mode, instead of top->bottom?
 - Might require multiple passes
