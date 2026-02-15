@@ -164,7 +164,6 @@ def find_files(ctx: ex6.Context, pattern: str) -> str:
 
 def _read_headers_lua(tree, source):
     def_types = DEFINITION_TYPES['tree_sitter_lua']
-    lines = source.decode().split('\n')
     out = []
 
     def collect(node):
@@ -172,18 +171,7 @@ def _read_headers_lua(tree, source):
             if child.type in def_types:
                 if out:
                     out.append("")
-                sig = lines[child.start_point[0]].strip()
-                # collect preceding --- annotations by line
-                annotations = []
-                ln = child.start_point[0] - 1
-                while ln >= 0 and lines[ln].strip().startswith('---'):
-                    annotations.append(lines[ln].strip())
-                    ln -= 1
-                if annotations:
-                    annotations.reverse()
-                    out.append('\n'.join(annotations) + '\n' + sig)
-                else:
-                    out.append(sig)
+                out.append(_signature_lua(child, source))
                 if child.type not in ('variable_declaration', 'assignment_statement'):
                     collect(child)
             else:
