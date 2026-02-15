@@ -34,6 +34,7 @@ LANG_MODULES = {
     '.rb': 'tree_sitter_ruby',
     '.cs': 'tree_sitter_c_sharp',
     '.lua': 'tree_sitter_lua',
+    '.kt': 'tree_sitter_kotlin', '.kts': 'tree_sitter_kotlin',
 }
 
 DEFINITION_TYPES = {
@@ -48,6 +49,7 @@ DEFINITION_TYPES = {
     'tree_sitter_ruby': ['method', 'class', 'module'],
     'tree_sitter_c_sharp': ['method_declaration', 'class_declaration', 'interface_declaration'],
     'tree_sitter_lua': ['function_declaration', 'variable_declaration', 'assignment_statement'],
+    'tree_sitter_kotlin': ['function_declaration', 'class_declaration', 'object_declaration', 'companion_object'],
 }
 
 
@@ -105,9 +107,17 @@ def _signature_lua(node, source):
     return sig
 
 
+def _signature_kotlin(node, source):
+    for child in node.children:
+        if child.type in ('function_body', 'class_body', 'enum_class_body'):
+            return source[node.start_byte:child.start_byte].decode().rstrip()
+    return source[node.start_byte:node.end_byte].decode().split('\n')[0]
+
+
 _SIGNATURE_FNS = {
     'tree_sitter_python': _signature_python,
     'tree_sitter_lua': _signature_lua,
+    'tree_sitter_kotlin': _signature_kotlin,
 }
 
 
