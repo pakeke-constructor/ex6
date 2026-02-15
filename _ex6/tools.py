@@ -131,11 +131,16 @@ def read_headers(ctx: ex6.Context, file: str) -> str:
     def_types = DEFINITION_TYPES.get(mod_name, [])
     out = []
 
-    def collect(node):
+    def collect(node, indent=0):
+        prefix = "  " * indent
         for child in node.children:
             if child.type in def_types:
-                out.append(_signature(child, source))
-            collect(child)
+                if indent == 0 and out:
+                    out.append("")  # gap between top-level defs
+                out.append(prefix + _signature(child, source).strip())
+                collect(child, indent + 1)
+            else:
+                collect(child, indent)
 
     collect(tree.root_node)
     return "\n".join(out) if out else "No classes/functions found."

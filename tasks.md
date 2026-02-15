@@ -35,7 +35,8 @@ Be kinda like claude-code.
 
 - ~~Put spacing between user/assistant messages~~
 
-- plugin that allows agents to read files
+- ~~plugin that allows agents to read files~~
+
 - plugin allowing agents to read function headers / class headers
     - (Kotlin, Lua, Python)
     - (Use Tree-Sitter)
@@ -49,6 +50,10 @@ Be kinda like claude-code.
 - plugin: agents WRITE files (create new, replace existing)
 
 - make txt flow bottom -> top in work-mode, instead of top->bottom?
+- Might require multiple passes
+- (OR; OCCAMS RAZOR: keep track of how many lines are used up per printing; then, next iteration, offset the printing.)
+
+- proper text wrapping
 
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
@@ -58,7 +63,6 @@ Be kinda like claude-code.
 
 - Make LLM output better, cleaner, clearer.
 
-- Proper text wrapping
 
 
 - plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
