@@ -47,8 +47,8 @@ Be kinda like claude-code.
 - ~~plugin: agents can grep files~~
 
 
-- plugin: agents WRITE files (create new, replace existing)
-- plugin: agents UPDATE files (search/replace)
+- ~~plugin: agents WRITE files (create new, replace existing)~~
+- ~~plugin: agents UPDATE files (search/replace)~~
 - plugin: agents UPDATE files (add lines without deleting anything)
 - plugin: agents UPDATE functions (replace function)
 

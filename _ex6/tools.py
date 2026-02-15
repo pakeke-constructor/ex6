@@ -145,8 +145,8 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     return f"Wrote {len(content)} chars to {file}"
 
 
-def update_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
-    """Updates a file by searching and replacing a string."""
+def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
+    """Edit a file by searching and replacing a string."""
     with open(file, "r") as f:
         content = f.read()
     if search not in content:
