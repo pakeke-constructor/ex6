@@ -33,6 +33,7 @@ LANG_MODULES = {
     '.java': 'tree_sitter_java',
     '.rb': 'tree_sitter_ruby',
     '.cs': 'tree_sitter_c_sharp',
+    '.lua': 'tree_sitter_lua',
 }
 
 DEFINITION_TYPES = {
@@ -46,6 +47,7 @@ DEFINITION_TYPES = {
     'tree_sitter_java': ['method_declaration', 'class_declaration', 'interface_declaration'],
     'tree_sitter_ruby': ['method', 'class', 'module'],
     'tree_sitter_c_sharp': ['method_declaration', 'class_declaration', 'interface_declaration'],
+    'tree_sitter_lua': ['function_declaration', 'variable_declaration', 'assignment_statement'],
 }
 
 
@@ -68,24 +70,49 @@ def _get_name(node):
     return n.text.decode() if n else None
 
 
-def _signature(node, source):
-    """Extract signature (start of node to start of body), plus first docstring line."""
+def _signature_generic(node, source):
     body = node.child_by_field_name('body')
     if body:
-        sig = source[node.start_byte:body.start_byte].decode().rstrip().rstrip(':')
-    else:
-        sig = source[node.start_byte:node.end_byte].decode().split('\n')[0]
-    # append first docstring/comment if present
+        return source[node.start_byte:body.start_byte].decode().rstrip().rstrip(':')
+    return source[node.start_byte:node.end_byte].decode().split('\n')[0]
+
+
+def _signature_python(node, source):
+    sig = _signature_generic(node, source)
+    body = node.child_by_field_name('body')
     if body and body.children:
         first = body.children[0]
         if first.type in ('expression_statement', 'comment'):
             child = first.children[0] if first.children else first
-            if child.type == 'string' or child.type == 'comment':
+            if child.type in ('string', 'comment'):
                 doc = child.text.decode().strip().strip('"\' \n')
                 first_line = doc.split('\n')[0].strip()
                 if first_line:
                     sig += f'  # {first_line}'
     return sig
+
+
+def _signature_lua(node, source):
+    sig = source[node.start_byte:node.end_byte].decode().split('\n')[0]
+    annotations = []
+    sib = node.prev_sibling
+    while sib and sib.type == 'comment' and sib.text.decode().startswith('---'):
+        annotations.append(sib.text.decode())
+        sib = sib.prev_sibling
+    if annotations:
+        annotations.reverse()
+        return '\n'.join(annotations) + '\n' + sig
+    return sig
+
+
+_SIGNATURE_FNS = {
+    'tree_sitter_python': _signature_python,
+    'tree_sitter_lua': _signature_lua,
+}
+
+
+def _signature(node, source, mod_name):
+    return _SIGNATURE_FNS.get(mod_name, _signature_generic)(node, source)
 
 
 def read_file(ctx: ex6.Context, file: str) -> str:
@@ -125,9 +152,42 @@ def find_files(ctx: ex6.Context, pattern: str) -> str:
     return "\n".join(matches) if matches else "No matches."
 
 
+def _read_headers_lua(tree, source):
+    def_types = DEFINITION_TYPES['tree_sitter_lua']
+    lines = source.decode().split('\n')
+    out = []
+
+    def collect(node):
+        for child in node.children:
+            if child.type in def_types:
+                if out:
+                    out.append("")
+                sig = lines[child.start_point[0]].strip()
+                # collect preceding --- annotations by line
+                annotations = []
+                ln = child.start_point[0] - 1
+                while ln >= 0 and lines[ln].strip().startswith('---'):
+                    annotations.append(lines[ln].strip())
+                    ln -= 1
+                if annotations:
+                    annotations.reverse()
+                    out.append('\n'.join(annotations) + '\n' + sig)
+                else:
+                    out.append(sig)
+                if child.type not in ('variable_declaration', 'assignment_statement'):
+                    collect(child)
+            else:
+                collect(child)
+
+    collect(tree.root_node)
+    return "\n".join(out) if out else "No classes/functions found."
+
+
 def read_headers(ctx: ex6.Context, file: str) -> str:
     """Read class/function signatures from a file (no bodies)."""
     tree, source, mod_name = _parse_file(file)
+    if mod_name == 'tree_sitter_lua':
+        return _read_headers_lua(tree, source)
     def_types = DEFINITION_TYPES.get(mod_name, [])
     out = []
 
@@ -137,7 +197,7 @@ def read_headers(ctx: ex6.Context, file: str) -> str:
             if child.type in def_types:
                 if indent == 0 and out:
                     out.append("")  # gap between top-level defs
-                out.append(prefix + _signature(child, source).strip())
+                out.append(prefix + _signature(child, source, mod_name).strip())
                 collect(child, indent + 1)
             else:
                 collect(child, indent)
