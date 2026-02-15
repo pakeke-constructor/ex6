@@ -52,11 +52,22 @@ Be kinda like claude-code.
 - ~~plugin: agents UPDATE files (add lines without deleting anything)~~
 - ~~plugin: agents UPDATE functions (replace function)~~
 
-- make txt flow bottom -> top in work-mode, instead of top->bottom?
-- Might require multiple passes
-- (OR; OCCAMS RAZOR: keep track of how many lines are used up per printing; then, next iteration, offset the printing.)
+- ~~make txt flow bottom -> top in work-mode, instead of top->bottom?~~
+- ~~Might require multiple passes~~
+- ~~(OR; OCCAMS RAZOR: keep track of how many lines are used up per printing; then, next iteration, offset the printing.)~~
 
-- proper text wrapping
+- ~~proper text wrapping~~
+
+
+- ctx window usage at top of screen in work-mode
+
+- ctx window limits are accurate per model (and size is defined per-model)
+
+- cost-limits work: (daily limits, weekly limits)
+- track in %appdata%
+
+
+- caching for claude-model. Every 1024 tokens => cache inputs.
 
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
