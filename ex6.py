@@ -319,7 +319,8 @@ class Context:
     input_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
-    data: dict[str,Any] = field(default_factory=dict)
+    data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
+    _prev_height: int = 0 # how many lines were used in rendering last frame
 
     def token_count(self) -> int:
         if self.llm_result:
@@ -778,9 +779,10 @@ def render_work_mode(buf, inpt, r):
     for renderer in _output_renderers: renderer(output, ctx)
 
     # Render: (role,str) → text, callable → fn(buf,x,y,w)->height
-    row = y + 1
+    available = h - 2
+    scroll_offset = max(0, ctx._prev_height - available)
+    row = y + 1 - scroll_offset
     for line in output:
-        if row >= y + h - 1: break
         if callable(line):
             row += line(buf, x+1, row, w-2)
         else:
@@ -789,10 +791,12 @@ def render_work_mode(buf, inpt, r):
             lines = buf.print_wrapped(text, x+1, row, w-2, txt_color='white', bg_color=bg)
             if bg:
                 for r in range(lines):
-                    for c in range(w-2):
-                        if buf.bg_colors[row+r][x+1+c] is None:
-                            buf.bg_colors[row+r][x+1+c] = bg
+                    if 0 <= row+r < buf.h:
+                        for c in range(w-2):
+                            if buf.bg_colors[row+r][x+1+c] is None:
+                                buf.bg_colors[row+r][x+1+c] = bg
             row += lines
+    ctx._prev_height = row - (y + 1 - scroll_offset)
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
