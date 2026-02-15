@@ -37,17 +37,20 @@ Be kinda like claude-code.
 
 - ~~plugin that allows agents to read files~~
 
-- plugin allowing agents to read function headers / class headers
-    - (Kotlin, Lua, Python)
-    - (Use Tree-Sitter)
+- ~~plugin allowing agents to read function headers / class headers~~
+    - ~~(Kotlin, Lua, Python)~~
+    - ~~(Use Tree-Sitter)~~
 
-- plugin for agents to read specific function body
+- ~~plugin for agents to read specific function body~~
 
-- plugin: agents can glob files
+- ~~plugin: agents can glob files~~
+- ~~plugin: agents can grep files~~
 
-- plugin: agents UPDATE files (search/replace)
-- plugin: agents UPDATE functions (replace function)
+
 - plugin: agents WRITE files (create new, replace existing)
+- plugin: agents UPDATE files (search/replace)
+- plugin: agents UPDATE files (add lines without deleting anything)
+- plugin: agents UPDATE functions (replace function)
 
 - make txt flow bottom -> top in work-mode, instead of top->bottom?
 - Might require multiple passes
