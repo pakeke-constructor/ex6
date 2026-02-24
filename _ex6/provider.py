@@ -32,7 +32,8 @@ _last_reset = date.today()
 class ModelInfo:
     input: float # cost / Mtok
     output: float # cost / Mtok
-    output_cached: float # cost / Mtok
+    cache_read: float # cost / Mtok
+    cache_write: float = 0 # cost / Mtok (explicit caching, e.g. Anthropic)
 
 
 # $/M tokens
@@ -43,11 +44,17 @@ COSTS = {
     "openai/gpt-4.1-nano":              ModelInfo(0.1, 0.4, 0.025),
     "openai/o3":                        ModelInfo(2, 8, 0.5),
     "openai/o4-mini":                   ModelInfo(1.1, 4.4, 0.275),
-    "anthropic/claude-sonnet-4":        ModelInfo(3, 15, 0.3),
-    "anthropic/claude-haiku-4":         ModelInfo(0.8, 4, 0.08),
-    "anthropic/claude-opus-4":          ModelInfo(15, 75, 1.5),
+    "anthropic/claude-sonnet-4":        ModelInfo(3, 15, 0.3, 3.75),
+    "anthropic/claude-haiku-4":         ModelInfo(0.8, 4, 0.08, 1),
+    "anthropic/claude-opus-4":          ModelInfo(15, 75, 1.5, 18.75),
     "google/gemini-2.5-pro-preview":    ModelInfo(1.25, 10, 0.315),
     "google/gemini-2.5-flash-preview":  ModelInfo(0.15, 0.6, 0.0375),
+    "openai/gpt-5":                     ModelInfo(1.25, 10, 0.125),
+    "openai/gpt-5-codex":               ModelInfo(1.25, 10, 0.125),
+    "openai/gpt-5.2-codex":             ModelInfo(1.75, 14, 0.175),
+    "openai/codex-mini":                ModelInfo(1.5, 6, 0.375),
+    "anthropic/claude-opus-4.6":        ModelInfo(5, 25, 0.5, 6.25),
+    "anthropic/claude-sonnet-4.6":      ModelInfo(3, 15, 0.3, 3.75),
 }
 
 
