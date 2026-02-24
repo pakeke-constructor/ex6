@@ -4,7 +4,8 @@ import threading
 import inspect
 import time
 import ex6
-import openai, os
+import openai
+import os
 from datetime import date
 from RestrictedPython import compile_restricted_exec
 from dataclasses import dataclass
@@ -40,32 +41,32 @@ class ModelInfo:
 # $/M tokens (input, output, cache_read, cache_write)
 MODELS = {
     # --- Anthropic ---
-    "anthropic/claude-opus-4.6":         ModelInfo(5, 25, 0.5, 6.25),
-    "anthropic/claude-sonnet-4.6":       ModelInfo(3, 15, 0.3, 3.75),
-    "anthropic/claude-sonnet-4":         ModelInfo(3, 15, 0.3, 3.75),
-    "anthropic/claude-haiku-4":          ModelInfo(0.8, 4, 0.08, 1),
+    "anthropic/claude-opus-4.6":         ModelInfo(200_000, 5, 25, 0.5, 6.25),
+    "anthropic/claude-sonnet-4.6":       ModelInfo(200_000, 3, 15, 0.3, 3.75),
+    "anthropic/claude-sonnet-4":         ModelInfo(200_000, 3, 15, 0.3, 3.75),
+    "anthropic/claude-haiku-4":          ModelInfo(200_000, 0.8, 4, 0.08, 1),
     # --- OpenAI ---
-    "openai/gpt-5":                      ModelInfo(1.25, 10, 0.125),
-    "openai/gpt-5-mini":                 ModelInfo(0.25, 2, 0.025),
-    "openai/gpt-5-codex":               ModelInfo(1.25, 10, 0.125),
-    "openai/gpt-5.2-codex":             ModelInfo(1.75, 14, 0.175),
-    "openai/codex-mini":                 ModelInfo(1.5, 6, 0.375),
-    "openai/o4-mini":                    ModelInfo(1.1, 4.4, 0.275),
+    "openai/gpt-5":                      ModelInfo(400_000, 1.25, 10, 0.125),
+    "openai/gpt-5-mini":                 ModelInfo(400_000, 0.25, 2, 0.025),
+    "openai/gpt-5-codex":               ModelInfo(400_000, 1.25, 10, 0.125),
+    "openai/gpt-5.2-codex":             ModelInfo(400_000, 1.75, 14, 0.175),
+    "openai/codex-mini":                 ModelInfo(200_000, 1.5, 6, 0.375),
+    "openai/o4-mini":                    ModelInfo(200_000, 1.1, 4.4, 0.275),
     # --- Google ---
-    "google/gemini-3-pro-preview":       ModelInfo(2, 12, 0.2),
-    "google/gemini-3-flash-preview":     ModelInfo(0.5, 3, 0.05),
-    "google/gemini-2.5-pro":             ModelInfo(1.25, 10, 0.125),
-    "google/gemini-2.5-flash":           ModelInfo(0.3, 2.5, 0.03),
-    "google/gemini-2.5-flash-lite":      ModelInfo(0.1, 0.4, 0.01),
+    "google/gemini-3-pro-preview":       ModelInfo(1_048_576, 2, 12, 0.2),
+    "google/gemini-3-flash-preview":     ModelInfo(1_048_576, 0.5, 3, 0.05),
+    "google/gemini-2.5-pro":             ModelInfo(1_048_576, 1.25, 10, 0.125),
+    "google/gemini-2.5-flash":           ModelInfo(1_048_576, 0.3, 2.5, 0.03),
+    "google/gemini-2.5-flash-lite":      ModelInfo(1_048_576, 0.1, 0.4, 0.01),
     # --- xAI ---
-    "x-ai/grok-4":                       ModelInfo(3, 15, 0.75),
-    "x-ai/grok-4-fast":                  ModelInfo(0.2, 0.5, 0.05),
+    "x-ai/grok-4":                       ModelInfo(256_000, 3, 15, 0.75),
+    "x-ai/grok-4-fast":                  ModelInfo(2_000_000, 0.2, 0.5, 0.05),
     # --- DeepSeek ---
-    "deepseek/deepseek-chat-v3.1":       ModelInfo(0.15, 0.75, 0),
-    "deepseek/deepseek-r1":              ModelInfo(0.7, 2.5, 0),
+    "deepseek/deepseek-chat-v3.1":       ModelInfo(128_000, 0.15, 0.75, 0),
+    "deepseek/deepseek-r1":              ModelInfo(128_000, 0.7, 2.5, 0),
     # --- Other ---
-    "qwen/qwen3-coder":                  ModelInfo(0.22, 1, 0.022),
-    "moonshotai/kimi-k2.5":              ModelInfo(0.45, 2.2, 0.225),
+    "qwen/qwen3-coder":                  ModelInfo(262_144, 0.22, 1, 0.022),
+    "moonshotai/kimi-k2.5":              ModelInfo(262_144, 0.45, 2.2, 0.225),
 }
 
 
@@ -88,7 +89,7 @@ def _maybe_reset():
 
 
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
-    d = {"role": m.role, "content": m.get_msg(ctx)}
+    d: dict = {"role": m.role, "content": m.get_msg(ctx)}
     if m.tool_calls:
         d["tool_calls"] = [
             {"id": tc["id"], "type": "function",
@@ -121,7 +122,7 @@ def invoke_llm(ctx: ex6.Context):
     )
 
     try:
-        response = client.chat.completions.create(
+        response = client.chat.completions.create( # type: ignore[arg-type]
             model=ctx.model,
             messages=messages,
             stream=True,
@@ -145,8 +146,9 @@ def invoke_llm(ctx: ex6.Context):
             yield ex6.ResponseChunk("text", delta.content)
 
         # CoT (OpenRouter reasoning field)
-        if delta and hasattr(delta, 'reasoning') and delta.reasoning:
-            yield ex6.ResponseChunk("cot", delta.reasoning, len(delta.reasoning))
+        reasoning = getattr(delta, 'reasoning', None) if delta else None
+        if reasoning:
+            yield ex6.ResponseChunk("cot", reasoning, len(reasoning))
 
         if delta and delta.tool_calls:
             for tc in delta.tool_calls:
