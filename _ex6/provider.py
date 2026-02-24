@@ -30,6 +30,7 @@ _last_reset = date.today()
 
 @dataclass
 class ModelInfo:
+    context_window: int # ctx-window size
     input: float # cost / Mtok
     output: float # cost / Mtok
     cache_read: float # cost / Mtok
@@ -37,7 +38,7 @@ class ModelInfo:
 
 
 # $/M tokens (input, output, cache_read, cache_write)
-COSTS = {
+MODELS = {
     # --- Anthropic ---
     "anthropic/claude-opus-4.6":         ModelInfo(5, 25, 0.5, 6.25),
     "anthropic/claude-sonnet-4.6":       ModelInfo(3, 15, 0.3, 3.75),
@@ -175,9 +176,9 @@ def invoke_llm(ctx: ex6.Context):
         yield ex6.ResponseChunk("tool", json.dumps(tc))
 
     # Calculate cost
-    if ctx.model not in COSTS:
-        raise ValueError(f"no pricing for model '{ctx.model}' — add it to COSTS in provider.py")
-    info = COSTS[ctx.model]
+    if ctx.model not in MODELS:
+        raise ValueError(f"no pricing for model '{ctx.model}' — add it to MODELS in provider.py")
+    info = MODELS[ctx.model]
     cost = (input_tokens * info.input + output_tokens * info.output) / 1_000_000
     _daily_cost += cost
 
