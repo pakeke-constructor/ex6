@@ -1,6 +1,6 @@
 
 
-from _ex6.litellm import tool_system_prompt
+from _ex6.provider import tool_system_prompt
 from _ex6.tools import read_headers, read_function
 import ex6
 from ex6 import Context, Message
