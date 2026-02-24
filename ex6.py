@@ -797,6 +797,14 @@ def render_work_mode(buf, inpt, r):
     ctx._prev_height = row - (y + 1 - scroll_offset)
     buf.rect_line(r, txt_color='blue')
     buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
+    # token progress bar on top border
+    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
+    bar_w = min(w - 4, 20)
+    filled = int(ratio * bar_w)
+    bar = "█" * filled + "░" * (bar_w - filled)
+    bar_x = x + w - bar_w - 2 - len(f" {ctx.token_count()//1000}k/{ctx.max_tokens//1000}k") - 1
+    buf.puts(bar_x, y, bar, txt_color='cyan')
+    buf.puts(bar_x + bar_w + 1, y, f"{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", txt_color='cyan')
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):

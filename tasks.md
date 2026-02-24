@@ -67,7 +67,7 @@ Be kinda like claude-code.
 - track in %appdata%
 
 
-- caching for claude-model. Every 1024 tokens => cache inputs.
+- caching for claude-models. Every 1024 tokens => cache inputs.
 
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
@@ -77,6 +77,7 @@ Be kinda like claude-code.
 
 - Make LLM output better, cleaner, clearer.
 
+- NEW TOOL: read_warnings("my_file.py")  reads warnings/errors from file (pylance, LuaLS)
 
 
 - plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
