@@ -4,7 +4,7 @@ import threading
 import inspect
 import time
 import ex6
-from litellm import completion, completion_cost
+import openai, os
 from datetime import date
 from RestrictedPython import compile_restricted_exec
 
@@ -26,6 +26,21 @@ from RestrictedPython import compile_restricted_exec
 _daily_cost = 0.0
 _daily_limit = 10.0  # default $10/day
 _last_reset = date.today()
+
+# $/M tokens: (input, output)
+COSTS = {
+    "openai/gpt-4o": (2.5, 10),
+    "openai/gpt-4.1": (2, 8),
+    "openai/gpt-4.1-mini": (0.4, 1.6),
+    "openai/gpt-4.1-nano": (0.1, 0.4),
+    "openai/o3": (2, 8),
+    "openai/o4-mini": (1.1, 4.4),
+    "anthropic/claude-sonnet-4": (3, 15),
+    "anthropic/claude-haiku-4": (0.8, 4),
+    "anthropic/claude-opus-4": (15, 75),
+    "google/gemini-2.5-pro-preview": (1.25, 10),
+    "google/gemini-2.5-flash-preview": (0.15, 0.6),
+}
 
 
 def set_daily_limit(limit: float):
@@ -74,14 +89,19 @@ def invoke_llm(ctx: ex6.Context):
     use_code_mode = tool_system_prompt in ctx.messages
     tools = None if use_code_mode else (ctx.get_tool_schemas() or None)
 
+    client = openai.OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+    )
+
     try:
-        response = completion(
+        response = client.chat.completions.create(
             model=ctx.model,
             messages=messages,
             stream=True,
+            stream_options={"include_usage": True},
             tools=tools,
             timeout=30,
-            request_timeout=30,
         )
     except Exception as e:
         ex6.debug_print(f"completion failed: {e}")
@@ -97,6 +117,10 @@ def invoke_llm(ctx: ex6.Context):
 
         if delta and delta.content:
             yield ex6.ResponseChunk("text", delta.content)
+
+        # CoT (OpenRouter reasoning field)
+        if delta and hasattr(delta, 'reasoning') and delta.reasoning:
+            yield ex6.ResponseChunk("cot", delta.reasoning, len(delta.reasoning))
 
         if delta and delta.tool_calls:
             for tc in delta.tool_calls:
@@ -126,13 +150,11 @@ def invoke_llm(ctx: ex6.Context):
         yield ex6.ResponseChunk("tool", json.dumps(tc))
 
     # Calculate cost
-    cost = None
-    if input_tokens and output_tokens:
-        try:
-            cost = completion_cost(model=ctx.model, prompt_tokens=input_tokens, completion_tokens=output_tokens)
-            _daily_cost += cost
-        except:
-            pass
+    if ctx.model not in COSTS:
+        raise ValueError(f"no pricing for model '{ctx.model}' — add it to COSTS in litellm.py")
+    inp_rate, out_rate = COSTS[ctx.model]
+    cost = (input_tokens * inp_rate + output_tokens * out_rate) / 1_000_000
+    _daily_cost += cost
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
     _log_invoke(ctx, messages, result)
