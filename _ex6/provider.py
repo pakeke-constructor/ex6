@@ -7,6 +7,7 @@ import ex6
 import openai, os
 from datetime import date
 from RestrictedPython import compile_restricted_exec
+from dataclasses import dataclass
 
 
 # TODO:
@@ -27,19 +28,26 @@ _daily_cost = 0.0
 _daily_limit = 10.0  # default $10/day
 _last_reset = date.today()
 
-# $/M tokens: (input, output)
+@dataclass
+class ModelInfo:
+    input: float # cost / Mtok
+    output: float # cost / Mtok
+    output_cached: float # cost / Mtok
+
+
+# $/M tokens
 COSTS = {
-    "openai/gpt-4o": (2.5, 10),
-    "openai/gpt-4.1": (2, 8),
-    "openai/gpt-4.1-mini": (0.4, 1.6),
-    "openai/gpt-4.1-nano": (0.1, 0.4),
-    "openai/o3": (2, 8),
-    "openai/o4-mini": (1.1, 4.4),
-    "anthropic/claude-sonnet-4": (3, 15),
-    "anthropic/claude-haiku-4": (0.8, 4),
-    "anthropic/claude-opus-4": (15, 75),
-    "google/gemini-2.5-pro-preview": (1.25, 10),
-    "google/gemini-2.5-flash-preview": (0.15, 0.6),
+    "openai/gpt-4o":                    ModelInfo(2.5, 10, 1.25),
+    "openai/gpt-4.1":                   ModelInfo(2, 8, 0.5),
+    "openai/gpt-4.1-mini":              ModelInfo(0.4, 1.6, 0.1),
+    "openai/gpt-4.1-nano":              ModelInfo(0.1, 0.4, 0.025),
+    "openai/o3":                        ModelInfo(2, 8, 0.5),
+    "openai/o4-mini":                   ModelInfo(1.1, 4.4, 0.275),
+    "anthropic/claude-sonnet-4":        ModelInfo(3, 15, 0.3),
+    "anthropic/claude-haiku-4":         ModelInfo(0.8, 4, 0.08),
+    "anthropic/claude-opus-4":          ModelInfo(15, 75, 1.5),
+    "google/gemini-2.5-pro-preview":    ModelInfo(1.25, 10, 0.315),
+    "google/gemini-2.5-flash-preview":  ModelInfo(0.15, 0.6, 0.0375),
 }
 
 
@@ -151,9 +159,9 @@ def invoke_llm(ctx: ex6.Context):
 
     # Calculate cost
     if ctx.model not in COSTS:
-        raise ValueError(f"no pricing for model '{ctx.model}' — add it to COSTS in litellm.py")
-    inp_rate, out_rate = COSTS[ctx.model]
-    cost = (input_tokens * inp_rate + output_tokens * out_rate) / 1_000_000
+        raise ValueError(f"no pricing for model '{ctx.model}' — add it to COSTS in provider.py")
+    info = COSTS[ctx.model]
+    cost = (input_tokens * info.input + output_tokens * info.output) / 1_000_000
     _daily_cost += cost
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
