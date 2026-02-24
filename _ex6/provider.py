@@ -36,31 +36,35 @@ class ModelInfo:
     cache_write: float = 0 # cost / Mtok (explicit caching, e.g. Anthropic)
 
 
-# $/M tokens
+# $/M tokens (input, output, cache_read, cache_write)
 COSTS = {
-    "openai/gpt-4o":                    ModelInfo(2.5, 10, 1.25),
-    "openai/gpt-4.1":                   ModelInfo(2, 8, 0.5),
-    "openai/gpt-4.1-mini":              ModelInfo(0.4, 1.6, 0.1),
-    "openai/gpt-4.1-nano":              ModelInfo(0.1, 0.4, 0.025),
-    "openai/o4-mini":                   ModelInfo(1.1, 4.4, 0.275),
-    "anthropic/claude-sonnet-4":        ModelInfo(3, 15, 0.3, 3.75),
-    "anthropic/claude-haiku-4":         ModelInfo(0.8, 4, 0.08, 1),
-    "anthropic/claude-opus-4":          ModelInfo(15, 75, 1.5, 18.75),
-    "google/gemini-2.5-pro":             ModelInfo(1.25, 10, 0.125),
-    "google/gemini-2.5-pro-preview":     ModelInfo(1.25, 10, 0.125),
-    "google/gemini-2.5-flash":           ModelInfo(0.3, 2.5, 0.03),
-    "google/gemini-2.5-flash-preview":   ModelInfo(0.15, 0.6, 0.0375),
-    "google/gemini-2.5-flash-lite":      ModelInfo(0.1, 0.4, 0.01),
-    "google/gemini-3-pro-preview":       ModelInfo(2, 12, 0.2),
-    "google/gemini-3-flash-preview":     ModelInfo(0.5, 3, 0.05),
-    "qwen/qwen3-coder":                 ModelInfo(0.22, 1, 0.022),
+    # --- Anthropic ---
+    "anthropic/claude-opus-4.6":         ModelInfo(5, 25, 0.5, 6.25),
+    "anthropic/claude-sonnet-4.6":       ModelInfo(3, 15, 0.3, 3.75),
+    "anthropic/claude-sonnet-4":         ModelInfo(3, 15, 0.3, 3.75),
+    "anthropic/claude-haiku-4":          ModelInfo(0.8, 4, 0.08, 1),
+    # --- OpenAI ---
     "openai/gpt-5":                      ModelInfo(1.25, 10, 0.125),
     "openai/gpt-5-mini":                 ModelInfo(0.25, 2, 0.025),
     "openai/gpt-5-codex":               ModelInfo(1.25, 10, 0.125),
     "openai/gpt-5.2-codex":             ModelInfo(1.75, 14, 0.175),
-    "openai/codex-mini":                ModelInfo(1.5, 6, 0.375),
-    "anthropic/claude-opus-4.6":        ModelInfo(5, 25, 0.5, 6.25),
-    "anthropic/claude-sonnet-4.6":      ModelInfo(3, 15, 0.3, 3.75),
+    "openai/codex-mini":                 ModelInfo(1.5, 6, 0.375),
+    "openai/o4-mini":                    ModelInfo(1.1, 4.4, 0.275),
+    # --- Google ---
+    "google/gemini-3-pro-preview":       ModelInfo(2, 12, 0.2),
+    "google/gemini-3-flash-preview":     ModelInfo(0.5, 3, 0.05),
+    "google/gemini-2.5-pro":             ModelInfo(1.25, 10, 0.125),
+    "google/gemini-2.5-flash":           ModelInfo(0.3, 2.5, 0.03),
+    "google/gemini-2.5-flash-lite":      ModelInfo(0.1, 0.4, 0.01),
+    # --- xAI ---
+    "x-ai/grok-4":                       ModelInfo(3, 15, 0.75),
+    "x-ai/grok-4-fast":                  ModelInfo(0.2, 0.5, 0.05),
+    # --- DeepSeek ---
+    "deepseek/deepseek-chat-v3.1":       ModelInfo(0.15, 0.75, 0),
+    "deepseek/deepseek-r1":              ModelInfo(0.7, 2.5, 0),
+    # --- Other ---
+    "qwen/qwen3-coder":                  ModelInfo(0.22, 1, 0.022),
+    "moonshotai/kimi-k2.5":              ModelInfo(0.45, 2.2, 0.225),
 }
 
 
