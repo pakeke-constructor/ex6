@@ -340,6 +340,10 @@ class Context:
             return self.llm_result.input_tokens + self.llm_result.output_tokens
         return sum(len(m.content) // 4 for m in self.messages if isinstance(m.content, str))
 
+    def is_token_count_estimate(self) -> bool:
+        "If no llmResult, then we are estimating the token-count via the //4 trick."
+        return not self.llm_result
+
     def __post_init__(self):
         state.contexts[self.name] = self
 
@@ -683,7 +687,8 @@ def make_input(on_submit):
 @overridable
 def render_selection_mode_context_name(buf, ctx, x, y):
     selected = ctx is state.current
-    toks = f" ({ctx.token_count()//1000}k)"
+    approx = "~" if ctx.is_token_count_estimate() else ""
+    toks = f" ({approx}{ctx.token_count()//1000}k)"
     spin = "/—\\|"[int(time.time() * 12) % 4]
     suffix = f" {spin}" if ctx.is_running() else ""
 
@@ -738,7 +743,8 @@ def render_selection_right(buf, r):
     filled = int(ratio * bar_w)
     bar = "█" * filled + "░" * (bar_w - filled)
     buf.puts(x + 2, y + 2, bar, txt_color='cyan')
-    buf.puts(x + 2 + bar_w + 1, y + 2, f"{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", txt_color='cyan')
+    approx = "~" if ctx.is_token_count_estimate() else ""
+    buf.puts(x + 2 + bar_w + 1, y + 2, f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", txt_color='cyan')
 
 
     # messages
@@ -749,8 +755,8 @@ def render_selection_right(buf, r):
         if row >= y + h - 1: break
         role = msg.role
         content = msg.content if isinstance(msg.content, str) else "<fn>"
-        toks = len(content) * 4
-        buf.puts(x + 2, row, f"{role} ({toks//1000}k)", style='dim')
+        toks = len(content) // 4
+        buf.puts(x + 2, row, f"{role} (~{toks//1000}k)", style='dim')
         row += 1
     if not msgs:
         buf.puts(x + 2, row, "(no messages)", style='dim')
@@ -814,9 +820,11 @@ def render_work_mode(buf, inpt, r):
     bar_w = min(w - 4, 20)
     filled = int(ratio * bar_w)
     bar = "█" * filled + "░" * (bar_w - filled)
-    bar_x = x + w - bar_w - 2 - len(f" {ctx.token_count()//1000}k/{ctx.max_tokens//1000}k") - 1
+    approx = "~" if ctx.is_token_count_estimate() else ""
+    label = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
+    bar_x = x + w - bar_w - 2 - len(f" {label}") - 1
     buf.puts(bar_x, y, bar, txt_color='cyan')
-    buf.puts(bar_x + bar_w + 1, y, f"{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", txt_color='cyan')
+    buf.puts(bar_x + bar_w + 1, y, label, txt_color='cyan')
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):

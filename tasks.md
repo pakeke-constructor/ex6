@@ -58,22 +58,31 @@ Be kinda like claude-code.
 
 - ~~proper text wrapping~~
 
+- ~~restructure output_renderer~~
 
-- restructure output_renderer
+- ~~ctx window usage at top of screen in work-mode~~
+- ~~ctx window limits are accurate per model (and size is defined per-model)~~
 
-- ctx window usage at top of screen in work-mode
-
-- ctx window limits are accurate per model (and size is defined per-model)
+- ctx window actually counts tokens
 
 - cost-limits work: (daily limits, weekly limits)
 - track in %appdata%
-
 
 - caching for claude-models. Every 1024 tokens => cache inputs.
 
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
+
+- Make code-mode better
+=> give the LLMs an actual tool-call (instead of hacky ```tools ``` block)
+
+- Tell LLMs to write comments in code as a form of "CoT" thinking
+
+- Search tool
+- GLOB tool
+
+- Web-search for LLMs
 
 - Compress sys-prompts when viewing in compact-mode
 
