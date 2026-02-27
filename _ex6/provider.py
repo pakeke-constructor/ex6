@@ -50,6 +50,7 @@ MODELS = {
     "openai/gpt-5-mini":                 ModelInfo(400_000, 0.25, 2, 0.025),
     "openai/gpt-5-codex":               ModelInfo(400_000, 1.25, 10, 0.125),
     "openai/gpt-5.2-codex":             ModelInfo(400_000, 1.75, 14, 0.175),
+    "openai/gpt-5.1-codex-mini":         ModelInfo(400_000, 0.25, 2, 0.025),
     "openai/codex-mini":                 ModelInfo(200_000, 1.5, 6, 0.375),
     "openai/o4-mini":                    ModelInfo(200_000, 1.1, 4.4, 0.275),
     # --- Google ---

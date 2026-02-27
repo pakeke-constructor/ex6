@@ -765,7 +765,7 @@ def _render_chunks(chunks):
         if c.type == "text":
             parts.append(c.content)
         elif c.type == "cot":
-            parts.append(f"[thinking: {c.tokens} tokens]")
+            continue
         elif c.type == "tool":
             parts.append(c.content)
     return "".join(parts)
