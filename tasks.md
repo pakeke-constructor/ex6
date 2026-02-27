@@ -59,6 +59,8 @@ Be kinda like claude-code.
 - ~~proper text wrapping~~
 
 
+- restructure output_renderer
+
 - ctx window usage at top of screen in work-mode
 
 - ctx window limits are accurate per model (and size is defined per-model)

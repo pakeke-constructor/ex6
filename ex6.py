@@ -37,15 +37,15 @@ _output_renderers = []
 
 # Type aliases for output rendering
 RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
-OutputLine = Union[Tuple[str, str], RenderFn]  # (role, text) or render fn
-OutputRendererFn = Callable[[list, 'Context'], None]  # fn(output, ctx) -> None
+OutputLine = Union[str, RenderFn]  # str or render fn
+OutputRendererFn = Callable[[str, list, 'Context'], None]  # fn(role, lines, ctx) -> None
 
 def output_renderer(fn: OutputRendererFn) -> OutputRendererFn:
     '''
-    used like:
+    Called once per message. Mutate `lines` in-place (replace str with RenderFn).
 
     @ex6.output_renderer
-    def syntax_highlighting(output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+    def syntax_highlighting(role: str, lines: list[ex6.OutputLine], ctx: ex6.Context) -> None:
         ...
     '''
     _output_renderers.append(fn)
@@ -762,38 +762,37 @@ def render_work_mode(buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
 
-    # Build output list from messages
-    output = []
+    # Build per-message output: list of (role, lines)
+    message_outputs = []
     for msg in ctx.messages:
-        output.append(('', ''))
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
-        for line in c.split('\n'):
-            output.append((msg.role, line))
+        lines = c.split('\n')
+        for renderer in _output_renderers: renderer(msg.role, lines, ctx)
+        message_outputs.append((msg.role, lines))
     if ctx.is_running() and not ctx.llm_suspended:
-        output.append(('', ''))
-        for line in (_render_chunks(ctx.llm_current_output) + "█").split('\n'):
-            output.append(('assistant', line))
+        lines = (_render_chunks(ctx.llm_current_output) + "█").split('\n')
+        for renderer in _output_renderers: renderer('assistant', lines, ctx)
+        message_outputs.append(('assistant', lines))
 
-    for renderer in _output_renderers: renderer(output, ctx)
-
-    # Render: (role,str) → text, callable → fn(buf,x,y,w)->height
+    # Draw
     available = h - 2
     scroll_offset = max(0, ctx._prev_height - available)
     row = y + 1 - scroll_offset
-    for line in output:
-        if callable(line):
-            row += line(buf, x+1, row, w-2)
-        else:
-            role, text = line
-            bg = 'bright_black' if role == 'user' else None
-            lines = buf.print_wrapped(text, x+1, row, w-2, txt_color='white', bg_color=bg)
-            if bg:
-                for i in range(lines):
-                    if 0 <= row+i < buf.h:
-                        for c in range(w-2):
-                            if buf.bg_colors[row+i][x+1+c] is None:
-                                buf.bg_colors[row+i][x+1+c] = bg
-            row += lines
+    for role, lines in message_outputs:
+        row += 1  # spacer between messages
+        bg = 'bright_black' if role == 'user' else None
+        for line in lines:
+            if callable(line):
+                row += line(buf, x+1, row, w-2)
+            else:
+                drawn = buf.print_wrapped(line, x+1, row, w-2, txt_color='white', bg_color=bg)
+                if bg:
+                    for i in range(drawn):
+                        if 0 <= row+i < buf.h:
+                            for c in range(w-2):
+                                if buf.bg_colors[row+i][x+1+c] is None:
+                                    buf.bg_colors[row+i][x+1+c] = bg
+                row += drawn
     ctx._prev_height = row - (y + 1 - scroll_offset)
     buf.rect_line(r, txt_color='blue')
     buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
