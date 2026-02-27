@@ -243,28 +243,37 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
     return wrapper
 
 
+_TOOL_DOCS_HEADER = """\
+# Tools/Functions
+You have access to tools via tool-blocks.
+tool-blocks are sandboxed python scripts, with a bunch of functions for you to use.
+To call them, emit a ```tools ``` block-
+
+## EXAMPLE:
+USER: Can you read the files I talked about?
+ASSISTANT: Let me read the files:
+```tools
+read_file("file.txt")
+for f in files:
+    read_file(f)
+```
+USER: <tool_result file.txt>
+API_KEY=0xffffffffffffffffff
+</tool_result>
+<tool_result readme.txt>
+todo; write this
+</tool_result>
+ASSISTANT: file.txt contains an API key, and readme.txt has todo.
+
+================
+
+# Available Tools:"""
+
 def _build_tool_docs(ctx: ex6.Context) -> str:
-    """Generate tool documentation for system prompt."""
     tools = ctx.get_tools()
     if not tools:
-        return "" # no tools available
-    lines = [
-    "# Tools/Functions",
-    "You have access to tools via tool-blocks.",
-    "tool-blocks are sandboxed python scripts, with a bunch of functions for you to use.",
-    "To call them, emit a ```tools ``` block-",
-    "",
-    "## EXAMPLE:",
-    "User: Can you read the files I talked about?",
-    "Assistant: Let me read the files:",
-    "```tools",
-    ]
-    lines.append('read_file("path")')
-    lines.append("for f in files:")
-    lines.append('    read_file(f)')
-    lines.append("```")
-    lines.append(" ================ ")
-    lines.append("# Available Tools:")
+        return ""
+    lines = [_TOOL_DOCS_HEADER]
     for name, fn in tools.items():
         sig = inspect.signature(fn)
         params = list(sig.parameters.values())[1:]  # skip ctx
@@ -294,7 +303,7 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
     # Code mode
     tools = ctx.get_tools()
     results, threads = [], []
-    ctx.data["litellm:tool_results"] = results  # expose for renderer
+    ctx.data["provider:tool_results"] = results  # expose for renderer
 
     env = {}
     for name, fn in tools.items():
@@ -307,7 +316,7 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
 
     for t in threads:
         t.join()
-    ctx.data.pop("litellm:tool_results", None)
+    ctx.data.pop("provider:tool_results", None)
 
     if results:
         parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
