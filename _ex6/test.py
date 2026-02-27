@@ -56,7 +56,7 @@ You will be asked to assist with activities such as debugging code, refactoring 
 
 
 
-MODEL = "openrouter/openai/gpt-5.1-codex-mini"
+MODEL = "openai/gpt-5.1-codex-mini"
 
 c1 = Context("ctx1", messages=[
     coding_agent_system_prompt,

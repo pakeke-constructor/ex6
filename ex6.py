@@ -18,6 +18,19 @@ def debug_print(*args, **kwargs):
     msg = " ".join(str(a) for a in args)
     _debug_buffer.append(f"[{ts}] {msg}")
 
+
+_fatal_error = None
+
+import threading
+def _thread_excepthook(args):
+    # args: ExceptHookArgs(exc_type, exc_value, exc_traceback, thread)
+    import traceback
+    tb = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+    debug_print(f"THREAD CRASH [{args.thread}]:\n{tb}")
+    global _fatal_error
+    _fatal_error = (f"{args.exc_type.__name__}: {args.exc_value}")
+threading.excepthook = _thread_excepthook
+
 from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
 import time
@@ -871,6 +884,8 @@ if __name__ == "__main__":
 
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
         while True:
+            if _fatal_error:
+                raise RuntimeError(f"FATAL: {_fatal_error}")
             key = term.inkey(timeout=0.011)
             if key:
                 if str(key) == '\x03': break

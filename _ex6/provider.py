@@ -121,6 +121,7 @@ def invoke_llm(ctx: ex6.Context):
         api_key=os.environ.get("OPENROUTER_API_KEY", ""),
     )
 
+    ex6.debug_print(f"[invoke] model={ctx.model} msgs={len(messages)} code_mode={use_code_mode}")
     try:
         response = client.chat.completions.create( # type: ignore[arg-type]
             model=ctx.model,
@@ -131,15 +132,18 @@ def invoke_llm(ctx: ex6.Context):
             timeout=30,
         )
     except Exception as e:
-        ex6.debug_print(f"completion failed: {e}")
+        ex6.debug_print(f"[invoke] API EXCEPTION: {e}")
         yield ex6.LLMResult(error=str(e))
         return
 
+    ex6.debug_print("[invoke] stream started")
     input_tokens, output_tokens = 0, 0
     finish_reason = "stop"
     tool_calls_acc = {}
+    chunk_count = 0
 
     for chunk in response:
+        chunk_count += 1
         delta = chunk.choices[0].delta if chunk.choices else None
 
         if delta and delta.content:
@@ -168,6 +172,8 @@ def invoke_llm(ctx: ex6.Context):
             input_tokens = chunk.usage.prompt_tokens or 0
             output_tokens = chunk.usage.completion_tokens or 0
 
+    ex6.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
+
     tool_calls = []
     for tc in tool_calls_acc.values():
         try:
@@ -185,6 +191,7 @@ def invoke_llm(ctx: ex6.Context):
     _daily_cost += cost
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
+    ex6.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} tools={len(tool_calls)}")
     _log_invoke(ctx, messages, result)
     yield result
 
@@ -288,6 +295,7 @@ tool_system_prompt = ex6.Message(role="system", content=_build_tool_docs)
 
 @ex6.override
 def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
+    ex6.debug_print(f"[call_tools] CALLED, tool_calls={len(llm_result.tool_calls)}")
     # Get last assistant message
     content = ""
     for msg in reversed(ctx.messages):
@@ -295,13 +303,17 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
             content = msg.content if isinstance(msg.content, str) else ""
             break
 
+    ex6.debug_print(f"[call_tools] assistant content len={len(content)}, preview={content[:80]!r}")
     code = extract_tools_block(content)
+    ex6.debug_print(f"[call_tools] extracted code={code!r}")
     if not code:
         # Fall back to native tool calls
+        ex6.debug_print(f"[call_tools] no code block, falling back to native")
         return _call_tools_native(ctx, llm_result)
 
     # Code mode
     tools = ctx.get_tools()
+    ex6.debug_print(f"[call_tools] code mode, {len(tools)} tools available: {list(tools.keys())}")
     results, threads = [], []
     ctx.data["provider:tool_results"] = results  # expose for renderer
 
@@ -311,17 +323,20 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
 
     try:
         exec_sandboxed(code, env)
+        ex6.debug_print(f"[call_tools] exec done, {len(threads)} threads spawned")
     except Exception as e:
-        ex6.debug_print(f"code mode exec failed: {e}")
+        ex6.debug_print(f"[call_tools] exec FAILED: {e}")
 
     for t in threads:
         t.join()
+    ex6.debug_print(f"[call_tools] all threads joined, {len(results)} results")
     ctx.data.pop("provider:tool_results", None)
 
     if results:
         parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
         ctx.messages.append(ex6.Message(role="user", content="\n\n".join(parts)))
 
+    ex6.debug_print(f"[call_tools] returning {len(results) > 0}")
     return len(results) > 0
 
 
