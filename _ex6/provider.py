@@ -262,6 +262,7 @@ tool-blocks are sandboxed python scripts, with a bunch of functions for you to u
 To call them, emit a ```tools ``` block-
 
 ## EXAMPLE:
+<chat-example>
 USER: Can you read the files I talked about?
 ASSISTANT: Let me read the files:
 ```tools
@@ -276,8 +277,8 @@ API_KEY=0xffffffffffffffffff
 todo; write this
 </tool_result>
 ASSISTANT: file.txt contains an API key, and readme.txt has todo.
+</chat-example>
 
-================
 
 # Available Tools:"""
 
