@@ -9,11 +9,12 @@ import os
 from datetime import date
 from RestrictedPython import compile_restricted_exec
 from dataclasses import dataclass
+from typing import Optional
 
 
 # Daily budget tracking
-_daily_cost = None  # None = not yet loaded from disk
-_daily_limit = 10.0  # default $10/day
+_daily_cost: Optional[float] = None  # None = not yet loaded from disk
+_daily_limit: float = 10.0  # default $10/day
 _last_reset = date.today()
 _cost_lock = threading.Lock()
 
@@ -92,6 +93,25 @@ def increment_cost(cost: float):
         except: pass
 
 
+_cached_contexts = {}  # id(ctx) -> ttl
+
+def cache_manually(ctx: ex6.Context, ttl="1h"):
+    """Mark a context for long-lived system/tool caching. Idempotent."""
+    assert ctx.model.startswith("anthropic/"), "Manual caching only works on anthropic-models"
+    if id(ctx) in _cached_contexts:
+        return
+    _cached_contexts[id(ctx)] = ttl
+
+
+def _apply_cache_control(content: str | list[dict], cc: dict) -> list[dict]:
+    """Add cache_control to a message content field. Returns array-format content."""
+    if isinstance(content, str):
+        content = [{"type": "text", "text": content}]
+    if isinstance(content, list) and content:
+        content[-1]["cache_control"] = cc
+    return content
+
+
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
     d: dict = {"role": m.role, "content": m.get_msg(ctx)}
     if m.tool_calls:
@@ -116,6 +136,30 @@ def invoke_llm(ctx: ex6.Context):
     # If code mode prompt is in context, don't pass native tools
     use_code_mode = tool_system_prompt in ctx.messages
     tools = None if use_code_mode else (ctx.get_tool_schemas() or None)
+
+    # Anthropic prompt caching
+    if ctx.model.startswith("anthropic/"):
+        # 1h cache on last system message + tools (if ctx was registered via cache())
+        if id(ctx) in _cached_contexts:
+            ttl = _cached_contexts[id(ctx)]
+            cc = {"type": "ephemeral", "ttl": ttl}
+            # Only cache last system msg (prefix-based, covers everything before it)
+            for msg in reversed(messages):
+                if msg["role"] == "system":
+                    msg["content"] = _apply_cache_control(msg["content"], cc)
+                    break
+            if tools:
+                tools[-1]["function"]["cache_control"] = cc
+        # Ephemeral breakpoint on second-to-last message (conversation prefix)
+        # Skip if it already has a cache_control (e.g. 1h from above)
+        if len(messages) >= 2:
+            target = messages[-2]
+            content = target["content"]
+            already_cached = (isinstance(content, list) and content
+                              and "cache_control" in content[-1])
+            if not already_cached:
+                target["content"] = _apply_cache_control(
+                    content, {"type": "ephemeral"})
 
     client = openai.OpenAI(
         base_url="https://openrouter.ai/api/v1",

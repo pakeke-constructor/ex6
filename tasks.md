@@ -67,12 +67,16 @@ Be kinda like claude-code.
 
 - ~~cost-limits work: (daily limits, weekly limits)~~
 
+- ~~track in %appdata%~~
+
+- ~~Search tool~~
+- ~~GLOB tool~~
+
 
 
 ## ^^^^ DONE TASKS ^^^^
 
 
-- track in %appdata%
 
 - caching for claude-models. Every 1024 tokens => cache inputs.
 
@@ -85,8 +89,6 @@ Be kinda like claude-code.
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
 
-- Search tool
-- GLOB tool
 
 - Web-search for LLMs
 
