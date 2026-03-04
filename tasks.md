@@ -72,25 +72,28 @@ Be kinda like claude-code.
 - ~~Search tool~~
 - ~~GLOB tool~~
 
+- ~~caching for claude-models. Every 1024 tokens => cache inputs.~~
 
 
 ## ^^^^ DONE TASKS ^^^^
 
 
+- Make code-mode better
+=> give the LLMs an actual tool-call (instead of hacky ```tools ``` block)
 
-- caching for claude-models. Every 1024 tokens => cache inputs.
+
+Test caching for claude-models.
+
+- Web-search for LLMs
+
+- plugin: create *generic* system prompt; copy from claude-code.
 
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
-- Make code-mode better
-=> give the LLMs an actual tool-call (instead of hacky ```tools ``` block)
-
 - Tell LLMs to write comments in code as a form of "CoT" thinking
 
-
-- Web-search for LLMs
 
 - Compress sys-prompts when viewing in compact-mode
 
@@ -101,7 +104,6 @@ Be kinda like claude-code.
 
 - plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
 
-- plugin: create *generic* system prompt; copy from claude-code.
 
 
 - system-reminders infrastructure:
