@@ -133,9 +133,12 @@ def invoke_llm(ctx: ex6.Context):
 
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
 
-    # If code mode prompt is in context, don't pass native tools
+    # Code mode: single run_tools tool; otherwise native tool schemas
     use_code_mode = tool_system_prompt in ctx.messages
-    tools = None if use_code_mode else (ctx.get_tool_schemas() or None)
+    if use_code_mode and ctx.get_tools():
+        tools = [_build_run_tools_schema(ctx)]
+    else:
+        tools = ctx.get_tool_schemas() or None
 
     # Anthropic prompt caching
     if ctx.model.startswith("anthropic/"):
@@ -247,12 +250,6 @@ def invoke_llm(ctx: ex6.Context):
 
 # ==================== CODE MODE ====================
 
-def extract_tools_block(content: str) -> str | None:
-    """Extract ```tools block from content."""
-    m = re.search(r'```tools\s*\n(.*?)```', content, re.DOTALL)
-    return m.group(1).strip() if m else None
-
-
 # Sandbox setup
 SAFE_BUILTINS = {
     "None": None, "True": True, "False": False,
@@ -299,45 +296,36 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
     return wrapper
 
 
-_TOOL_DOCS_HEADER = """\
-# Tools/Functions
-You have access to tools via tool-blocks.
-tool-blocks are sandboxed python scripts, with a bunch of functions for you to use.
-To call them, emit a ```tools ``` block-
-
-## EXAMPLE:
-<chat-example>
-USER: Can you read the files I talked about?
-ASSISTANT: Let me read the files:
-```tools
-read_file("file.txt")
-for f in files:
-    read_file(f)
-```
-USER: <tool_result file.txt>
-API_KEY=0xffffffffffffffffff
-</tool_result>
-<tool_result readme.txt>
-todo; write this
-</tool_result>
-ASSISTANT: file.txt contains an API key, and readme.txt has todo.
-</chat-example>
-
-
-# Available Tools:"""
-
 def _build_tool_docs(ctx: ex6.Context) -> str:
     tools = ctx.get_tools()
     if not tools:
         return ""
-    lines = [_TOOL_DOCS_HEADER]
+    return "Use the run_tools tool to call functions. Multiple calls in one run_tools execute in parallel."
+
+
+def _build_run_tools_schema(ctx: ex6.Context) -> dict:
+    """Build a single 'run_tools' tool schema with available functions in description."""
+    tools = ctx.get_tools()
+    lines = ["Execute tool calls as Python code. Available functions:"]
     for name, fn in tools.items():
         sig = inspect.signature(fn)
         params = list(sig.parameters.values())[1:]  # skip ctx
         args = ", ".join(p.name for p in params)
         doc = (fn.__doc__ or "").split('\n')[0].strip()
         lines.append(f"  {name}({args}) - {doc}")
-    return "\n".join(lines)
+    lines.append("\nSupports loops, variables, and multiple calls (they run in parallel).")
+    return {
+        "type": "function",
+        "function": {
+            "name": "run_tools",
+            "description": "\n".join(lines),
+            "parameters": {
+                "type": "object",
+                "properties": {"code": {"type": "string", "description": "Python code calling the available functions"}},
+                "required": ["code"],
+            },
+        },
+    }
 
 
 tool_system_prompt = ex6.Message(role="system", content=_build_tool_docs)
@@ -345,27 +333,22 @@ tool_system_prompt = ex6.Message(role="system", content=_build_tool_docs)
 
 @ex6.override
 def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
-    ex6.debug_print(f"[call_tools] CALLED, tool_calls={len(llm_result.tool_calls)}")
-    # Get last assistant message
-    content = ""
-    for msg in reversed(ctx.messages):
-        if msg.role == "assistant":
-            content = msg.content if isinstance(msg.content, str) else ""
-            break
+    if not llm_result.tool_calls:
+        return False
 
-    ex6.debug_print(f"[call_tools] assistant content len={len(content)}, preview={content[:80]!r}")
-    code = extract_tools_block(content)
-    ex6.debug_print(f"[call_tools] extracted code={code!r}")
-    if not code:
-        # Fall back to native tool calls
-        ex6.debug_print(f"[call_tools] no code block, falling back to native")
-        return _call_tools_native(ctx, llm_result)
+    # Check for run_tools (code mode)
+    for tc in llm_result.tool_calls:
+        if tc["name"] == "run_tools":
+            return _call_run_tools(ctx, tc)
 
-    # Code mode
+    return _call_tools_native(ctx, llm_result)
+
+
+def _call_run_tools(ctx: ex6.Context, tc: dict) -> bool:
+    code = tc["args"].get("code", "") if isinstance(tc["args"], dict) else ""
     tools = ctx.get_tools()
-    ex6.debug_print(f"[call_tools] code mode, {len(tools)} tools available: {list(tools.keys())}")
     results, threads = [], []
-    ctx.data["provider:tool_results"] = results  # expose for renderer
+    ctx.data["provider:tool_results"] = results
 
     env = {}
     for name, fn in tools.items():
@@ -373,21 +356,21 @@ def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
 
     try:
         exec_sandboxed(code, env)
-        ex6.debug_print(f"[call_tools] exec done, {len(threads)} threads spawned")
     except Exception as e:
-        ex6.debug_print(f"[call_tools] exec FAILED: {e}")
+        ex6.debug_print(f"[run_tools] exec FAILED: {e}")
 
     for t in threads:
         t.join()
-    ex6.debug_print(f"[call_tools] all threads joined, {len(results)} results")
     ctx.data.pop("provider:tool_results", None)
 
     if results:
         parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
-        ctx.messages.append(ex6.Message(role="user", content="\n\n".join(parts)))
+        content = "\n\n".join(parts)
+    else:
+        content = "No tools were called."
 
-    ex6.debug_print(f"[call_tools] returning {len(results) > 0}")
-    return len(results) > 0
+    ctx.messages.append(ex6.Message(role="tool", content=content, tool_call_id=tc["id"]))
+    return True
 
 
 def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
@@ -445,19 +428,15 @@ def render_tools_block(role: str, output: list[ex6.OutputLine], ctx: ex6.Context
     i = 0
     while i < len(output):
         line = output[i]
-        if isinstance(line, str) and line.startswith('```tools'):
-            j = i + 1
-            code_lines = []
-            while j < len(output):
-                ln = output[j]
-                if isinstance(ln, str) and ln.strip() == '```':
-                    break
-                if isinstance(ln, str):
-                    code_lines.append(ln)
-                j += 1
-            code = '\n'.join(code_lines)
-            del output[i:j+1]
-            output.insert(i, make_tools_renderer(code, ctx))
+        if isinstance(line, str) and '"run_tools"' in line:
+            try:
+                tc = json.loads(line.strip())
+                if tc.get("name") == "run_tools":
+                    code = tc["args"]["code"]
+                    output[i] = make_tools_renderer(code, ctx)
+                    i += 1
+                    continue
+            except: pass
         i += 1
 
 
