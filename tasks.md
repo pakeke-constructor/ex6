@@ -63,9 +63,15 @@ Be kinda like claude-code.
 - ~~ctx window usage at top of screen in work-mode~~
 - ~~ctx window limits are accurate per model (and size is defined per-model)~~
 
-- ctx window actually counts tokens
+- ~~ctx window actually counts tokens~~
 
-- cost-limits work: (daily limits, weekly limits)
+- ~~cost-limits work: (daily limits, weekly limits)~~
+
+
+
+## ^^^^ DONE TASKS ^^^^
+
+
 - track in %appdata%
 
 - caching for claude-models. Every 1024 tokens => cache inputs.

@@ -11,23 +11,11 @@ from RestrictedPython import compile_restricted_exec
 from dataclasses import dataclass
 
 
-# TODO:
-# TODO:
-# TODO:
-# TODO:
-# Store the daily-usage in a file somewhere.
-# This isnt actually daily-usage; it is SESSION USAGE.
-###
-# Claude-code, opencode, cursor, etc, ALL of them use temporary files.
-# we should use temp-files too.
-# maybe just a function `ex6.get_save_directory()`?
-
-
-
 # Daily budget tracking
-_daily_cost = 0.0
+_daily_cost = None  # None = not yet loaded from disk
 _daily_limit = 10.0  # default $10/day
 _last_reset = date.today()
+_cost_lock = threading.Lock()
 
 @dataclass
 class ModelInfo:
@@ -76,17 +64,30 @@ def set_daily_limit(limit: float):
     _daily_limit = limit
 
 
-def get_daily_cost() -> float:
-    _maybe_reset()
-    return _daily_cost
-
-
-def _maybe_reset():
+def is_over_budget() -> bool:
     global _daily_cost, _last_reset
     today = date.today()
+    if _daily_cost is None:
+        try:
+            data = json.loads((ex6.get_folder() / "usage.json").read_text())
+            if data.get("date") == str(today):
+                _daily_cost = data.get("cost", 0.0)
+        except: pass
+        if _daily_cost is None:
+            _daily_cost = 0.0
     if today != _last_reset:
         _daily_cost = 0.0
         _last_reset = today
+    return _daily_cost >= _daily_limit
+
+
+def increment_cost(cost: float):
+    global _daily_cost
+    _daily_cost += cost
+    try:
+        (ex6.get_folder() / "usage.json").write_text(
+            json.dumps({"date": str(date.today()), "cost": _daily_cost}))
+    except: pass
 
 
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
@@ -104,12 +105,10 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
-    global _daily_cost
-    _maybe_reset()
-
-    if _daily_cost >= _daily_limit:
-        yield ex6.LLMResult(error=f"daily budget exceeded (${_daily_cost:.2f}/${_daily_limit:.2f})")
-        return
+    with _cost_lock:
+        if is_over_budget():
+            yield ex6.LLMResult(error=f"daily budget exceeded (${_daily_cost:.2f}/${_daily_limit:.2f})")
+            return
 
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
 
@@ -138,7 +137,7 @@ def invoke_llm(ctx: ex6.Context):
         return
 
     ex6.debug_print("[invoke] stream started")
-    input_tokens, output_tokens = 0, 0
+    input_tokens, output_tokens, cached_tokens = 0, 0, 0
     finish_reason = "stop"
     tool_calls_acc = {}
     chunk_count = 0
@@ -172,6 +171,9 @@ def invoke_llm(ctx: ex6.Context):
         if hasattr(chunk, 'usage') and chunk.usage:
             input_tokens = chunk.usage.prompt_tokens or 0
             output_tokens = chunk.usage.completion_tokens or 0
+            details = getattr(chunk.usage, 'prompt_tokens_details', None)
+            if details:
+                cached_tokens = getattr(details, 'cached_tokens', 0) or 0
 
     ex6.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
 
@@ -188,8 +190,10 @@ def invoke_llm(ctx: ex6.Context):
     if ctx.model not in MODELS:
         raise ValueError(f"no pricing for model '{ctx.model}' — add it to MODELS in provider.py")
     info = MODELS[ctx.model]
-    cost = (input_tokens * info.input + output_tokens * info.output) / 1_000_000
-    _daily_cost += cost
+    uncached_input = input_tokens - cached_tokens
+    cost = (uncached_input * info.input + cached_tokens * info.cache_read + output_tokens * info.output) / 1_000_000
+    with _cost_lock:
+        increment_cost(cost)
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
     ex6.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} tools={len(tool_calls)}")
