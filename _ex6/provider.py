@@ -66,28 +66,30 @@ def set_daily_limit(limit: float):
 
 def is_over_budget() -> bool:
     global _daily_cost, _last_reset
-    today = date.today()
-    if _daily_cost is None:
-        try:
-            data = json.loads((ex6.get_folder() / "usage.json").read_text())
-            if data.get("date") == str(today):
-                _daily_cost = data.get("cost", 0.0)
-        except: pass
+    with _cost_lock:
+        today = date.today()
         if _daily_cost is None:
+            try:
+                data = json.loads((ex6.get_folder() / "usage.json").read_text())
+                if data.get("date") == str(today):
+                    _daily_cost = data.get("cost", 0.0)
+            except: pass
+            if _daily_cost is None:
+                _daily_cost = 0.0
+        if today != _last_reset:
             _daily_cost = 0.0
-    if today != _last_reset:
-        _daily_cost = 0.0
-        _last_reset = today
-    return _daily_cost >= _daily_limit
+            _last_reset = today
+        return _daily_cost >= _daily_limit
 
 
 def increment_cost(cost: float):
     global _daily_cost
-    _daily_cost += cost
-    try:
-        (ex6.get_folder() / "usage.json").write_text(
-            json.dumps({"date": str(date.today()), "cost": _daily_cost}))
-    except: pass
+    with _cost_lock:
+        _daily_cost += cost
+        try:
+            (ex6.get_folder() / "usage.json").write_text(
+                json.dumps({"date": str(date.today()), "cost": _daily_cost}))
+        except: pass
 
 
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
@@ -105,10 +107,9 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
-    with _cost_lock:
-        if is_over_budget():
-            yield ex6.LLMResult(error=f"daily budget exceeded (${_daily_cost:.2f}/${_daily_limit:.2f})")
-            return
+    if is_over_budget():
+        yield ex6.LLMResult(error=f"daily budget exceeded (${_daily_cost:.2f}/${_daily_limit:.2f})")
+        return
 
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
 
@@ -192,8 +193,7 @@ def invoke_llm(ctx: ex6.Context):
     info = MODELS[ctx.model]
     uncached_input = input_tokens - cached_tokens
     cost = (uncached_input * info.input + cached_tokens * info.cache_read + output_tokens * info.output) / 1_000_000
-    with _cost_lock:
-        increment_cost(cost)
+    increment_cost(cost)
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
     ex6.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} tools={len(tool_calls)}")
