@@ -360,7 +360,6 @@ def _call_run_tools(ctx: ex6.Context, tc: dict) -> bool:
     code = tc["args"].get("code", "") if isinstance(tc["args"], dict) else ""
     tools = ctx.get_tools()
     results, threads = [], []
-    ctx.data["provider:tool_results"] = results
 
     env = {}
     for name, fn in tools.items():
@@ -372,14 +371,11 @@ def _call_run_tools(ctx: ex6.Context, tc: dict) -> bool:
         ex6.debug_print(f"[run_tools] exec FAILED: {e}")
         for t in threads:
             t.join()
-        ctx.data.pop("provider:tool_results", None)
         ctx.messages.append(ex6.Message(role="tool", content=f"ERROR: {e}", tool_call_id=tc["id"]))
         return True
 
     for t in threads:
         t.join()
-    ctx.data.pop("provider:tool_results", None)
-
     if results:
         parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
         content = "\n\n".join(parts)
