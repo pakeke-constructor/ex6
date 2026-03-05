@@ -1,7 +1,7 @@
 
 
 from _ex6.provider import tool_system_prompt
-from _ex6.tools import read_headers, read_function, glob, grep, search
+from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file
 import ex6
 from ex6 import Context, Message
 import time
@@ -81,6 +81,24 @@ Context("reader", messages=[
         "search": search,
         "read_headers": read_headers,
         "read_function": read_function,
+    }),
+], model=MODEL)
+
+
+
+
+Context("coder", messages=[
+    coding_agent_system_prompt,
+    tool_system_prompt,
+    Message(role="system", content="", tools={
+        "read_file": read_file,
+        "glob": glob,
+        "grep": grep,
+        "search": search,
+        "read_headers": read_headers,
+        "read_function": read_function,
+        "write_file": write_file,
+        "edit_file": edit_file,
     }),
 ], model=MODEL)
 
