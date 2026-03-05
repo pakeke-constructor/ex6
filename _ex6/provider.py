@@ -307,6 +307,16 @@ read_file("src/main.py")
 read_file("src/utils.py")
 glob("**/*.py")
 search("ctxBuf\\.*", match="**/*.py", max_results=5)
+edit_file(
+'''
+def dist(x, y):
+    return (x**2 + y**2)**0.5
+''',
+'''
+def dist(x: float, y: float) -> float:
+    return (x*x + y*y)**0.5
+'''
+)
 ```)
 """
 
