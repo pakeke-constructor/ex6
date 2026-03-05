@@ -158,7 +158,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     # 1. exact match
     if search in content:
         if content.count(search) > 1:
-            return f"ERROR: search string has {content.count(search)} matches in {file}; must be unique"
+            raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
         content = content.replace(search, replace, 1)
         with open(file, "w") as f:
             f.write(content)
@@ -179,7 +179,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             f.write(content)
         return f"Updated {file} (whitespace-normalized match)"
     if len(ws_matches) > 1:
-        return f"ERROR: {len(ws_matches)} whitespace-normalized matches in {file}; must be unique"
+        raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
     # 3. fuzzy line-level match
     THRESHOLD = 0.8
     matches = []
@@ -196,10 +196,10 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             f.write(content)
         return f"Updated {file} (fuzzy match, {ratio:.0%} similarity)"
     if len(matches) > 1:
-        return f"ERROR: {len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate."
+        raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
     best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
                 for i in range(len(content_lines) - n + 1)), default=0)
-    return f"ERROR: search string not found in {file} (best match: {best:.0%})"
+    raise ValueError(f"search string not found in {file} (best match: {best:.0%})")
 
 
 
@@ -314,5 +314,7 @@ def read_function(ctx: ex6.Context, file: str, name: str) -> str:
         return None
 
     result = find(tree.root_node)
-    return result if result else f"ERROR: '{name}' not found in {file}"
+    if not result:
+        raise ValueError(f"'{name}' not found in {file}")
+    return result
 
