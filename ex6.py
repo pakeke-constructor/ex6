@@ -676,8 +676,7 @@ def make_input(on_submit):
 
     def draw(buf: ScreenBuffer, inpt, r):
         nonlocal text, cursor
-        buf.rect_line(r, txt_color="bright_red")
-        inner_w = r[2] - 2
+        inner_w = r[2]
         if inner_w < 1: return
 
         typed = inpt.consume_text()
@@ -717,19 +716,18 @@ def make_input(on_submit):
         visual_lines = _wrap(text, inner_w)
         if not visual_lines: visual_lines = ['']
 
-        max_visible = r[3] - 2
+        max_visible = r[3]
         scroll = max(0, cy - max_visible + 1)
         for i, line in enumerate(visual_lines[scroll:scroll + max_visible]):
             vi = i + scroll
             if vi == cy:
-                buf.puts(r[0]+1, r[1]+1+i, line[:cx] + blink + line[cx:], txt_color='white')
+                buf.puts(r[0], r[1]+i, line[:cx] + blink + line[cx:], txt_color='white')
             else:
-                buf.puts(r[0]+1, r[1]+1+i, line, txt_color='white')
+                buf.puts(r[0], r[1]+i, line, txt_color='white')
 
     def get_height(width):
-        inner_w = width - 2
-        if inner_w < 1: return 3
-        return len(_wrap(text, inner_w)) + 2 if text else 3
+        if width < 1: return 1
+        return len(_wrap(text, width)) if text else 1
 
     draw.get_height = get_height
     return draw
@@ -849,37 +847,25 @@ def render_work_mode(buf, inpt, r):
         message_outputs.append(('assistant', lines))
 
     # Draw
-    available = h - 2
+    available = h
     scroll_offset = max(0, ctx._prev_height - available)
-    row = y + 1 - scroll_offset
+    row = y - scroll_offset
     for role, lines in message_outputs:
         row += 1  # spacer between messages
         bg = 'bright_black' if role == 'user' else None
         for line in lines:
             if callable(line):
-                row += line(buf, x+1, row, w-2)
+                row += line(buf, x, row, w)
             else:
-                drawn = buf.print_wrapped(line, x+1, row, w-2, txt_color='white', bg_color=bg)
+                drawn = buf.print_wrapped(line, x, row, w, txt_color='white', bg_color=bg)
                 if bg:
                     for i in range(drawn):
                         if 0 <= row+i < buf.h:
-                            for c in range(w-2):
-                                if buf.bg_colors[row+i][x+1+c] is None:
-                                    buf.bg_colors[row+i][x+1+c] = bg
+                            for c in range(w):
+                                if buf.bg_colors[row+i][x+c] is None:
+                                    buf.bg_colors[row+i][x+c] = bg
                 row += drawn
-    ctx._prev_height = row - (y + 1 - scroll_offset)
-    buf.rect_line(r, txt_color='blue')
-    buf.puts(x + 2, y, f" {ctx.name} ", txt_color='blue')
-    # token progress bar on top border
-    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
-    bar_w = min(w - 4, 20)
-    filled = int(ratio * bar_w)
-    bar = "█" * filled + "░" * (bar_w - filled)
-    approx = "~" if ctx.is_token_count_estimate() else ""
-    label = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
-    bar_x = x + w - bar_w - 2 - len(f" {label}") - 1
-    buf.puts(bar_x, y, bar, txt_color='cyan')
-    buf.puts(bar_x + bar_w + 1, y, label, txt_color='cyan')
+    ctx._prev_height = row - (y - scroll_offset)
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
@@ -888,8 +874,8 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
         spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         chunks = ctx.llm_current_output
-        x = input_r[0] + 1
-        y = input_r[1] + 1
+        x = input_r[0]
+        y = input_r[1]
         buf.puts(x, y, spin, txt_color='bright_yellow'); x += 4
         if chunks:
             toks = sum(c.tokens for c in chunks)
@@ -979,13 +965,19 @@ if __name__ == "__main__":
 
             term_r = Region(0,0, term.width, term.height)
 
-            # dynamic input height: expands upward with content
-            if state.mode == "work" and hasattr(input_box, 'get_height') and not state.current.is_running():
-                input_h = max(3, min(input_box.get_height(term.width), term.height // 2))
+            if state.mode == "work":
+                # work mode: no boxes, divider, 2 lines bottom padding
+                if hasattr(input_box, 'get_height') and not state.current.is_running():
+                    input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
+                else:
+                    input_h = 1
+                divider_y = term.height - 2 - input_h - 1
+                input_r = Region(0, divider_y + 1, term.width, input_h)
+                main_r = Region(0, 0, term.width, divider_y)
             else:
                 input_h = 3
-            input_r = Region(0, term.height - input_h, term.width, input_h)
-            main_r = Region(0, 0, term.width, term.height - input_h)
+                input_r = Region(0, term.height - input_h, term.width, input_h)
+                main_r = Region(0, 0, term.width, term.height - input_h)
 
             if state.mode == "scroll":
                 if inpt._keys:  # any key exits scroll mode
@@ -993,6 +985,7 @@ if __name__ == "__main__":
                     print(term.enter_fullscreen, end='', flush=True)
             elif state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
+                buf.hline((0, divider_y, term.width, 1), txt_color='bright_black')
                 render_work_mode_input(buf, inpt, input_r, input_box)
                 if inpt.consume('KEY_ESCAPE'):
                     state.mode = "selection"
@@ -1002,7 +995,8 @@ if __name__ == "__main__":
                 left, right = main_r.split_horizontal(1, 3)
                 render_selection_left(buf, inpt, left)
                 render_selection_right(buf, right)
-                input_box(buf, inpt, input_r)
+                buf.rect_line(input_r, txt_color='bright_red')
+                input_box(buf, inpt, input_r.shrink(1))
             else:
                 assert state.mode == "help"
                 # press h to toggle help.
