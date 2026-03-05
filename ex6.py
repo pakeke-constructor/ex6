@@ -127,6 +127,14 @@ def debug():
     for line in _debug_buffer:
         print(line)
 
+_log_keys = False
+@command
+def keys():
+    """Toggle key debug logging."""
+    global _log_keys
+    _log_keys = not _log_keys
+    debug_print(f"Key logging {'ON' if _log_keys else 'OFF'}")
+
 
 
 def get_folder() -> Path:
@@ -646,14 +654,43 @@ def make_input(on_submit):
         while i < len(text) and not text[i].isalnum(): i += 1
         return i
 
+    def _wrap(s, w):
+        """Split by newlines, then hard-wrap each to width w."""
+        lines = []
+        for part in s.split('\n'):
+            if not part:
+                lines.append('')
+            else:
+                while len(part) > w:
+                    lines.append(part[:w])
+                    part = part[w:]
+                lines.append(part)
+        return lines
+
+    def _cursor_visual(text, cursor, w):
+        """Convert cursor index to (visual_row, visual_col)."""
+        before = text[:cursor]
+        lines = _wrap(before, w)
+        if not lines: return 0, 0
+        return len(lines) - 1, len(lines[-1])
+
     def draw(buf: ScreenBuffer, inpt, r):
         nonlocal text, cursor
         buf.rect_line(r, txt_color="bright_red")
+        inner_w = r[2] - 2
+        if inner_w < 1: return
 
         typed = inpt.consume_text()
         if typed:
             text = text[:cursor] + typed + text[cursor:]
             cursor += len(typed)
+        # newline: shift+enter (KEY_ALT_ENTER on Windows), '\n', or Ctrl+J
+        for i, k in enumerate(inpt._keys):
+            if k.name == 'KEY_ALT_ENTER' or str(k) == '\n':
+                text = text[:cursor] + '\n' + text[cursor:]
+                cursor += 1
+                inpt._keys.pop(i)
+                break
         if inpt.consume('KEY_LEFT') and cursor > 0: cursor -= 1
         if inpt.consume('KEY_RIGHT') and cursor < len(text): cursor += 1
         if inpt.consume('KEY_BACKSPACE') and cursor > 0:
@@ -672,11 +709,29 @@ def make_input(on_submit):
         if inpt.consume('KEY_ENTER') and text:
             on_submit(text)
             text, cursor = "", 0
+            return
 
+        # render multiline with wrapping
         blink = "█" if int(time.time() * 3) % 2 == 0 else " "
-        # TODO: make it support multiline-inputs.
-        buf.puts(r[0]+1, r[1]+1, text[:cursor] + blink + text[cursor:], txt_color='white')
+        cy, cx = _cursor_visual(text, cursor, inner_w)
+        visual_lines = _wrap(text, inner_w)
+        if not visual_lines: visual_lines = ['']
 
+        max_visible = r[3] - 2
+        scroll = max(0, cy - max_visible + 1)
+        for i, line in enumerate(visual_lines[scroll:scroll + max_visible]):
+            vi = i + scroll
+            if vi == cy:
+                buf.puts(r[0]+1, r[1]+1+i, line[:cx] + blink + line[cx:], txt_color='white')
+            else:
+                buf.puts(r[0]+1, r[1]+1+i, line, txt_color='white')
+
+    def get_height(width):
+        inner_w = width - 2
+        if inner_w < 1: return 3
+        return len(_wrap(text, inner_w)) + 2 if text else 3
+
+    draw.get_height = get_height
     return draw
 
 
@@ -897,6 +952,8 @@ if __name__ == "__main__":
             key = term.inkey(timeout=0.011)
             if key:
                 if str(key) == '\x03': break
+                if _log_keys:
+                    debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
                 keys.append(key)
 
             if buf.w != term.width or buf.h != term.height:
@@ -922,8 +979,13 @@ if __name__ == "__main__":
 
             term_r = Region(0,0, term.width, term.height)
 
-            main_r, input_r = term_r.split_vertical(10, 1)
-            #input_r = Region(0, term.height - 1, term.width, 1)
+            # dynamic input height: expands upward with content
+            if state.mode == "work" and hasattr(input_box, 'get_height') and not state.current.is_running():
+                input_h = max(3, min(input_box.get_height(term.width), term.height // 2))
+            else:
+                input_h = 3
+            input_r = Region(0, term.height - input_h, term.width, input_h)
+            main_r = Region(0, 0, term.width, term.height - input_h)
 
             if state.mode == "scroll":
                 if inpt._keys:  # any key exits scroll mode

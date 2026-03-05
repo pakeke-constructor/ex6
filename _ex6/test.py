@@ -1,7 +1,7 @@
 
 
 from _ex6.provider import tool_system_prompt
-from _ex6.tools import read_headers, read_function, glob, grep
+from _ex6.tools import read_headers, read_function, glob, grep, search
 import ex6
 from ex6 import Context, Message
 import time
@@ -71,25 +71,20 @@ Context("foobar", model=MODEL)
 
 
 # Example context with file-read tool (code-mode)
-Context("file_reader", messages=[
+Context("reader", messages=[
     coding_agent_system_prompt,
     tool_system_prompt,
     Message(role="system", content="", tools={
         "read_file": read_file,
         "glob": glob,
-        "grep": grep
-    }),
-], model=MODEL)
-
-# Context with code-reading tools
-Context("code_reader", messages=[
-    coding_agent_system_prompt,
-    tool_system_prompt,
-    Message(role="system", content="", tools={
+        "grep": grep,
+        "search": search,
         "read_headers": read_headers,
         "read_function": read_function,
     }),
 ], model=MODEL)
+
+
 
 ex6.state.current = c1
 
