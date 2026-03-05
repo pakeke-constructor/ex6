@@ -298,14 +298,15 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
 
 _CODE_MODE_PROMPT = """\
 # Tools
-Use the `run_tools` tool. The `code` param is sandboxed Python (no imports).
-Multiple function calls in a single run_tools execute in parallel.
+Use the `run_tools` tool. The `code` param is sandboxed Python.
+IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
+Combine multiple calls in a single run_tools block — they execute in parallel and give faster results.
 Example code param:
 ```
 read_file("src/main.py")
 read_file("src/utils.py")
-for f in ["a.py", "b.py"]:
-    read_file(f)
+glob("**/*.py")
+search("ctxBuf\\.*", max_results=5)
 ```"""
 
 def _build_tool_docs(ctx: ex6.Context) -> str:
@@ -369,6 +370,11 @@ def _call_run_tools(ctx: ex6.Context, tc: dict) -> bool:
         exec_sandboxed(code, env)
     except Exception as e:
         ex6.debug_print(f"[run_tools] exec FAILED: {e}")
+        for t in threads:
+            t.join()
+        ctx.data.pop("provider:tool_results", None)
+        ctx.messages.append(ex6.Message(role="tool", content=f"ERROR: {e}", tool_call_id=tc["id"]))
+        return True
 
     for t in threads:
         t.join()
