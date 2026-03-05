@@ -127,6 +127,19 @@ def debug():
     for line in _debug_buffer:
         print(line)
 
+@command
+def context():
+    enter_scroll_mode()
+    ctx = state.current
+    if not ctx:
+        print("No active context."); return
+    print("\n\n\n\n\n")
+    print(f"=== Context: {ctx.name} ({ctx.model}) ===\n")
+    for i, msg in enumerate(ctx.messages):
+        print(f"--- [{i}] {msg.role} ---")
+        print(msg.get_msg(ctx))
+        print()
+
 _log_keys = False
 @command
 def keys():
