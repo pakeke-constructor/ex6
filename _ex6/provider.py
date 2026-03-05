@@ -307,7 +307,7 @@ read_file("src/main.py")
 read_file("src/utils.py")
 glob("**/*.py")
 search("ctxBuf\\.*", match="**/*.py", max_results=5)
-edit_file(
+edit_file("helpers.py",
 '''
 def dist(x, y):
     return (x**2 + y**2)**0.5

@@ -17,6 +17,7 @@ includes:
 import ex6
 import os
 import re
+import difflib
 import glob as _glob
 import importlib
 import tree_sitter
@@ -146,15 +147,31 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
 
 
 def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
-    """Edit a file by searching and replacing a string."""
+    """Edit a file by searching and replacing a string. Uses fuzzy matching if exact match fails."""
     with open(file, "r") as f:
         content = f.read()
-    if search not in content:
-        return f"ERROR: search string not found in {file}"
-    content = content.replace(search, replace, 1)
-    with open(file, "w") as f:
-        f.write(content)
-    return f"Updated {file}"
+    # exact match
+    if search in content:
+        content = content.replace(search, replace, 1)
+        with open(file, "w") as f:
+            f.write(content)
+        return f"Updated {file}"
+    # fuzzy line-level match
+    search_lines = search.splitlines()
+    content_lines = content.splitlines()
+    best_ratio, best_start = 0, -1
+    for i in range(len(content_lines) - len(search_lines) + 1):
+        chunk = content_lines[i:i + len(search_lines)]
+        ratio = difflib.SequenceMatcher(None, search_lines, chunk).ratio()
+        if ratio > best_ratio:
+            best_ratio, best_start = ratio, i
+    if best_ratio > 0.8:
+        original = "\n".join(content_lines[best_start:best_start + len(search_lines)])
+        content = content.replace(original, replace, 1)
+        with open(file, "w") as f:
+            f.write(content)
+        return f"Updated {file} (fuzzy match, {best_ratio:.0%} similarity)"
+    return f"ERROR: search string not found in {file} (best match: {best_ratio:.0%})"
 
 
 def glob(ctx: ex6.Context, pattern: str) -> str:
