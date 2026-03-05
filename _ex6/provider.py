@@ -296,11 +296,22 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
     return wrapper
 
 
+_CODE_MODE_PROMPT = """\
+# Tools
+Use the `run_tools` tool. The `code` param is sandboxed Python (no imports).
+Multiple function calls in a single run_tools execute in parallel.
+Example code param:
+```
+read_file("src/main.py")
+read_file("src/utils.py")
+for f in ["a.py", "b.py"]:
+    read_file(f)
+```"""
+
 def _build_tool_docs(ctx: ex6.Context) -> str:
-    tools = ctx.get_tools()
-    if not tools:
+    if not ctx.get_tools():
         return ""
-    return "Use the run_tools tool to call functions. Multiple calls in one run_tools execute in parallel."
+    return _CODE_MODE_PROMPT
 
 
 def _build_run_tools_schema(ctx: ex6.Context) -> dict:
