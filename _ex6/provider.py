@@ -1,7 +1,5 @@
 import json
-import re
 import threading
-import inspect
 import time
 import ex6
 import openai
@@ -133,12 +131,7 @@ def invoke_llm(ctx: ex6.Context):
 
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
 
-    # Code mode: single run_tools tool; otherwise native tool schemas
-    use_code_mode = tool_system_prompt in ctx.messages
-    if use_code_mode and ctx.get_tools():
-        tools = [_build_run_tools_schema(ctx)]
-    else:
-        tools = ctx.get_tool_schemas() or None
+    tools = ctx.get_tool_schemas() or None
 
     # Anthropic prompt caching
     if ctx.model.startswith("anthropic/"):
@@ -169,7 +162,7 @@ def invoke_llm(ctx: ex6.Context):
         api_key=os.environ.get("OPENROUTER_API_KEY", ""),
     )
 
-    ex6.debug_print(f"[invoke] model={ctx.model} msgs={len(messages)} code_mode={use_code_mode}")
+    ex6.debug_print(f"[invoke] model={ctx.model} msgs={len(messages)}")
     try:
         response = client.chat.completions.create( # type: ignore[arg-type]
             model=ctx.model,
@@ -296,109 +289,33 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
     return wrapper
 
 
-_CODE_MODE_PROMPT = """\
+def code_mode(tools: list) -> ex6.Message:
+    """System prompt + run_tools tool for sandboxed code execution."""
+    names = ", ".join(fn.__name__ for fn in tools)
+    def run_tools(ctx, code=""):
+        """Execute tool calls as Python code."""
+        results, threads = [], []
+        env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads) for fn in tools}
+        try:
+            exec_sandboxed(code, env)
+        except Exception as e:
+            for t in threads: t.join()
+            raise ValueError(f"exec failed: {e}")
+        for t in threads: t.join()
+        if results:
+            parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
+            return "\n\n".join(parts)
+        return "No tools were called."
+    return ex6.Message(role="system", content=f"""\
 # Tools
 Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
-Combine multiple calls in a single run_tools block — they execute in parallel and give faster results.
-Example code param:
-run_tools(```
-read_file("src/main.py")
-read_file("src/utils.py")
-glob("**/*.py")
-search("ctxBuf\\.*", match="**/*.py", max_results=5)
-edit_file("helpers.py",
-'''
-def dist(x, y):
-    return (x**2 + y**2)**0.5
-''',
-'''
-def dist(x: float, y: float) -> float:
-    return (x*x + y*y)**0.5
-'''
-)
-```)
-"""
-
-def _build_tool_docs(ctx: ex6.Context) -> str:
-    if not ctx.get_tools():
-        return ""
-    return _CODE_MODE_PROMPT
-
-
-def _build_run_tools_schema(ctx: ex6.Context) -> dict:
-    """Build a single 'run_tools' tool schema with available functions in description."""
-    tools = ctx.get_tools()
-    lines = ["Execute tool calls as Python code. Available functions:"]
-    for name, fn in tools.items():
-        sig = inspect.signature(fn)
-        params = list(sig.parameters.values())[1:]  # skip ctx
-        args = ", ".join(p.name for p in params)
-        doc = (fn.__doc__ or "").split('\n')[0].strip()
-        lines.append(f"  {name}({args}) - {doc}")
-    lines.append("\nSupports loops, variables, and multiple calls (they run in parallel).")
-    return {
-        "type": "function",
-        "function": {
-            "name": "run_tools",
-            "description": "\n".join(lines),
-            "parameters": {
-                "type": "object",
-                "properties": {"code": {"type": "string", "description": "Python code calling the available functions"}},
-                "required": ["code"],
-            },
-        },
-    }
-
-
-tool_system_prompt = ex6.Message(role="system", content=_build_tool_docs)
+Combine multiple calls in a single run_tools block — they execute in parallel.
+Available: {names}""", tools={"run_tools": run_tools})
 
 
 @ex6.override
 def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
-    if not llm_result.tool_calls:
-        return False
-
-    # Check for run_tools (code mode)
-    for tc in llm_result.tool_calls:
-        if tc["name"] == "run_tools":
-            return _call_run_tools(ctx, tc)
-
-    return _call_tools_native(ctx, llm_result)
-
-
-def _call_run_tools(ctx: ex6.Context, tc: dict) -> bool:
-    code = tc["args"].get("code", "") if isinstance(tc["args"], dict) else ""
-    tools = ctx.get_tools()
-    results, threads = [], []
-
-    env = {}
-    for name, fn in tools.items():
-        env[name] = _wrap_tool_threaded(fn, ctx, results, threads)
-
-    try:
-        exec_sandboxed(code, env)
-    except Exception as e:
-        ex6.debug_print(f"[run_tools] exec FAILED: {e}")
-        for t in threads:
-            t.join()
-        ctx.messages.append(ex6.Message(role="tool", content=f"ERROR: {e}", tool_call_id=tc["id"]))
-        return True
-
-    for t in threads:
-        t.join()
-    if results:
-        parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
-        content = "\n\n".join(parts)
-    else:
-        content = "No tools were called."
-
-    ctx.messages.append(ex6.Message(role="tool", content=content, tool_call_id=tc["id"]))
-    return True
-
-
-def _call_tools_native(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
-    """Native tool calling (OpenAI-style tool_calls)."""
     if not llm_result.tool_calls:
         return False
 

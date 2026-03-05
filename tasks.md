@@ -74,15 +74,20 @@ Be kinda like claude-code.
 
 - ~~caching for claude-models. Every 1024 tokens => cache inputs.~~
 
+~~=> give the LLMs an actual tool-call (instead of hacky ```tools ``` block)~~
+
+
 
 ## ^^^^ DONE TASKS ^^^^
 
 
-- Make code-mode better
-=> give the LLMs an actual tool-call (instead of hacky ```tools ``` block)
 
+- In code-mode, make it so edit_file doesnt spam the ctx window  (currently it puts ALL the args)
+- (do /context to see what i mean)
 
-Test caching for claude-models.
+- Make code-mode context-building better and more robust. currently its kinda janky.
+
+- Test caching for claude-models
 
 - Web-search for LLMs
 

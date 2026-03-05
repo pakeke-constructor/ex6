@@ -1,6 +1,6 @@
 
 
-from _ex6.provider import tool_system_prompt
+from _ex6 import provider
 from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file
 import ex6
 from ex6 import Context, Message
@@ -60,7 +60,6 @@ MODEL = "openai/gpt-5.1-codex-mini"
 
 c1 = Context("ctx1", messages=[
     coding_agent_system_prompt,
-    tool_system_prompt,
     Message(role="system", content="You are helpful."),
     Message(role="user", content="hello"),
     Message(role="assistant", content="Hi! How can I help?"),
@@ -70,18 +69,16 @@ Context("ctx2", model=MODEL)
 Context("foobar", model=MODEL)
 
 
-# Example context with file-read tool (code-mode)
 Context("reader", messages=[
     coding_agent_system_prompt,
-    tool_system_prompt,
-    Message(role="system", content="", tools={
-        "read_file": read_file,
-        "glob": glob,
-        "grep": grep,
-        "search": search,
-        "read_headers": read_headers,
-        "read_function": read_function,
-    }),
+    provider.code_mode([read_file, glob, grep, search, read_headers, read_function]),
+], model=MODEL)
+
+
+
+Context("ctx_1", messages=[
+    coding_agent_system_prompt,
+    provider.code_mode([glob, grep, search, read_headers, read_function]),
 ], model=MODEL)
 
 
@@ -89,17 +86,7 @@ Context("reader", messages=[
 
 Context("coder", messages=[
     coding_agent_system_prompt,
-    tool_system_prompt,
-    Message(role="system", content="", tools={
-        "read_file": read_file,
-        "glob": glob,
-        "grep": grep,
-        "search": search,
-        "read_headers": read_headers,
-        "read_function": read_function,
-        "write_file": write_file,
-        "edit_file": edit_file,
-    }),
+    provider.code_mode([read_file, glob, grep, search, read_headers, read_function, write_file, edit_file]),
 ], model=MODEL)
 
 
