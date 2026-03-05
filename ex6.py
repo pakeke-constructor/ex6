@@ -971,7 +971,7 @@ if __name__ == "__main__":
                     input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
                 else:
                     input_h = 1
-                divider_y = term.height - 2 - input_h - 1
+                divider_y = term.height - 4 - input_h - 1
                 input_r = Region(0, divider_y + 1, term.width, input_h)
                 main_r = Region(0, 0, term.width, divider_y)
             else:
@@ -985,8 +985,10 @@ if __name__ == "__main__":
                     print(term.enter_fullscreen, end='', flush=True)
             elif state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
-                buf.hline((0, divider_y, term.width, 1), txt_color='bright_black')
+                div_color = 'bright_yellow' if state.current.is_running() else 'bright_black'
+                buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
                 render_work_mode_input(buf, inpt, input_r, input_box)
+                buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
                 if inpt.consume('KEY_ESCAPE'):
                     state.mode = "selection"
             elif state.mode == "selection":
