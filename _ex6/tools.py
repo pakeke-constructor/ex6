@@ -202,7 +202,9 @@ def _read_headers_lua(tree, source):
     return "\n".join(out) if out else "No classes/functions found."
 
 
-_SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
+
+
+_SKIP_DIRS = set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'])
 
 
 def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 10) -> str:
