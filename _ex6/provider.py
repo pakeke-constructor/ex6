@@ -302,12 +302,13 @@ Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel and give faster results.
 Example code param:
-```
+run_tools(```
 read_file("src/main.py")
 read_file("src/utils.py")
 glob("**/*.py")
-search("ctxBuf\\.*", max_results=5)
-```"""
+search("ctxBuf\\.*", match="**/*.py", max_results=5)
+```)
+"""
 
 def _build_tool_docs(ctx: ex6.Context) -> str:
     if not ctx.get_tools():
