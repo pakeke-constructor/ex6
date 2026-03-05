@@ -465,8 +465,9 @@ class ScreenBuffer:
         for row in self.bg_colors: row[:] = [None] * self.w
 
     def flush(self, term):
-        out = term.home
+        out = ""
         for y in range(self.h):
+            out += term.move(y, 0)
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
