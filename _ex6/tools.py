@@ -202,6 +202,32 @@ def _read_headers_lua(tree, source):
     return "\n".join(out) if out else "No classes/functions found."
 
 
+_SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
+
+
+def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 10) -> str:
+    """Search file contents for a regex pattern, filtered by glob. Returns matching lines with context."""
+    regex = re.compile(pattern)
+    matched_files = _glob.glob(match, recursive=True)
+    results = []
+    for f in matched_files:
+        if not os.path.isfile(f):
+            continue
+        parts = f.replace("\\", "/").split("/")
+        if any(p in _SKIP_DIRS for p in parts):
+            continue
+        try:
+            with open(f, "r", errors="ignore") as fh:
+                for i, line in enumerate(fh, 1):
+                    if regex.search(line):
+                        results.append(f"{f}:{i}: {line.rstrip()}")
+                        if len(results) >= max_results:
+                            return "\n".join(results) + f"\n... (capped at {max_results} results)"
+        except (OSError, UnicodeDecodeError):
+            continue
+    return "\n".join(results) if results else "No matches."
+
+
 def read_headers(ctx: ex6.Context, file: str) -> str:
     """Read class/function signatures from a file (no bodies)."""
     tree, source, mod_name = _parse_file(file)
