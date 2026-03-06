@@ -299,6 +299,24 @@ def read_headers(ctx: ex6.Context, file: str) -> str:
     return "\n".join(out) if out else "No classes/functions found."
 
 
+def web_search(ctx: ex6.Context, query: str) -> str:
+    """Search the web. Returns top results as text."""
+    import urllib.request, urllib.parse, json
+    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        html = r.read().decode()
+    results = re.findall(r'class="result__a"[^>]*href="(.*?)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</span>', html, re.DOTALL)
+    if not results:
+        return "No results found."
+    out = []
+    for href, title, snippet in results[:8]:
+        title = re.sub(r'<[^>]+>', '', title).strip()
+        snippet = re.sub(r'<[^>]+>', '', snippet).strip()
+        out.append(f"{title}\n  {href}\n  {snippet}")
+    return "\n\n".join(out)
+
+
 def read_function(ctx: ex6.Context, file: str, name: str) -> str:
     """Read a function or class body by name from a file."""
     tree, source, mod_name = _parse_file(file)
