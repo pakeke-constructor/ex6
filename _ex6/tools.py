@@ -299,19 +299,29 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     return "\n".join(results) if results else "No matches."
 
 
-def read_file(ctx: ex6.Context, path: str) -> str:
-    """Read and return contents of a file at the given path."""
+def _add_line_numbers(text: str, start: int = 1) -> str:
+    lines = text.split('\n')
+    w = len(str(start + len(lines) - 1))
+    return "\n".join(f"{i:>{w}}: {line}" for i, line in enumerate(lines, start))
+
+def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
+    """Read and return contents of a file at the given path. Set line_numbers=True to prepend line numbers."""
     with open(path, "r") as f:
         content = f.read()
     _mark_read(ctx, path)
+    if line_numbers:
+        return _add_line_numbers(content)
     return content
 
 
-def read_headers(ctx: ex6.Context, file: str) -> str:
-    """Read class/function signatures from a file (no bodies)."""
+def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
+    """Read class/function signatures from a file (no bodies). Set line_numbers=True to prepend line numbers."""
     tree, source, mod_name = _parse_file(file)
     if mod_name == 'tree_sitter_lua':
-        return _read_headers_lua(tree, source)
+        result = _read_headers_lua(tree, source)
+        if line_numbers:
+            return _add_line_numbers(result)
+        return result
     def_types = DEFINITION_TYPES.get(mod_name, [])
     out = []
 
@@ -321,7 +331,12 @@ def read_headers(ctx: ex6.Context, file: str) -> str:
             if child.type in def_types:
                 if indent == 0 and out:
                     out.append("")  # gap between top-level defs
-                out.append(prefix + _signature(child, source, mod_name).strip())
+                line_no = source[:child.start_byte].count(b'\n') + 1
+                sig = _signature(child, source, mod_name).strip()
+                if line_numbers:
+                    out.append(f"{line_no}: {prefix}{sig}")
+                else:
+                    out.append(prefix + sig)
                 collect(child, indent + 1)
             else:
                 collect(child, indent)
@@ -348,15 +363,19 @@ def web_search(ctx: ex6.Context, query: str) -> str:
     return "\n\n".join(out)
 
 
-def read_function(ctx: ex6.Context, file: str, name: str) -> str:
-    """Read a function or class body by name from a file."""
+def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True) -> str:
+    """Read a function or class body by name from a file. Set line_numbers=True to prepend line numbers."""
     tree, source, mod_name = _parse_file(file)
     def_types = DEFINITION_TYPES.get(mod_name, [])
 
     def find(node):
         for child in node.children:
             if child.type in def_types and _get_name(child) == name:
-                return source[child.start_byte:child.end_byte].decode()
+                start_line = source[:child.start_byte].count(b'\n') + 1
+                text = source[child.start_byte:child.end_byte].decode()
+                if line_numbers:
+                    return _add_line_numbers(text, start_line)
+                return text
             result = find(child)
             if result:
                 return result
