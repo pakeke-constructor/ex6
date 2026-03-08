@@ -76,20 +76,21 @@ Be kinda like claude-code.
 
 ~~=> give the LLMs an actual tool-call (instead of hacky ```tools ``` block)~~
 
+- ~~Web-search for LLMs~~
+
+- ~~In code-mode, make it so edit_file doesnt spam the ctx window  (currently it puts ALL the args)~~
+- ~~(do /context to see what i mean)~~
+
 
 
 ## ^^^^ DONE TASKS ^^^^
 
 
 
-- In code-mode, make it so edit_file doesnt spam the ctx window  (currently it puts ALL the args)
-- (do /context to see what i mean)
 
 - Make code-mode context-building better and more robust. currently its kinda janky.
 
 - Test caching for claude-models
-
-- Web-search for LLMs
 
 - plugin: create *generic* system prompt; copy from claude-code.
 

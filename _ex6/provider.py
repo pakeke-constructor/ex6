@@ -274,7 +274,10 @@ def exec_sandboxed(code: str, env: dict):
 def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
     """Wrap tool to run in thread. Appends result dict to results list."""
     def wrapper(*args, **kwargs):
-        call_str = f'{fn.__name__}({", ".join(repr(a) for a in args)})'
+        def _short(a, maxlen=40):
+            s = repr(a)
+            return s if len(s) <= maxlen else s[:maxlen] + '...'
+        call_str = f'{fn.__name__}({", ".join(_short(a) for a in args)})'
         result = {"call": call_str, "value": None}
         results.append(result)
         def run():
