@@ -22,6 +22,27 @@ import glob as _glob
 import importlib
 import tree_sitter
 import time
+import hashlib
+
+
+def _file_hash(path):
+    with open(path, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
+
+def _get_read_hashes(ctx):
+    return ctx.data.setdefault('_read_hashes', {})
+
+def _check_read(ctx, path):
+    h = _get_read_hashes(ctx)
+    p = os.path.abspath(path)
+    if p not in h:
+        raise ValueError(f"Must read_file('{path}') before editing it.")
+    if _file_hash(p) != h[p]:
+        del h[p]
+        raise ValueError(f"'{path}' changed since last read. Re-read it first.")
+
+def _mark_read(ctx, path):
+    _get_read_hashes(ctx)[os.path.abspath(path)] = _file_hash(path)
 
 
 LANG_MODULES = {
@@ -128,22 +149,21 @@ def _signature(node, source, mod_name):
     return _SIGNATURE_FNS.get(mod_name, _signature_generic)(node, source)
 
 
-def read_file(ctx: ex6.Context, file: str) -> str:
-    "Reads a file and returns its contents."
-    with open(file, "r") as f:
-        return f.read()
-
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     """
     Writes content to a file.
     If the file exists, it is cleared.
     If the file doesn't exist, a new file is created.
+    Existing files must be read first.
     """
+    if os.path.exists(file):
+        _check_read(ctx, file)
     d = os.path.dirname(file)
     if d: os.makedirs(d, exist_ok=True)
     with open(file, "w") as f:
         f.write(content)
+    _mark_read(ctx, file)
     return f"Wrote {len(content)} chars to {file}"
 
 
@@ -154,19 +174,26 @@ def _ws_normalize(s):
 
 def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     """Edit a file by searching and replacing a string. Uses fuzzy matching if exact match fails."""
+    _check_read(ctx, file)
+
     with open(file, "r") as f:
         content = f.read()
+
+    def confirm_edit(content):
+        with open(file, "w") as f:
+            f.write(content)
+        _mark_read(ctx, file)
+        return f"Updated {file}"
+
     # 1. exact match
     if search in content:
         if content.count(search) > 1:
             raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
-        content = content.replace(search, replace, 1)
-        with open(file, "w") as f:
-            f.write(content)
-        return f"Updated {file}"
+        return confirm_edit(content.replace(search, replace, 1))
     search_lines = search.splitlines()
     content_lines = content.splitlines()
     n = len(search_lines)
+
     # 2. whitespace-insensitive match
     search_ws = [_ws_normalize(l) for l in search_lines]
     ws_matches = []
@@ -175,12 +202,10 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             ws_matches.append(i)
     if len(ws_matches) == 1:
         original = "\n".join(content_lines[ws_matches[0]:ws_matches[0] + n])
-        content = content.replace(original, replace, 1)
-        with open(file, "w") as f:
-            f.write(content)
-        return f"Updated {file} (whitespace-normalized match)"
+        return confirm_edit(content.replace(original, replace, 1))
     if len(ws_matches) > 1:
         raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
+
     # 3. fuzzy line-level match
     THRESHOLD = 0.8
     matches = []
@@ -192,10 +217,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     if len(matches) == 1:
         ratio, start = matches[0]
         original = "\n".join(content_lines[start:start + n])
-        content = content.replace(original, replace, 1)
-        with open(file, "w") as f:
-            f.write(content)
-        return f"Updated {file} (fuzzy match, {ratio:.0%} similarity)"
+        return confirm_edit(content.replace(original, replace, 1))
     if len(matches) > 1:
         raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
     best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
@@ -280,7 +302,9 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
 def read_file(ctx: ex6.Context, path: str) -> str:
     """Read and return contents of a file at the given path."""
     with open(path, "r") as f:
-        return f.read()
+        content = f.read()
+    _mark_read(ctx, path)
+    return content
 
 
 def read_headers(ctx: ex6.Context, file: str) -> str:
