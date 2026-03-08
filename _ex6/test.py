@@ -1,43 +1,13 @@
 
 
 from _ex6 import provider
-from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file
+from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file, read_file
 import ex6
 from ex6 import Context, Message
 import time
 import math
 
 
-
-def read_file(ctx: ex6.Context, path: str) -> str:
-    """Read and return contents of a file at the given path."""
-    time.sleep(3)
-    with open(path, "r") as f:
-        return f.read()
-
-
-
-def ask_user(ctx: ex6.Context, question: str) -> str:
-    """Ask user a question and wait for their response. Blocks until answered."""
-    result = [None]
-
-    def on_submit(text):
-        result[0] = text
-        ctx.input_stack.pop()
-
-    input_draw = ex6.make_input(on_submit)
-
-    def draw(buf: ex6.ScreenBuffer, inpt, r):
-        x, y, w, h = r
-        buf.puts(x, y, f"? {question}", txt_color='yellow')
-        input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
-
-    ctx.push_ui(draw)
-
-    while draw in ctx.input_stack:
-        time.sleep(0.05)
-
-    return result[0] or ""
 
 
 coding_agent_system_prompt = ex6.Message(

@@ -21,6 +21,7 @@ import difflib
 import glob as _glob
 import importlib
 import tree_sitter
+import time
 
 
 LANG_MODULES = {
@@ -276,6 +277,12 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     return "\n".join(results) if results else "No matches."
 
 
+def read_file(ctx: ex6.Context, path: str) -> str:
+    """Read and return contents of a file at the given path."""
+    with open(path, "r") as f:
+        return f.read()
+
+
 def read_headers(ctx: ex6.Context, file: str) -> str:
     """Read class/function signatures from a file (no bodies)."""
     tree, source, mod_name = _parse_file(file)
@@ -335,4 +342,30 @@ def read_function(ctx: ex6.Context, file: str, name: str) -> str:
     if not result:
         raise ValueError(f"'{name}' not found in {file}")
     return result
+
+
+
+
+
+def ask_user(ctx: ex6.Context, question: str) -> str:
+    """Ask user a question and wait for their response. Blocks until answered."""
+    result = [None]
+
+    def on_submit(text):
+        result[0] = text
+        ctx.input_stack.pop()
+
+    input_draw = ex6.make_input(on_submit)
+
+    def draw(buf: ex6.ScreenBuffer, inpt, r):
+        x, y, w, h = r
+        buf.puts(x, y, f"? {question}", txt_color='yellow')
+        input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
+
+    ctx.push_ui(draw)
+
+    while draw in ctx.input_stack:
+        time.sleep(0.05)
+
+    return result[0] or ""
 
