@@ -87,7 +87,6 @@ Be kinda like claude-code.
 
 
 
-
 - Make code-mode context-building better and more robust. currently its kinda janky.
 
 - Test caching for claude-models
