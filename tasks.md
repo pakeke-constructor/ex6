@@ -83,12 +83,11 @@ Be kinda like claude-code.
 
 - ~~extract code-mode to its own plugin~~
 
+- ~~Make code-mode context-building better and more robust. currently its kinda janky.~~
 
 
 ## ^^^^ DONE TASKS ^^^^
 
-
-- Make code-mode context-building better and more robust. currently its kinda janky.
 
 - Test caching for claude-models
 
