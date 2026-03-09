@@ -56,12 +56,7 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
 
 
 def make_code_mode_tool(tools: list):
-    pass
-
-
-def make_code_mode_system_prompt(tools: list) -> ex6.Message:
-    """System prompt + run_tools tool for sandboxed code execution."""
-    names = ", ".join(fn.__name__ for fn in tools)
+    """Create the run_tools tool function for sandboxed code execution."""
     def run_tools(ctx, code=""):
         """Execute tool calls as Python code.
         - Do NOT use import statements.
@@ -78,6 +73,13 @@ def make_code_mode_system_prompt(tools: list) -> ex6.Message:
             parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
             return "\n\n".join(parts)
         return "No tools were called."
+    return run_tools
+
+
+def make_code_mode_system_prompt(tools: list) -> ex6.Message:
+    """System prompt + run_tools tool for sandboxed code execution."""
+    names = ", ".join(fn.__name__ for fn in tools)
+    run_tools = make_code_mode_tool(tools)
     return ex6.Message(role="system", content=f"""\
 # Tools
 Use the `run_tools` tool. The `code` param is sandboxed Python.
