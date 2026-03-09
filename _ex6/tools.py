@@ -305,7 +305,10 @@ def _add_line_numbers(text: str, start: int = 1) -> str:
     return "\n".join(f"{i:>{w}}: {line}" for i, line in enumerate(lines, start))
 
 def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
-    """Read and return contents of a file at the given path. Set line_numbers=True to prepend line numbers."""
+    """
+    Read and return contents of a file at the given path.
+    Prefer line_numbers=False to avoid bloat. Only use line_numbers=True if you really need, (e.g. are in a deep debug-session, and are conversing with user)
+    """
     with open(path, "r") as f:
         content = f.read()
     _mark_read(ctx, path)
@@ -314,8 +317,14 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     return content
 
 
-def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
-    """Read class/function signatures from a file (no bodies). Set line_numbers=True to prepend line numbers."""
+def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str:
+    """
+    Read class/function signatures from a file (no bodies).
+    Prefer line_numbers=True if you need to reference specific lines, or edit the file after.
+
+    You should prefer using this tool first before reading an entire file.
+    read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
+    """
     tree, source, mod_name = _parse_file(file)
     if mod_name == 'tree_sitter_lua':
         result = _read_headers_lua(tree, source)
@@ -363,8 +372,13 @@ def web_search(ctx: ex6.Context, query: str) -> str:
     return "\n\n".join(out)
 
 
-def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True) -> str:
-    """Read a function or class body by name from a file. Set line_numbers=True to prepend line numbers."""
+def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = False) -> str:
+    """
+    Read a function or class body by name from a file.
+    Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
+
+    if you only need small bits of information (like implementation-details of a function) prefer using this tool instead of reading the entire file
+    """
     tree, source, mod_name = _parse_file(file)
     def_types = DEFINITION_TYPES.get(mod_name, [])
 
