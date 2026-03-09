@@ -431,6 +431,8 @@ class Context:
     def fork(self, new_name: Optional[str] = None) -> 'Context':
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
+        cpy._read_hashes = dict(self._read_hashes)
+        cpy.data = copy.copy(self.data)
         cpy.input_stack = []
         cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.__post_init__()
@@ -938,6 +940,8 @@ def _load_plugins():
         if filename.startswith("_"):
             continue
         module_name = f"_ex6.{filename[:-3]}"
+        if module_name in sys.modules:
+            continue  # already loaded (e.g. via import from another plugin)
         spec = importlib.util.spec_from_file_location(module_name, path)
         assert spec
         module = importlib.util.module_from_spec(spec)

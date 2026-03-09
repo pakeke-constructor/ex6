@@ -296,7 +296,9 @@ def code_mode(tools: list) -> ex6.Message:
     """System prompt + run_tools tool for sandboxed code execution."""
     names = ", ".join(fn.__name__ for fn in tools)
     def run_tools(ctx, code=""):
-        """Execute tool calls as Python code."""
+        """Execute tool calls as Python code.
+        - Do NOT use import statements.
+        - Tool-results are printed automatically."""
         results, threads = [], []
         env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads) for fn in tools}
         try:

@@ -86,18 +86,24 @@ Be kinda like claude-code.
 ## ^^^^ DONE TASKS ^^^^
 
 
-
 - Make code-mode context-building better and more robust. currently its kinda janky.
 
 - Test caching for claude-models
 
 - plugin: create *generic* system prompt; copy from claude-code.
 
+- Tool-result rendering much better. Unify tool-call and tool-results?
+
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
+
+- Smarter diffs for `<tool_result edit_file>`:  Have a auxiliary model diff in a brief sentence.
+- (Eg instead of showing diff directly, maybe it should say: "changed XYZ by using ringbuffer")
+
+
 
 
 - Compress sys-prompts when viewing in compact-mode
@@ -109,6 +115,12 @@ Be kinda like claude-code.
 
 - plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
 
+
+- Allow agents to "watch" and "lock" files:
+- Files that are locked can only be worked on by 1 agent at a time.
+- When a file is read, it is automatically `watched`. Then, whenever a `watched` file is read, agent can receive sys-reminder.
+- POTENTIAL ISSUE: Stale locks. What happens if an agent never unlocks a file? Does lock expire...?
+- SOLUTION: Agent is told what other agent holds the lock. It can then "fork" the agent and as it "hey, are you making any changes to `function_foo`?"
 
 
 - system-reminders infrastructure:
