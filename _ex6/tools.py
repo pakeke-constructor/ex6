@@ -307,7 +307,9 @@ def _add_line_numbers(text: str, start: int = 1) -> str:
 def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     """
     Read and return contents of a file at the given path.
-    Prefer line_numbers=False to avoid bloat. Only use line_numbers=True if you really need, (e.g. are in a deep debug-session, and are conversing with user)
+    - Prefer line_numbers=False to avoid bloat. 
+    - Use line_numbers=True if you are doing deep work with this file.
+    - It's okay to use this tool liberally if the file are small (e.g less than 100 lines)
     """
     with open(path, "r") as f:
         content = f.read()
@@ -375,9 +377,8 @@ def web_search(ctx: ex6.Context, query: str) -> str:
 def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = False) -> str:
     """
     Read a function or class body by name from a file.
-    Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
-
-    if you only need small bits of information (like implementation-details of a function) prefer using this tool instead of reading the entire file
+    - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
+    - Use this tool when you only need bits of information, like details about a particular function
     """
     tree, source, mod_name = _parse_file(file)
     def_types = DEFINITION_TYPES.get(mod_name, [])
