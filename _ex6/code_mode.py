@@ -1,3 +1,4 @@
+import inspect
 import json
 import threading
 import time
@@ -53,6 +54,19 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
         threads.append(t)
     return wrapper
 
+
+
+def generate_tool_desc(fn) -> str:
+    """Generate a description string for a tool function: name, args w/ types, and docstring."""
+    sig = inspect.signature(fn)
+    params = [(n, p) for n, p in sig.parameters.items() if n != 'ctx']
+    args = ", ".join(
+        f"{n}: {p.annotation.__name__ if p.annotation != inspect.Parameter.empty else '?'}"
+        + (f" = {p.default!r}" if p.default != inspect.Parameter.empty else "")
+        for n, p in params
+    )
+    doc = (fn.__doc__ or "").strip()
+    return f"- {fn.__name__}({args})\n  {doc}" if doc else f"- {fn.__name__}({args})"
 
 
 def make_code_mode_tool(tools: list):

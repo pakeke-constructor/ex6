@@ -2,7 +2,7 @@
 
 
 from _ex6 import provider
-from _ex6.code_mode import make_code_mode_tool
+from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file, read_file, edit_file_lines
 import ex6
 from ex6 import Context, Message
@@ -31,14 +31,38 @@ MODEL = "openai/gpt-5.1-codex-mini"
 
 
 def make_system_prompt(tools: list) -> ex6.Message:
-    names = ", ".join(fn.__name__ for fn in tools)
+    sorted_tools = sorted(tools, key=lambda f: f.__name__)
+    tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
     return ex6.Message(role="system", content=f"""\
 # Tools
 Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel.
-Available: {names}""", tools={"run_tools": run_tools})
+
+## Available tools
+{tool_docs}
+
+## Example
+```
+# Edit a file, then search for usages of several functions
+edit_file("src/app.py", "def old_name(", "def new_name(")
+for name in ["new_name", "helper_fn", "init_db"]:
+    search(name, match="src/**/*.py")
+```
+
+```
+# Multiline edit — replace a function body
+edit_file("src/main.lua",
+\"\"\"function Player:update(dt)
+    self.x = self.x + 1
+end\"\"\",
+\"\"\"function Player:update(dt)
+    self.x = self.x + self.speed * dt
+    self.y = self.y + self.vy * dt
+end\"\"\"
+)
+```""", tools={"run_tools": run_tools})
 
 
 Context("reader", messages=[
