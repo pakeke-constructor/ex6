@@ -22,27 +22,11 @@ import glob as _glob
 import importlib
 import tree_sitter
 import time
-import hashlib
 
-
-def _file_hash(path):
-    with open(path, "rb") as f:
-        return hashlib.md5(f.read()).hexdigest()
-
-def _get_read_hashes(ctx):
-    return ctx.data.setdefault('_read_hashes', {})
 
 def _check_read(ctx, path):
-    h = _get_read_hashes(ctx)
-    p = os.path.abspath(path)
-    if p not in h:
-        raise ValueError(f"Must read_file('{path}') before editing it.")
-    if _file_hash(p) != h[p]:
-        del h[p]
-        raise ValueError(f"'{path}' changed since last read. Re-read it first.")
-
-def _mark_read(ctx, path):
-    _get_read_hashes(ctx)[os.path.abspath(path)] = _file_hash(path)
+    if not ctx.has_read_file(path):
+        raise ValueError(f"Must read file '{path}' before editing it.")
 
 
 LANG_MODULES = {
@@ -163,7 +147,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     if d: os.makedirs(d, exist_ok=True)
     with open(file, "w") as f:
         f.write(content)
-    _mark_read(ctx, file)
+    ctx.mark_file_read(file)
     return f"Wrote {len(content)} chars to {file}"
 
 
@@ -182,7 +166,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     def confirm_edit(content):
         with open(file, "w") as f:
             f.write(content)
-        _mark_read(ctx, file)
+        ctx.mark_file_read(file)
         return f"Updated {file}"
 
     # 1. exact match
@@ -249,7 +233,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         lines[start - 1:end] = [content + '\n']
     with open(file, "w") as f:
         f.writelines(lines)
-    _mark_read(ctx, file)
+    ctx.mark_file_read(file)
     return f"Edited {file}"
 
 
@@ -340,7 +324,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     """
     with open(path, "r") as f:
         content = f.read()
-    _mark_read(ctx, path)
+    ctx.mark_file_read(path)
     if line_numbers:
         return _add_line_numbers(content)
     return content
@@ -354,6 +338,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
     You should prefer using this tool first before reading an entire file.
     read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
     """
+    ctx.mark_file_read(file)
     tree, source, mod_name = _parse_file(file)
     if mod_name == 'tree_sitter_lua':
         result = _read_headers_lua(tree, source)
@@ -407,6 +392,7 @@ def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = F
     - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
     - Use this tool when you only need bits of information, like details about a particular function
     """
+    ctx.mark_file_read(file)
     tree, source, mod_name = _parse_file(file)
     def_types = DEFINITION_TYPES.get(mod_name, [])
 

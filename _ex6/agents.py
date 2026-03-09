@@ -36,14 +36,14 @@ Context("reader", messages=[
 
 
 
-Context("coder", messages=[
+coder = Context("coder", messages=[
     coding_agent_system_prompt,
     provider.code_mode([read_file, glob, grep, search, read_headers, read_function, write_file, edit_file]),
 ], model=MODEL)
 
 
 
-ex6.state.current = c1
+ex6.state.current = coder
 
 
 

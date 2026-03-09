@@ -1,6 +1,7 @@
 
 import os
 import sys
+import hashlib
 from pathlib import Path
 from collections import deque
 from datetime import datetime
@@ -354,6 +355,7 @@ class Context:
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
     data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
+    _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _prev_height: int = 0 # how many lines were used in rendering last frame
 
     def token_count(self) -> int:
@@ -371,6 +373,21 @@ class Context:
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
     def is_running(self): return self.llm_is_running
+
+    @staticmethod
+    def _file_hash(path):
+        with open(path, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()
+
+    def mark_file_read(self, path):
+        self._read_hashes[os.path.abspath(path)] = self._file_hash(path)
+
+    def has_read_file(self, path):
+        p = os.path.abspath(path)
+        return p in self._read_hashes and self._read_hashes[p] == self._file_hash(p)
+
+    def get_read_files(self):
+        return list(self._read_hashes.keys())
 
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
