@@ -1,6 +1,7 @@
 
 
 from _ex6 import provider
+from _ex6.code_mode import code_mode
 from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file, read_file
 import ex6
 from ex6 import Context, Message
@@ -41,14 +42,14 @@ Context("foobar", model=MODEL)
 
 Context("reader", messages=[
     coding_agent_system_prompt,
-    provider.code_mode([read_file, glob, grep, search, read_headers, read_function]),
+    code_mode([read_file, glob, grep, search, read_headers, read_function]),
 ], model=MODEL)
 
 
 
 Context("ctx_1", messages=[
     coding_agent_system_prompt,
-    provider.code_mode([glob, grep, search, read_headers, read_function]),
+    code_mode([glob, grep, search, read_headers, read_function]),
 ], model=MODEL)
 
 
@@ -56,7 +57,7 @@ Context("ctx_1", messages=[
 
 Context("coder", messages=[
     coding_agent_system_prompt,
-    provider.code_mode([read_file, glob, grep, search, read_headers, read_function, write_file, edit_file]),
+    code_mode([read_file, glob, grep, search, read_headers, read_function, write_file, edit_file]),
 ], model=MODEL)
 
 

@@ -81,6 +81,8 @@ Be kinda like claude-code.
 - ~~In code-mode, make it so edit_file doesnt spam the ctx window  (currently it puts ALL the args)~~
 - ~~(do /context to see what i mean)~~
 
+- ~~extract code-mode to its own plugin~~
+
 
 
 ## ^^^^ DONE TASKS ^^^^
@@ -94,11 +96,18 @@ Be kinda like claude-code.
 
 - Tool-result rendering much better. Unify tool-call and tool-results?
 
+- Ability to spin up subagents
+
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+
+- Tool-result rendering much better. Unify tool-call and tool-results?
+
+
 - Tell LLMs to write comments in code as a form of "CoT" thinking
+
 
 - Smarter diffs for `<tool_result edit_file>`:  Have a auxiliary model diff in a brief sentence.
 - (Eg instead of showing diff directly, maybe it should say: "changed XYZ by using ringbuffer")
