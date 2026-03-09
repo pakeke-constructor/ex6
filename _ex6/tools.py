@@ -226,6 +226,33 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
 
 
 
+def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: str) -> str:
+    """
+    Replace lines start..end (inclusive, 1-indexed) with content.
+    Prefer this over edit_file if you know the line numbers and are editing more than 2 lines,
+    or if you want to insert code between function blocks/definitions.
+    To insert without removing lines, set end=0 and start=the line to insert before.
+    Content should NOT end with a trailing newline — one is added automatically.
+    WARNING: Do NOT call this twice in a row; line numbers shift after the first edit. Use edit_file for subsequent edits, or re-read the file headers first.
+    """
+    _check_read(ctx, file)
+    with open(file, "r") as f:
+        lines = f.readlines()
+    if end == 0:
+        # insert mode: insert before 'start', remove nothing
+        if start < 1 or start > len(lines) + 1:
+            raise ValueError(f"Invalid insert position {start} (file has {len(lines)} lines)")
+        lines.insert(start - 1, content + '\n')
+    else:
+        if start < 1 or end > len(lines) or start > end:
+            raise ValueError(f"Invalid range {start}..{end} (file has {len(lines)} lines)")
+        lines[start - 1:end] = [content + '\n']
+    with open(file, "w") as f:
+        f.writelines(lines)
+    _mark_read(ctx, file)
+    return f"Edited {file}"
+
+
 def glob(ctx: ex6.Context, pattern: str) -> str:
     """Find files matching a glob pattern (recursive). Returns newline-separated paths."""
     matches = _glob.glob(pattern, recursive=True)
