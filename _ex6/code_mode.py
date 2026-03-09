@@ -54,7 +54,12 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
     return wrapper
 
 
-def code_mode(tools: list) -> ex6.Message:
+
+def make_code_mode_tool(tools: list):
+    pass
+
+
+def make_code_mode_system_prompt(tools: list) -> ex6.Message:
     """System prompt + run_tools tool for sandboxed code execution."""
     names = ", ".join(fn.__name__ for fn in tools)
     def run_tools(ctx, code=""):
