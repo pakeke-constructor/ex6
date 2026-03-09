@@ -47,14 +47,14 @@ Combine multiple calls in a single run_tools block — they execute in parallel.
 
 ## Examples:
 {RUN_TOOLS_NAME}```
-# Edit a file, then search for usages of several functions
-edit_file("src/app.py", "def old_name(", "def new_name(")
+# glob codebase and search for usages of several functions
+glob("**/*.py")
 for name in ["new_name", "helper_fn", "init_db"]:
     search(name, match="src/**/*.py")
 ```
 
 {RUN_TOOLS_NAME}```
-# Multiline edit — replace a function body
+# Multiline edit, replace a function body
 edit_file("src/main.lua",
 """function Player:update(dt)
     self.x = self.x + 1

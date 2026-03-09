@@ -157,7 +157,14 @@ def _ws_normalize(s):
     return re.sub(r'[ \t]+', ' ', s).strip()
 
 def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
-    """Edit a file by searching and replacing a string. Uses fuzzy matching if exact match fails."""
+    """Edit a file by searching and replacing a unique string.
+    Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
+    search must match exactly one location. errors if zero or multiple matches.
+
+    Use this tool when you need surgical edits, ESPECIALLY edits to 1-3 lines.
+    Prefer edit_file_lines for larger edits or insertions where you know the line numbers.
+    Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
+    """
     _check_read(ctx, file)
 
     with open(file, "r") as f:
@@ -243,46 +250,6 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
     return "\n".join(matches) if matches else "No matches."
 
 
-def grep(ctx: ex6.Context, pattern: str, path: str = ".") -> str:
-    """Search file contents for a regex pattern. Returns matching lines with file:line: prefix."""
-    results = []
-    path = os.path.abspath(path)
-    if os.path.isfile(path):
-        files = [path]
-    else:
-        files = [os.path.join(r, f) for r, _, fs in os.walk(path) for f in fs]
-    regex = re.compile(pattern)
-    for f in files:
-        try:
-            with open(f, "r", errors="ignore") as fh:
-                for i, line in enumerate(fh, 1):
-                    if regex.search(line):
-                        results.append(f"{f}:{i}: {line.rstrip()}")
-        except (OSError, UnicodeDecodeError):
-            continue
-    return "\n".join(results) if results else "No matches."
-
-
-def _read_headers_lua(tree, source):
-    def_types = DEFINITION_TYPES['tree_sitter_lua']
-    out = []
-
-    def collect(node):
-        for child in node.children:
-            if child.type in def_types:
-                if out:
-                    out.append("")
-                out.append(_signature_lua(child, source))
-                if child.type not in ('variable_declaration', 'assignment_statement'):
-                    collect(child)
-            else:
-                collect(child)
-
-    collect(tree.root_node)
-    return "\n".join(out) if out else "No classes/functions found."
-
-
-
 
 _SKIP_DIRS = set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'])
 
@@ -310,6 +277,29 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     return "\n".join(results) if results else "No matches."
 
 
+
+
+def _read_headers_lua(tree, source):
+    def_types = DEFINITION_TYPES['tree_sitter_lua']
+    out = []
+
+    def collect(node):
+        for child in node.children:
+            if child.type in def_types:
+                if out:
+                    out.append("")
+                out.append(_signature_lua(child, source))
+                if child.type not in ('variable_declaration', 'assignment_statement'):
+                    collect(child)
+            else:
+                collect(child)
+
+    collect(tree.root_node)
+    return "\n".join(out) if out else "No classes/functions found."
+
+
+
+
 def _add_line_numbers(text: str, start: int = 1) -> str:
     lines = text.split('\n')
     w = len(str(start + len(lines) - 1))
@@ -320,7 +310,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     Read and return contents of a file at the given path.
     - Prefer line_numbers=False to avoid bloat. 
     - Use line_numbers=True if you are doing deep work with this file.
-    - It's okay to use this tool liberally if the file are small (e.g less than 100 lines)
+    - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     """
     with open(path, "r") as f:
         content = f.read()
