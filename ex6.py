@@ -929,25 +929,34 @@ def _load_plugins():
         return
     import importlib.util
     import types
-    # Register _ex6 as a package so imports work
-    if "_ex6" not in sys.modules:
-        pkg = types.ModuleType("_ex6")
-        pkg.__path__ = [os.path.abspath(plugin_dir)]
-        sys.modules["_ex6"] = pkg
-    for path in sorted(glob.glob(os.path.join(plugin_dir, "*.py"))):
-        filename = os.path.basename(path)
-        # plugin files starting with `_` arent loaded.
-        if filename.startswith("_"):
-            continue
-        module_name = f"_ex6.{filename[:-3]}"
-        if module_name in sys.modules:
-            continue  # already loaded (e.g. via import from another plugin)
-        spec = importlib.util.spec_from_file_location(module_name, path)
-        assert spec
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        assert spec.loader
-        spec.loader.exec_module(module)
+    def _register_pkg(name, dir_path):
+        if name not in sys.modules:
+            pkg = types.ModuleType(name)
+            pkg.__path__ = [os.path.abspath(dir_path)]
+            sys.modules[name] = pkg
+
+    _register_pkg("_ex6", plugin_dir)
+
+    for dirpath, dirnames, filenames in os.walk(plugin_dir):
+        # skip dirs starting with _  (but not _ex6 root itself)
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("_"))
+        # register subdirs as subpackages
+        rel = os.path.relpath(dirpath, plugin_dir).replace(os.sep, ".")
+        pkg_name = "_ex6" if rel == "." else f"_ex6.{rel}"
+        _register_pkg(pkg_name, dirpath)
+        # load .py files
+        for filename in sorted(filenames):
+            if not filename.endswith(".py") or filename.startswith("_"):
+                continue
+            mod_name = f"{pkg_name}.{filename[:-3]}"
+            if mod_name in sys.modules:
+                continue
+            path = os.path.join(dirpath, filename)
+            spec = importlib.util.spec_from_file_location(mod_name, path)
+            assert spec and spec.loader
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            spec.loader.exec_module(module)
 
 
 
