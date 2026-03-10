@@ -3,7 +3,7 @@
 
 from _ex6 import provider
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
-from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file, read_file, edit_file_lines
+from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines
 import ex6
 from ex6 import Context, Message
 import time

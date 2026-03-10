@@ -20,31 +20,33 @@ SAFE_BUILTINS = {
 
 class ToolResult:
     """Future-like object returned by tool calls."""
-    __slots__ = ('value', '_event', '_call_str', '_results')
+    __slots__ = ('value', '_error', '_event', '_call_str', '_results')
     def __init__(self, call_str, results):
         self.value = None
+        self._error = None
         self._event = threading.Event()
         self._call_str = call_str
         self._results = results
     def _set(self, val):
         self.value = val
         self._event.set()
+    def _set_error(self, err):
+        self._error = err
+        self._event.set()
+    def is_ok(self):
+        self._event.wait()
+        return self._error is None
     def get(self):
         self._event.wait()
-        if isinstance(self.value, str) and self.value.startswith("ERROR:"):
-            raise ValueError(self.value)
+        if self._error: raise self._error
         return self.value
     def print(self):
         self._event.wait()
-        self._results.append({"call": self._call_str, "value": self.value, "mode": "full"})
+        self._results.append({"call": self._call_str, "value": str(self._error) if self._error else self.value, "mode": "full"})
         return self.value
-    def is_ok(self):
-        self._event.wait()
-        return not (isinstance(self.value, str) and self.value.startswith("ERROR:"))
     def status(self):
         self._event.wait()
-        ok = self.is_ok()
-        self._results.append({"call": self._call_str, "value": "OK" if ok else self.value, "mode": "status"})
+        self._results.append({"call": self._call_str, "value": "OK" if self.is_ok() else str(self._error), "mode": "status"})
         return self.value
 
 
@@ -81,7 +83,7 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
             try: tr._set(fn(ctx, *args, **kwargs))
             except Exception as e:
                 ex6.debug_print(f"tool {call_str} failed: {e}")
-                tr._set(f"ERROR: {e}")
+                tr._set_error(e)
         t = threading.Thread(target=run)
         t.start()
         threads.append(t)

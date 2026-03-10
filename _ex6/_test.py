@@ -1,8 +1,8 @@
 
 
 from _ex6 import provider
-from _ex6.code_mode import code_mode
-from _ex6.tools import read_headers, read_function, glob, grep, search, write_file, edit_file, read_file
+from _ex6.code_mode import make_code_mode_system_prompt
+from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file
 import ex6
 from ex6 import Context, Message
 import time
@@ -42,14 +42,14 @@ Context("foobar", model=MODEL)
 
 Context("reader", messages=[
     coding_agent_system_prompt,
-    code_mode([read_file, glob, grep, search, read_headers, read_function]),
+    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function]),
 ], model=MODEL)
 
 
 
 Context("ctx_1", messages=[
     coding_agent_system_prompt,
-    code_mode([glob, grep, search, read_headers, read_function]),
+    make_code_mode_system_prompt([glob, search, read_headers, read_function]),
 ], model=MODEL)
 
 
@@ -57,7 +57,7 @@ Context("ctx_1", messages=[
 
 Context("coder", messages=[
     coding_agent_system_prompt,
-    code_mode([read_file, glob, grep, search, read_headers, read_function, write_file, edit_file]),
+    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file]),
 ], model=MODEL)
 
 
