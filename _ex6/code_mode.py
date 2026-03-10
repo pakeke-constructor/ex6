@@ -5,16 +5,34 @@ Instead of rigid JSON tool-call schemas, the LLM writes Python snippets to call
 tools. This gives us composition, chaining, and parallelism for free — using
 syntax the LLM already knows.
 
+The LLM has a single tool, `run_tools`, whose `code` param is sandboxed Python:
+
+    run_tools(code='''
+        read_file("main.py").print()
+        read_file("utils.py").print()
+        edit_file("config.py", old, new).status()
+    ''')
+
+## ToolResult
+
 Every tool call returns a ToolResult (a future). The LLM controls what enters
 its context window by choosing how to consume each result:
 
-    .print()  non-blocking, show full result in context. Use to READ data.
-    .status() non-blocking, show OK or error. Use to CONFIRM writes/actions.
-    .get()    blocking, returns a value silently. Use to PASS data to another tool.
-    .is_ok()  blocking, returns a bool. Use to BRANCH on success/failure.
+    .print()  non-blocking, show full result in context of caller agent. Use to READ data.
+    .status() non-blocking, show OK or error to caller agent. Use to CONFIRM writes/actions.
+    .get()    blocking, returns value silently. Use to PASS data to another tool.
+    .is_ok()  blocking, returns bool. Use to BRANCH on success/failure.
 
 If the LLM never calls .print()/.status(), the result is silently discarded.
 This is by design; the LLM decides what's worth seeing.
+
+.print() and .status() return self (the ToolResult), so they can be chained:
+
+    x = read_file("main.py").print().get()   # print AND capture value
+    edit_file("x.py", old, new).status().get()  # confirm AND get value
+
+.get() raises on error — fail-fast so garbage data is never passed downstream.
+.print() and .status() do NOT raise — they show the error in context instead.
 
 ## Examples
 
@@ -27,16 +45,22 @@ This is by design; the LLM decides what's worth seeing.
 
     edit_file("x.py", old, new).status()
 
-### Chaining (pass one tool's output into another):
+### Subagents: the primary use case for chaining:
 
-    schema = read_file("schema.sql")
-    grep("CREATE TABLE", context=schema.get())  # .get() blocks until read_file finishes
+    # Explore codebase, then pass findings to a focused agent
+    findings = explore_agent("find all database access patterns")
+    review_agent("check for SQL injection risks", context=findings.get()).print()
 
-### Multi-step chaining:
+    # Fan-out: two independent subagents, then combine
+    a = explore_agent("find all API endpoints")
+    b = explore_agent("find all auth middleware")
+    review_agent("do all endpoints use auth?", apis=a.get(), auth=b.get()).print()
 
-    a = explore("find all API endpoints")
-    b = analyze(a.get())        # waits for explore, passes result
-    summarize(b.get()).print()   # waits for analyze, prints summary
+    # Sequential refinement
+    draft = coding_agent("write a parser for this format", spec=read_file("spec.md").get())
+    review = review_agent("find bugs", code=draft.get())
+    if not review.is_ok():
+        coding_agent("fix these issues", code=draft.get(), issues=review.get()).print()
 
 ### Branching on success:
 
@@ -45,13 +69,6 @@ This is by design; the LLM decides what's worth seeing.
         restart_server().status()
     else:
         r.print()  # see the error
-
-### .get() raises on error (fail-fast for chains):
-
-    # if read_file fails, .get() throws and the whole block stops —
-    # no garbage data passed downstream.
-    data = read_file("missing.txt")
-    process(data.get())  # never runs if read_file errored
 
 ### Mixed: some results printed, some just status, some silent:
 
