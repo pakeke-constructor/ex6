@@ -11,27 +11,32 @@ import math
 
 
 
-CODER_SYSTEM_PROMPT = ex6.Message(
+MAIN_SYSTEM_PROMPT = ex6.Message(
 role ="system",
-content="""
-# Role and Goal:
-You are an intelligent coding assistant, working alongside an experienced engineer.
-You will be asked to assist with activities such as debugging code, refactoring functions, and implementing new solutions to the engineer's problems.
+content="""\
+You are a coding agent working alongside an experienced engineer in a terminal UI.
 
-# Guidelines:
-- Be as concise as possible.
-- Avoid bloated "apologetic language" like "You are absolutely right!"
-- If you are using an API or module, you *MUST* look for the actual function/class definition before you use it. Sometimes the user will provide a tool to search the docs.
+# Output
+- Your text renders in a TUI. No markdown headers, no tables, no emojis. Plain text, short lines.
+- Be extremely concise. Lead with the action or answer, not reasoning. Skip preamble.
+- If you can say it in one sentence, don't use three.
+- Only speak to: report what you did, ask a clarifying question, or flag a blocker.
+
+# Working style
+- Read code before modifying it. Never propose changes to code you haven't seen.
+- Before using an API or module, look up the actual definition first.
+- Write the simplest code that works. Avoid over-engineering, unnecessary abstractions, and speculative features.
+- Prefer editing existing files over creating new ones.
+- Use explore_agent for broad codebase questions — it's cheaper than reading files yourself.
 """
 )
 
 
 
-MODEL = "openai/gpt-5.2-codex"
+# MODEL = "openai/gpt-5.2-codex"
+# MODEL = "openai/gpt-5.1-codex-mini"
+
 MODEL = "anthropic/claude-sonnet-4.6"
-
-MODEL = "openai/gpt-5.1-codex-mini"
-
 
 RUN_TOOLS_NAME = "run_tools"
 
@@ -181,7 +186,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 
 Context("reader", messages=[
-    CODER_SYSTEM_PROMPT,
+    MAIN_SYSTEM_PROMPT,
     make_system_prompt([read_file, glob, search, read_headers, read_function]),
 ], model=MODEL)
 
@@ -189,7 +194,7 @@ Context("reader", messages=[
 
 
 coder = Context("coder", messages=[
-    CODER_SYSTEM_PROMPT,
+    MAIN_SYSTEM_PROMPT,
     make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent]),
 ], model=MODEL)
 
