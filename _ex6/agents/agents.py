@@ -2,7 +2,7 @@
 
 
 from _ex6 import provider
-from _ex6.code_mode import make_code_mode_tool, make_code_mode_system_prompt, generate_tool_desc
+from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines
 import ex6
 from ex6 import Context, Message
@@ -32,10 +32,40 @@ MODEL = "openai/gpt-5.1-codex-mini"
 
 RUN_TOOLS_NAME = "run_tools"
 
-def make_system_prompt(tools: list) -> ex6.Message:
+COMMON_MISTAKES = '''
+## COMMON MISTAKES — do NOT do these:
+NEVER use `print()`, `open()`, `import`, or any Python builtin. They do not exist. Only the listed tool functions exist.
+
+```
+# BAD — result is silently discarded, you will see NOTHING:
+read_file("a.py")
+
+# BAD — print() does not exist:
+print(read_file("a.py").get())
+
+# BAD — import does not exist:
+import os
+os.listdir(".")
+```
+
+```
+# GOOD — .print() injects result into your context:
+read_file("a.py").print()
+
+# GOOD — .status() confirms success:
+edit_file("a.py", old, new).status()
+
+# GOOD — .get() passes data to another tool:
+data = read_file("a.py").get()
+search(data).print()
+```
+'''
+
+def make_system_prompt(tools: list, include_common_mistakes: bool = True) -> ex6.Message:
     sorted_tools = sorted(tools, key=lambda f: f.__name__)
     tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
+    common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
     return ex6.Message(role="system", content=f'''\
 # Tools
 Use the `run_tools` tool. The `code` param is sandboxed Python.
@@ -76,9 +106,14 @@ end"""
 
 {RUN_TOOLS_NAME}```
 # Chain: pass data from one tool to another
-x = read_file("schema.sql")
-search("CREATE TABLE", context=x.get())
-```''', tools={RUN_TOOLS_NAME: run_tools})
+x = read_file("schema.sql") # `x` is is a ToolResult
+x.print()
+search(x.get()).print()
+```
+
+{common_mistakes}
+''', tools={RUN_TOOLS_NAME: run_tools})
+
 
 
 
