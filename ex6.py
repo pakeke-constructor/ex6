@@ -354,6 +354,7 @@ class Context:
     input_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
+    parent: Optional[str] = None # name of parent context (for subagents)
     data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _prev_height: int = 0 # how many lines were used in rendering last frame
@@ -435,6 +436,7 @@ class Context:
         cpy.data = copy.copy(self.data)
         cpy.input_stack = []
         cpy.name = _ensure_unique_name(new_name or self.name)
+        cpy.parent = self.name
         cpy.__post_init__()
         return cpy
 

@@ -180,7 +180,9 @@ def generate_tool_desc(fn) -> str:
         for n, p in params
     )
     doc = (fn.__doc__ or "").strip()
-    return f"- {fn.__name__}({args})\n  {doc}" if doc else f"- {fn.__name__}({args})"
+    sig_line = f"{fn.__name__}({args})"
+    body = f"{sig_line}\n{doc}" if doc else sig_line
+    return f"<tool {fn.__name__}>\n{body}\n</tool>"
 
 
 def make_code_mode_tool(tools: list):

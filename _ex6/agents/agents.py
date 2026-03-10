@@ -2,7 +2,7 @@
 
 
 from _ex6 import provider
-from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
+from _ex6.code_mode import make_code_mode_tool, make_code_mode_system_prompt, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines
 import ex6
 from ex6 import Context, Message
@@ -81,6 +81,31 @@ search("CREATE TABLE", context=x.get())
 
 
 
+EXPLORE_TOOLS = [read_file, glob, search, read_headers, read_function]
+
+def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
+    """Spawn a read-only subagent to explore the codebase. Returns its findings.
+    files: optional file paths to pre-read and include in the prompt."""
+    # prepend file contents to prompt
+    if files:
+        parts = []
+        for f in files:
+            with open(f, "r") as fh:
+                parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
+        prompt = "\n".join(parts) + "\n\n" + prompt
+    sub = Context("explore", model=MODEL, messages=[
+        Message(role="system", content="Explore the codebase. Be concise."),
+        make_code_mode_system_prompt(EXPLORE_TOOLS),
+    ])
+    sub.parent = ctx.name
+    sub.invoke(prompt)
+    while sub.llm_is_running:
+        time.sleep(0.05)
+    result = sub.messages[-1].content if sub.messages else ""
+    del ex6.state.contexts[sub.name]
+    return result
+
+
 Context("reader", messages=[
     coding_agent_system_prompt,
     make_system_prompt([read_file, glob, search, read_headers, read_function]),
@@ -90,7 +115,7 @@ Context("reader", messages=[
 
 coder = Context("coder", messages=[
     coding_agent_system_prompt,
-    make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file]),
+    make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent]),
 ], model=MODEL)
 
 
