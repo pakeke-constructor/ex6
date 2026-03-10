@@ -83,14 +83,14 @@ search("CREATE TABLE", context=x.get())
 
 Context("reader", messages=[
     coding_agent_system_prompt,
-    make_system_prompt([read_file, glob, grep, search, read_headers, read_function]),
+    make_system_prompt([read_file, glob, search, read_headers, read_function]),
 ], model=MODEL)
 
 
 
 coder = Context("coder", messages=[
     coding_agent_system_prompt,
-    make_system_prompt([read_file, glob, grep, search, read_headers, read_function, write_file, edit_file]),
+    make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file]),
 ], model=MODEL)
 
 
