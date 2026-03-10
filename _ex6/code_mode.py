@@ -18,6 +18,20 @@ SAFE_BUILTINS = {
     "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
 }
 
+class ToolResult:
+    """Future-like object returned by tool calls. .get() blocks until result is ready."""
+    __slots__ = ('value', '_event')
+    def __init__(self):
+        self.value = None
+        self._event = threading.Event()
+    def _set(self, val):
+        self.value = val
+        self._event.set()
+    def get(self):
+        self._event.wait()
+        return self.value
+
+
 def _no_import(*args, **kwargs):
     raise ImportError("imports disabled")
 
@@ -26,6 +40,10 @@ def exec_sandboxed(code: str, env: dict):
     """Execute code in RestrictedPython sandbox."""
     sandbox_globals = {"__builtins__": SAFE_BUILTINS.copy()}
     sandbox_globals["__import__"] = _no_import
+    def _getattr_(obj, name):
+        if name == "get" and isinstance(obj, ToolResult): return obj.get
+        raise AttributeError(f"no attribute {name}")
+    sandbox_globals["_getattr_"] = _getattr_
     sandbox_globals.update(env)
 
     result = compile_restricted_exec(code, '<tools>')
@@ -35,7 +53,7 @@ def exec_sandboxed(code: str, env: dict):
 
 
 def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
-    """Wrap tool to run in thread. Appends result dict to results list."""
+    """Wrap tool to run in thread. Returns ToolResult with .get() for chaining."""
     def wrapper(*args, **kwargs):
         def _short(a, maxlen=40):
             s = repr(a)
@@ -43,15 +61,20 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
         call_str = f'{fn.__name__}({", ".join(_short(a) for a in args)})'
         result = {"call": call_str, "value": None}
         results.append(result)
+        tr = ToolResult()
         def run():
             try:
-                result["value"] = fn(ctx, *args, **kwargs)
+                val = fn(ctx, *args, **kwargs)
+                result["value"] = val
+                tr._set(val)
             except Exception as e:
                 ex6.debug_print(f"tool {call_str} failed: {e}")
                 result["value"] = f"ERROR: {e}"
+                tr._set(f"ERROR: {e}")
         t = threading.Thread(target=run)
         t.start()
         threads.append(t)
+        return tr
     return wrapper
 
 
