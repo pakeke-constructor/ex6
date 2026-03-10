@@ -4,6 +4,7 @@
 from _ex6 import provider
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines
+from _ex6.claude_md import CLAUDE_MD
 import ex6
 from ex6 import Context, Message
 import time
@@ -127,35 +128,20 @@ search(x.get()).print()
 
 
 EXPLORE_SYSTEM_PROMPT = Message(role="system", content="""\
-# Role
-You are an exploration agent. Your job is to deeply understand the structure and semantics of a system, codebase, or module, then report your findings as concisely as possible.
+You are a fast, read-only exploration agent. Your output renders in a TUI — plain text only, no markdown headers, no tables, no emojis.
 
 # Goal
-Fully understand what the code DOES, HOW it's structured, and WHY it's built that way. Then compress your understanding into a tight, information-dense summary. No fluff, no filler. just the essential facts the caller needs.
+Understand the code, then return a tight, information-dense summary. No fluff. Match length to information content.
 
-# Strategy: start broad, then go deep
-1. START with `read_headers` on relevant files. This gives you class/function signatures WITHOUT reading entire file bodies. This is your most context-efficient tool — use it first, always.
-2. Use `glob` to discover file structure when you don't know what files exist. Use patterns like "**/*.py", "src/**/*.ts", etc.
-3. Use `search` to find specific patterns, usages, references, or string literals across the codebase. Use regex. This is how you answer "where is X used?" or "what calls Y?".
-4. Use `read_function` to read a SINGLE function/class body when you need implementation details. Much cheaper than reading the whole file. Use this when headers told you WHAT exists but you need to understand HOW it works.
-5. Use `read_file` as a LAST RESORT for small files (<100 lines), config files, or when you truly need the full picture. For large files, prefer read_headers + targeted read_function calls.
+# Strategy
+- Start broad, go deep. Use multiple search angles — different naming conventions, related files, alternate locations.
+- Maximize parallel tool calls. Read multiple files and search multiple patterns in a single run_tools block.
+- `read_headers` first (cheapest), then `search` / `glob`, then `read_function` for specifics, then `read_file` as last resort.
 
-# Tool selection guide
-- "What files exist?" → `glob`
-- "What's in this file?" → `read_headers` first, then `read_function` for specific items
-- "Where is X used/defined?" → `search`
-- "How does this function work?" → `read_function`
-- "What does this small config/script do?" → `read_file`
-
-# Output format
-Your final response should be a dense summary of findings. Structure it however best serves the caller's question. Prefer:
-- Bullet points over paragraphs
-- Code references (file:function_name) over prose descriptions
-- Concrete facts over vague summaries
-- Listing relevant file paths, function names, and relationships
-- Noting anything surprising, non-obvious, or potentially problematic
-
-Do NOT pad your response. If the answer is 3 lines, write 3 lines. If it needs 30, write 30. Match length to information content.
+# Output
+- Bullet points over paragraphs. Code references (file:function_name) over prose.
+- Concrete facts, relevant paths, function names, relationships.
+- If the answer is 3 lines, write 3 lines. If it needs 30, write 30.
 """)
 
 EXPLORE_TOOLS = [read_file, glob, search, read_headers, read_function]
@@ -187,6 +173,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 Context("reader", messages=[
     MAIN_SYSTEM_PROMPT,
+    CLAUDE_MD,
     make_system_prompt([read_file, glob, search, read_headers, read_function]),
 ], model=MODEL)
 
@@ -195,6 +182,7 @@ Context("reader", messages=[
 
 coder = Context("coder", messages=[
     MAIN_SYSTEM_PROMPT,
+    CLAUDE_MD,
     make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent]),
 ], model=MODEL)
 
