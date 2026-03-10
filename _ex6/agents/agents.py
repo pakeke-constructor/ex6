@@ -42,19 +42,26 @@ Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel.
 
+## ToolResult
+Every tool call returns a ToolResult. You MUST call one of these to see output:
+- `.print()` — prints the FULL result into your context. Returns the value.
+- `.status()` — prints OK or ERROR. Use for writes/actions you don't need to read. Returns the value.
+- `.get()` — returns the value silently. Use to pass data to another tool.
+
+**IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.**
+
 ## Available tools
 {tool_docs}
 
 ## Examples:
 {RUN_TOOLS_NAME}```
-# glob codebase and search for usages of several functions
-glob("**/*.py")
-for name in ["new_name", "helper_fn", "init_db"]:
-    search(name, match="src/**/*.py")
+# Read files — .print() to see contents
+read_file("main.py").print()
+read_file("utils.py").print()
 ```
 
 {RUN_TOOLS_NAME}```
-# Multiline edit, replace a function body
+# Write file — .status() to confirm success
 edit_file("src/main.lua",
 """function Player:update(dt)
     self.x = self.x + 1
@@ -63,7 +70,13 @@ end""",
     self.x = self.x + self.speed * dt
     self.y = self.y + self.vy * dt
 end"""
-)
+).status()
+```
+
+{RUN_TOOLS_NAME}```
+# Chain: pass data from one tool to another
+x = read_file("schema.sql")
+search("CREATE TABLE", context=x.get())
 ```''', tools={RUN_TOOLS_NAME: run_tools})
 
 

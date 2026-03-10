@@ -19,16 +19,32 @@ SAFE_BUILTINS = {
 }
 
 class ToolResult:
-    """Future-like object returned by tool calls. .get() blocks until result is ready."""
-    __slots__ = ('value', '_event')
-    def __init__(self):
+    """Future-like object returned by tool calls."""
+    __slots__ = ('value', '_event', '_call_str', '_results')
+    def __init__(self, call_str, results):
         self.value = None
         self._event = threading.Event()
+        self._call_str = call_str
+        self._results = results
     def _set(self, val):
         self.value = val
         self._event.set()
     def get(self):
         self._event.wait()
+        if isinstance(self.value, str) and self.value.startswith("ERROR:"):
+            raise ValueError(self.value)
+        return self.value
+    def print(self):
+        self._event.wait()
+        self._results.append({"call": self._call_str, "value": self.value, "mode": "full"})
+        return self.value
+    def is_ok(self):
+        self._event.wait()
+        return not (isinstance(self.value, str) and self.value.startswith("ERROR:"))
+    def status(self):
+        self._event.wait()
+        ok = self.is_ok()
+        self._results.append({"call": self._call_str, "value": "OK" if ok else self.value, "mode": "status"})
         return self.value
 
 
@@ -41,7 +57,8 @@ def exec_sandboxed(code: str, env: dict):
     sandbox_globals = {"__builtins__": SAFE_BUILTINS.copy()}
     sandbox_globals["__import__"] = _no_import
     def _getattr_(obj, name):
-        if name == "get" and isinstance(obj, ToolResult): return obj.get
+        if isinstance(obj, ToolResult) and name in ("get", "print", "status", "is_ok"):
+            return getattr(obj, name)
         raise AttributeError(f"no attribute {name}")
     sandbox_globals["_getattr_"] = _getattr_
     sandbox_globals.update(env)
@@ -53,23 +70,17 @@ def exec_sandboxed(code: str, env: dict):
 
 
 def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
-    """Wrap tool to run in thread. Returns ToolResult with .get() for chaining."""
+    """Wrap tool to run in thread. Returns ToolResult with .get()/.print()/.status()."""
     def wrapper(*args, **kwargs):
         def _short(a, maxlen=40):
             s = repr(a)
             return s if len(s) <= maxlen else s[:maxlen] + '...'
         call_str = f'{fn.__name__}({", ".join(_short(a) for a in args)})'
-        result = {"call": call_str, "value": None}
-        results.append(result)
-        tr = ToolResult()
+        tr = ToolResult(call_str, results)
         def run():
-            try:
-                val = fn(ctx, *args, **kwargs)
-                result["value"] = val
-                tr._set(val)
+            try: tr._set(fn(ctx, *args, **kwargs))
             except Exception as e:
                 ex6.debug_print(f"tool {call_str} failed: {e}")
-                result["value"] = f"ERROR: {e}"
                 tr._set(f"ERROR: {e}")
         t = threading.Thread(target=run)
         t.start()
@@ -97,7 +108,7 @@ def make_code_mode_tool(tools: list):
     def run_tools(ctx, code=""):
         """Execute tool calls as Python code.
         - Do NOT use import statements.
-        - Tool-results are printed automatically."""
+        - Tools return a ToolResult. You MUST call .print() or .status() to see results."""
         results, threads = [], []
         env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads) for fn in tools}
         try:
@@ -107,7 +118,12 @@ def make_code_mode_tool(tools: list):
             raise ValueError(f"exec failed: {e}")
         for t in threads: t.join()
         if results:
-            parts = [f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>" for r in results]
+            parts = []
+            for r in results:
+                if r.get("mode") == "status":
+                    parts.append(f"<tool_status {r['call']}>{r['value']}</tool_status>")
+                else:
+                    parts.append(f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>")
             return "\n\n".join(parts)
         return "No tools were called."
     return run_tools
