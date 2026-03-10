@@ -209,7 +209,7 @@ def make_code_mode_tool(tools: list):
                     val = str(tr._error) if tr._error else tr.value
                     parts.append(f"<tool_result {tr._call_str}>\n{val}\n</tool_result>")
             return "\n\n".join(parts)
-        return "No tools were called."
+        return "No output. (Use `.print()` or `.status()` if you want to see results)"
     return run_tools
 
 
