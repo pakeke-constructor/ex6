@@ -104,13 +104,11 @@ class ToolResult:
         if self._error: raise self._error
         return self.value
     def print(self):
-        self._event.wait()
-        self._results.append({"call": self._call_str, "value": str(self._error) if self._error else self.value, "mode": "full"})
-        return self.value
+        self._results.append((self, "full"))
+        return self
     def status(self):
-        self._event.wait()
-        self._results.append({"call": self._call_str, "value": "OK" if self.is_ok() else str(self._error), "mode": "status"})
-        return self.value
+        self._results.append((self, "status"))
+        return self
 
 
 def _no_import(*args, **kwargs):
@@ -184,11 +182,13 @@ def make_code_mode_tool(tools: list):
         for t in threads: t.join()
         if results:
             parts = []
-            for r in results:
-                if r.get("mode") == "status":
-                    parts.append(f"<tool_status {r['call']}>{r['value']}</tool_status>")
+            for tr, mode in results:
+                if mode == "status":
+                    val = "OK" if tr._error is None else str(tr._error)
+                    parts.append(f"<tool_status {tr._call_str}>{val}</tool_status>")
                 else:
-                    parts.append(f"<tool_result {r['call']}>\n{r['value']}\n</tool_result>")
+                    val = str(tr._error) if tr._error else tr.value
+                    parts.append(f"<tool_result {tr._call_str}>\n{val}\n</tool_result>")
             return "\n\n".join(parts)
         return "No tools were called."
     return run_tools
