@@ -135,12 +135,7 @@ def _signature(node, source, mod_name):
 
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
-    """
-    Writes content to a file.
-    If the file exists, it is cleared.
-    If the file doesn't exist, a new file is created.
-    Existing files must be read first.
-    """
+    """Write content to a file, creating it if needed. Existing files must be read first."""
     if os.path.exists(file):
         _check_read(ctx, file)
     d = os.path.dirname(file)
@@ -254,8 +249,11 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
 _SKIP_DIRS = set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'])
 
 
-def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 10) -> str:
-    """Search file contents for a regex pattern, filtered by glob. Returns matching lines with context."""
+def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 10, line_numbers: bool = True) -> str:
+    """Search file contents for a regex pattern, filtered by glob.
+    Returns matching lines with file:line: prefix.
+    Use line_numbers=False when you only care about the content of matches, not their location.
+    """
     regex = re.compile(pattern)
     matched_files = _glob.glob(match, recursive=True)
     results = []
@@ -269,7 +267,8 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
             with open(f, "r", errors="ignore") as fh:
                 for i, line in enumerate(fh, 1):
                     if regex.search(line):
-                        results.append(f"{f}:{i}: {line.rstrip()}")
+                        prefix = f"{f}:{i}: " if line_numbers else ""
+                        results.append(f"{prefix}{line.rstrip()}")
                         if len(results) >= max_results:
                             return "\n".join(results) + f"\n... (capped at {max_results} results)"
         except (OSError, UnicodeDecodeError):
