@@ -3,8 +3,7 @@
 
 from _ex6 import provider
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
-from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines
-from _ex6.claude_md import CLAUDE_MD
+from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
 import ex6
 from ex6 import Context, Message
 import time
@@ -136,7 +135,7 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 # Strategy
 - Start broad, go deep. Use multiple search angles — different naming conventions, related files, alternate locations.
 - Maximize parallel tool calls. Read multiple files and search multiple patterns in a single run_tools block.
-- `read_headers` first (cheapest), then `search` / `glob`, then `read_function` for specifics, then `read_file` as last resort.
+- Start with token efficient tools like `read_headers` / `search` / `glob`, then `read_function` for specifics, then `read_file` for going deep.
 
 # Output
 - Bullet points over paragraphs. Code references (file:function_name) over prose.
@@ -173,8 +172,8 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 Context("reader", messages=[
     MAIN_SYSTEM_PROMPT,
-    CLAUDE_MD,
     make_system_prompt([read_file, glob, search, read_headers, read_function]),
+    CLAUDE_MD,
 ], model=MODEL)
 
 
@@ -182,8 +181,8 @@ Context("reader", messages=[
 
 coder = Context("coder", messages=[
     MAIN_SYSTEM_PROMPT,
-    CLAUDE_MD,
     make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent]),
+    CLAUDE_MD,
 ], model=MODEL)
 
 

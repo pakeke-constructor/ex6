@@ -430,3 +430,14 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
     return result[0] or ""
 
+
+
+def _get_claude_md_content(ctx):
+    for p in ["CLAUDE.md", ".claude/CLAUDE.md"]:
+        if os.path.isfile(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return f.read()
+    return "(no CLAUDE.md found)"
+
+CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content)
+
