@@ -1,6 +1,7 @@
 
 import os
 import sys
+import json
 import hashlib
 from pathlib import Path
 from collections import deque
@@ -137,8 +138,14 @@ def context():
     print("\n\n\n\n\n")
     print(f"=== Context: {ctx.name} ({ctx.model}) ===\n")
     for i, msg in enumerate(ctx.messages):
-        print(f"--- [{i}] {msg.role} ---")
+        label = msg.role
+        if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
+        print(f"--- [{i}] {label} ---")
         print(msg.get_msg(ctx))
+        if msg.tool_calls:
+            for tc in msg.tool_calls:
+                args = json.dumps(tc["args"], indent=2) if tc.get("args") else "{}"
+                print(f"  [tool_call] {tc['name']}({args})")
         print()
 
 _log_keys = False

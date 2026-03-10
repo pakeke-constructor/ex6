@@ -27,6 +27,9 @@ You will be asked to assist with activities such as debugging code, refactoring 
 
 
 
+MODEL = "openai/gpt-5.2-codex"
+MODEL = "anthropic/claude-sonnet-4.6"
+
 MODEL = "openai/gpt-5.1-codex-mini"
 
 
@@ -36,19 +39,19 @@ COMMON_MISTAKES = '''
 ## COMMON MISTAKES — do NOT do these:
 NEVER use `print()`, `open()`, `import`, or any Python builtin. They do not exist. Only the listed tool functions exist.
 
-```
-# BAD — result is silently discarded, you will see NOTHING:
+run_tools```
+# BAD — since you didn't call `.print()` or `.status()`, result is silently discarded, you will see NOTHING:
 read_file("a.py")
 
 # BAD — print() does not exist:
 print(read_file("a.py").get())
 
-# BAD — import does not exist:
+# BAD — importing doesn't work:
 import os
 os.listdir(".")
 ```
 
-```
+run_tools```
 # GOOD — .print() injects result into your context:
 read_file("a.py").print()
 
@@ -111,6 +114,7 @@ x.print()
 search(x.get()).print()
 ```
 
+
 {common_mistakes}
 ''', tools={RUN_TOOLS_NAME: run_tools})
 
@@ -163,7 +167,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         prompt = "\n".join(parts) + "\n\n" + prompt
     sub = Context("explore", model=MODEL, messages=[
         EXPLORE_SYSTEM_PROMPT,
-        make_code_mode_system_prompt(EXPLORE_TOOLS),
+        make_system_prompt(EXPLORE_TOOLS),
     ])
     sub.parent = ctx.name
     sub.invoke(prompt)

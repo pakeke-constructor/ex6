@@ -293,7 +293,8 @@ def _log_invoke(ctx, messages, result):
     ]
     for m in messages:
         lines.append(f"[{m['role']}]")
-        lines.append(m['content'])
+        c = m['content']
+        lines.append(c if isinstance(c, str) else json.dumps(c))
         lines.append("")
 
     (folder / fname).write_text("\n".join(lines), encoding="utf-8")
