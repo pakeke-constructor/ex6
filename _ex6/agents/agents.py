@@ -37,6 +37,8 @@ You are a coding agent working alongside an experienced engineer in a terminal U
 # MODEL = "openai/gpt-5.1-codex-mini"
 
 MODEL = "anthropic/claude-sonnet-4.6"
+EXPLORE_MODEL = "anthropic/claude-sonnet-4.6"
+
 
 RUN_TOOLS_NAME = "run_tools"
 
@@ -69,7 +71,7 @@ search(data).print()
 ```
 '''
 
-def make_system_prompt(tools: list, include_common_mistakes: bool = True) -> ex6.Message:
+def make_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex6.Message:
     sorted_tools = sorted(tools, key=lambda f: f.__name__)
     tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
@@ -157,7 +159,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         prompt = "\n".join(parts) + "\n\n" + prompt
     sub = Context("explore", model=MODEL, messages=[
         EXPLORE_SYSTEM_PROMPT,
-        make_system_prompt(EXPLORE_TOOLS),
+        make_system_prompt(EXPLORE_TOOLS, include_common_mistakes=True),
     ])
     sub.parent = ctx.name
     sub.invoke(prompt)

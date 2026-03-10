@@ -85,24 +85,53 @@ Be kinda like claude-code.
 
 - ~~Make code-mode context-building better and more robust. currently its kinda janky.~~
 
+- ~~plugin: create *generic* system prompt; copy from claude-code.~~
+
+- ~~Ability to spin up subagents~~
+
+
 
 ## ^^^^ DONE TASKS ^^^^
 
 
 - Test caching for claude-models
 
-- plugin: create *generic* system prompt; copy from claude-code.
 
 - Tool-result rendering much better. Unify tool-call and tool-results?
 
-- Ability to spin up subagents
+- EDIT-APPROVALS: should show git diff. should override ui; take up the whole-screen.
+simple `enter` to approve; any other key cancels and starts typing.
+- ANOTHER IDEA: instead of showing git-diff; have an auxiliary agent that summarizes changes?
+- Then; the human is acting more as like the architect behind it all.
+
+
+- system reminder infrastructure.
+-> Do exactly what was asked. Nothing more, nothing less. Never create files unless necessary. Never add docs/READMEs unprompted.
+https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
+
 
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+- IDEA INFRASTRUCTURE:
+- Agents automatically author and maintain their own skill/context files, seeded by a human-defined list of core concepts, with level-of-detail variants for context-efficient runtime injection.
+- The idea is that over time, for every project, you'll build up a SUPER ROBUST ecosystem of contexts and skills.
 
-- Tool-result rendering much better. Unify tool-call and tool-results?
+^^^ EXAMPLES: 
+- ev/q buses would become a core `idea`.
+- knowing how best to write ui code/layout would become an `idea`.
+- writing animations simplfy/robustly (ie with state-robust incremental timers) is an `idea`
+And ideas would be constantly iterated on / tuned.
+
+
+- Allow agents to "watch" and "lock" files:
+- Files that are locked can only be worked on by 1 agent at a time.
+- When a file is read, it is automatically `watched`. Then, whenever a `watched` file is read, agent can receive sys-reminder.
+- POTENTIAL ISSUE: Stale locks. What happens if an agent never unlocks a file? Does lock expire...?
+- SOLUTION: Agent is told what other agent holds the lock. It can then "fork" the agent and as it "hey, are you making any changes to `function_foo`?"
+
+
 
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
@@ -122,13 +151,6 @@ Be kinda like claude-code.
 
 
 - plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
-
-
-- Allow agents to "watch" and "lock" files:
-- Files that are locked can only be worked on by 1 agent at a time.
-- When a file is read, it is automatically `watched`. Then, whenever a `watched` file is read, agent can receive sys-reminder.
-- POTENTIAL ISSUE: Stale locks. What happens if an agent never unlocks a file? Does lock expire...?
-- SOLUTION: Agent is told what other agent holds the lock. It can then "fork" the agent and as it "hey, are you making any changes to `function_foo`?"
 
 
 - system-reminders infrastructure:
