@@ -1,3 +1,66 @@
+"""
+code_mode: sandboxed Python as a tool-calling interface for LLMs.
+
+Instead of rigid JSON tool-call schemas, the LLM writes Python snippets to call
+tools. This gives us composition, chaining, and parallelism for free — using
+syntax the LLM already knows.
+
+Every tool call returns a ToolResult (a future). The LLM controls what enters
+its context window by choosing how to consume each result:
+
+    .print()  non-blocking, show full result in context. Use to READ data.
+    .status() non-blocking, show OK or error. Use to CONFIRM writes/actions.
+    .get()    blocking, returns a value silently. Use to PASS data to another tool.
+    .is_ok()  blocking, returns a bool. Use to BRANCH on success/failure.
+
+If the LLM never calls .print()/.status(), the result is silently discarded.
+This is by design; the LLM decides what's worth seeing.
+
+## Examples
+
+### Parallel reads (both run concurrently, both printed):
+
+    read_file("main.py").print()
+    read_file("utils.py").print()
+
+### Write + confirm:
+
+    edit_file("x.py", old, new).status()
+
+### Chaining (pass one tool's output into another):
+
+    schema = read_file("schema.sql")
+    grep("CREATE TABLE", context=schema.get())  # .get() blocks until read_file finishes
+
+### Multi-step chaining:
+
+    a = explore("find all API endpoints")
+    b = analyze(a.get())        # waits for explore, passes result
+    summarize(b.get()).print()   # waits for analyze, prints summary
+
+### Branching on success:
+
+    r = edit_file("config.json", old, new)
+    if r.is_ok():
+        restart_server().status()
+    else:
+        r.print()  # see the error
+
+### .get() raises on error (fail-fast for chains):
+
+    # if read_file fails, .get() throws and the whole block stops —
+    # no garbage data passed downstream.
+    data = read_file("missing.txt")
+    process(data.get())  # never runs if read_file errored
+
+### Mixed: some results printed, some just status, some silent:
+
+    read_file("main.py").print()           # need to see this
+    write_file("out.py", code).status()    # just confirm it worked
+    x = read_file("data.json")            # silent — only passing to next tool
+    transform(x.get()).print()
+"""
+
 import inspect
 import json
 import threading
