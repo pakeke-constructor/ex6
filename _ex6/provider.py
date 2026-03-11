@@ -210,6 +210,7 @@ def invoke_llm(ctx: ex6.Context):
 
     ex6.debug_print("[invoke] stream started")
     input_tokens, output_tokens, cached_tokens = 0, 0, 0
+    provider_cost = None  # OpenRouter may return cost directly
     finish_reason = "stop"
     tool_calls_acc = {}
     chunk_count = 0
@@ -246,6 +247,7 @@ def invoke_llm(ctx: ex6.Context):
             details = getattr(chunk.usage, 'prompt_tokens_details', None)
             if details:
                 cached_tokens = getattr(details, 'cached_tokens', 0) or 0
+            provider_cost = getattr(chunk.usage, 'cost', None)
 
     ex6.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
 
@@ -258,12 +260,15 @@ def invoke_llm(ctx: ex6.Context):
         tool_calls.append(tc)
         yield ex6.ResponseChunk("tool", json.dumps(tc))
 
-    # Calculate cost
-    if ctx.model not in MODELS:
-        raise ValueError(f"no pricing for model '{ctx.model}' — add it to MODELS in provider.py")
-    info = MODELS[ctx.model]
-    uncached_input = input_tokens - cached_tokens
-    cost = (uncached_input * info.input + cached_tokens * info.cache_read + output_tokens * info.output) / 1_000_000
+    # Use provider-reported cost if available, otherwise estimate
+    if provider_cost is not None:
+        cost = provider_cost
+    else:
+        if ctx.model not in MODELS:
+            raise ValueError(f"no pricing for model '{ctx.model}' — add it to MODELS in provider.py")
+        info = MODELS[ctx.model]
+        uncached_input = input_tokens - cached_tokens
+        cost = (uncached_input * info.input + cached_tokens * info.cache_read + output_tokens * info.output) / 1_000_000
     increment_cost(cost)
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
