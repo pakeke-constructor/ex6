@@ -291,6 +291,14 @@ def render_tools_block(role, output, ctx):
 def render_tool_results(role, output, ctx):
     if role != "tool": return
     results = extract_tags(output, 'tool_result', 'tool_status')
+    # remaining text (e.g. "No output...") -> render as dim info line
+    remaining = ' '.join(l.strip() for l in output if isinstance(l, str) and l.strip())
+    output.clear()
+    if not results and remaining:
+        def render(buf, x, y, w, text=remaining):
+            _tool_line(buf, x, y, w, text, 'ok')
+            return 1
+        output.append(render)
     for tag, call, content in results:
         is_err = (content != 'OK') if tag == 'tool_status' else content.startswith('ERROR:')
         def render(buf, x, y, w, call=call, is_err=is_err, content=content):

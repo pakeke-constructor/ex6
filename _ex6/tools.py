@@ -312,6 +312,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     - Use line_numbers=True if you are doing deep work with this file.
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     """
+    time.sleep(3)
     with open(path, "r") as f:
         content = f.read()
     ctx.mark_file_read(path)

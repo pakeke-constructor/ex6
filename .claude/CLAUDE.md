@@ -82,11 +82,12 @@ E.g. when question-dialog appears, it REPLACES the command-input-box.
 
 # IMPORTANT AGENT DETAILS:
 <IMPORTANT-DETAILS>
-- You are working with a talented engineer who understands the codebase, if you need guidance or clarifications, ask.
+- You are working with a talented engineer who understands the codebase.
 - In all interactions, be extremely concise, even if it means grammatical incorrectness.
-- When writing code, write the simplest code possible. Aggressively avoid complexity.
+- When writing code, write the simplest code possible. Aggressively avoid complexity. Do not be afraid to say "hmm, this code is too complex. Let me rewrite that"
+- When writing code, readability and simplicity is CRUCIAL. Avoid complex one-liners or deeply nested functions. Avoid list comprehensions unless simple.
 - Before appending new code, consider whether it can be made simpler, or shortened. Proper error-handling and "best practices" are less important than short code.
-- If a feature is too complex/adds too much code, ask the engineer for help/guidance.
+- If you think a feature is too complex/adds too much code, (e.g. over 300 new lines,) you MUST ask the engineer for help/guidance to see how it can be simplified.
 </IMPORTANT-DETAILS>
 
 
