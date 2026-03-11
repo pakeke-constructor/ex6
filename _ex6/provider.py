@@ -1,7 +1,5 @@
-import inspect
 import json
 import threading
-import time
 import ex6
 import openai
 import os
@@ -121,54 +119,6 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
         d["tool_call_id"] = m.tool_call_id
     return d
 
-
-@ex6.override
-def call_tools(ctx: ex6.Context, llm_result: ex6.LLMResult) -> bool:
-    if not llm_result.tool_calls:
-        return False
-
-    tools = ctx.get_tools()
-    threads, results = [], []
-
-    for tc in llm_result.tool_calls:
-        fn = tools.get(tc["name"])
-        if not fn:
-            continue
-        result = {"id": tc["id"], "value": None}
-        results.append(result)
-        def run_tool(fn=fn, tc=tc, result=result):
-            try:
-                args = tc["args"]
-                if 'tool_call_id' in inspect.signature(fn).parameters:
-                    # (if the tool wants it's tool_call_id; then we pass it.)
-                    args = {**args, 'tool_call_id': tc["id"]}
-                result["value"] = fn(ctx, **args)
-            except Exception as e:
-                ex6.debug_print(f"tool {tc['name']} failed: {e}")
-                result["value"] = f"ERROR: {e}"
-        t = threading.Thread(target=run_tool)
-        t.start()
-        threads.append(t)
-
-        def _default_render(name, t):
-            SPIN = "/-\\|"
-            def render(buf, x, y, w):
-                if t.is_alive():
-                    icon = SPIN[int(time.time()*8) % 4]
-                    buf.puts(x, y, f"[{icon}] {name}"[:w], txt_color='yellow')
-                else:
-                    buf.puts(x, y, f"[v] {name}"[:w], txt_color='green')
-                return 1
-            return render
-        ctx.set_tool_renderer(tc["id"], _default_render(tc["name"], t))
-
-    for t in threads:
-        t.join()
-
-    for r in results:
-        ctx.messages.append(ex6.Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
-
-    return True
 
 
 @ex6.override

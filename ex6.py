@@ -312,35 +312,50 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 
 
 
+def _default_tool_render(name, t):
+    SPIN = "/-\\|"
+    def render(buf, x, y, w):
+        if t.is_alive():
+            icon = SPIN[int(time.time()*8) % 4]
+            buf.puts(x, y, f"[{icon}] {name}"[:w], txt_color='yellow')
+        else:
+            buf.puts(x, y, f"[v] {name}"[:w], txt_color='green')
+        return 1
+    return render
+
 @overridable
 def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     '''
     Blocks the thread until tools are complete.
-    Then, returns boolean; whether the LLM should loop.
-    (by default; the LLM loops when there are tool-calls.)
-
-    This function can be overridden if you have a special way of calling tools.
-    (e.g cloudflare's code-mode  https://blog.cloudflare.com/code-mode/ )
+    Returns whether the LLM should loop (True when there are tool-calls.)
     '''
     if not llm_result.tool_calls:
         return False
 
     tools = ctx.get_tools()
-    threads = []
-    results = []
+    threads, results = [], []
     for tc in llm_result.tool_calls:
         fn = tools.get(tc["name"])
         if not fn: continue
         result = {"id": tc["id"], "value": None}
         results.append(result)
         def run_tool(fn=fn, tc=tc, result=result):
-            result["value"] = fn(ctx, **_check_tool_args(fn, tc["args"]))
+            try:
+                args = tc["args"]
+                # if a tool declares tool_call_id in its signature, pass it
+                if 'tool_call_id' in inspect.signature(fn).parameters:
+                    args = {**args, 'tool_call_id': tc["id"]}
+                result["value"] = fn(ctx, **_check_tool_args(fn, args))
+            except Exception as e:
+                debug_print(f"tool {tc['name']} failed: {e}")
+                result["value"] = f"ERROR: {e}"
         t = threading.Thread(target=run_tool)
         t.start()
         threads.append(t)
+        ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], t))
+
     for t in threads:
         t.join()
-    # Add tool results as messages
     for r in results:
         ctx.messages.append(Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
     return True
