@@ -40,6 +40,7 @@ MODELS = {
     # --- Google ---
     "google/gemini-3-pro-preview":       ModelInfo(1_048_576, 2, 12, 0.2),
     "google/gemini-3-flash-preview":     ModelInfo(1_048_576, 0.5, 3, 0.05),
+    "google/gemini-3.1-flash-lite-preview": ModelInfo(1_048_576, 0.25, 1.5, 0.025),
     "google/gemini-2.5-pro":             ModelInfo(1_048_576, 1.25, 10, 0.125),
     "google/gemini-2.5-flash":           ModelInfo(1_048_576, 0.3, 2.5, 0.03),
     "google/gemini-2.5-flash-lite":      ModelInfo(1_048_576, 0.1, 0.4, 0.01),

@@ -101,8 +101,9 @@ Be kinda like claude-code.
 
 - EDIT-APPROVALS: should show git diff. should override ui; take up the whole-screen.
 simple `enter` to approve; any other key cancels and starts typing.
-- ANOTHER IDEA: instead of showing git-diff; have an auxiliary agent that summarizes changes?
-- Then; the human is acting more as like the architect behind it all.
+
+
+- Compress sys-prompts in work-mode
 
 
 - system reminder infrastructure.
@@ -113,6 +114,9 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
+- command auto-completion.
+
+- `/help` command: (list commands)
 
 - `/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.
 
@@ -126,6 +130,11 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 - knowing how best to write ui code/layout would become an `idea`.
 - writing animations simplfy/robustly (ie with state-robust incremental timers) is an `idea`
 And ideas would be constantly iterated on / tuned.
+
+
+
+- IDEA: instead of showing git-diff; have an auxiliary agent that summarizes changes?
+- Then; the human is acting more as like the architect behind it all.
 
 
 - Allow agents to "watch" and "lock" files:

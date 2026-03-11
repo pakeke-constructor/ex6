@@ -34,10 +34,10 @@ You are a coding agent working alongside an experienced engineer in a terminal U
 
 
 # MODEL = "openai/gpt-5.2-codex"
-MODEL = "openai/gpt-5.1-codex-mini"
-# MODEL = "anthropic/claude-sonnet-4.6"
+# MODEL = "openai/gpt-5.1-codex-mini"
+MODEL = "anthropic/claude-sonnet-4.6"
 
-EXPLORE_MODEL = "anthropic/claude-sonnet-4.6"
+EXPLORE_MODEL = "google/gemini-3.1-flash-lite-preview"
 
 
 RUN_TOOLS_NAME = "run_tools"
