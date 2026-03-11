@@ -22,7 +22,35 @@ import glob as _glob
 import importlib
 import tree_sitter
 import time
+import fnmatch
 
+
+def _load_gitignore():
+    patterns = []
+    if os.path.isfile(".gitignore"):
+        with open(".gitignore") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line.rstrip("/"))
+    return patterns
+
+_GITIGNORE_PATTERNS = _load_gitignore()
+
+def _is_gitignored(path):
+    rel = os.path.relpath(path).replace("\\", "/")
+    parts = rel.split("/")
+    for pat in _GITIGNORE_PATTERNS:
+        # match against basename or any path component or full relative path
+        if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(os.path.basename(rel), pat):
+            return True
+        if any(fnmatch.fnmatch(p, pat) for p in parts):
+            return True
+    return False
+
+def _check_gitignore(path):
+    if _is_gitignored(path):
+        raise ValueError(f"Refused: '{path}' is gitignored.")
 
 def _check_read(ctx, path):
     if not ctx.has_read_file(path):
@@ -146,6 +174,8 @@ def _signature(node, source, mod_name):
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     """Write content to a file, creating it if needed. Existing files must be read first."""
+    denial = approve(ctx, f"Write file: {file}")
+    if denial: raise ValueError(f"Denied: {denial}")
     if os.path.exists(file):
         _check_read(ctx, file)
     d = os.path.dirname(file)
@@ -170,6 +200,8 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     Prefer edit_file_lines for larger edits or insertions where you know the line numbers.
     Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
     """
+    denial = approve(ctx, f"Edit file: {file}")
+    if denial: raise ValueError(f"Denied: {denial}")
     _check_read(ctx, file)
 
     with open(file, "r") as f:
@@ -231,6 +263,8 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     Content should NOT end with a trailing newline — one is added automatically.
     WARNING: Do NOT call this twice in a row; line numbers shift after the first edit. Use edit_file for subsequent edits, or re-read the file headers first.
     """
+    denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})")
+    if denial: raise ValueError(f"Denied: {denial}")
     _check_read(ctx, file)
     with open(file, "r") as f:
         lines = f.readlines()
@@ -441,6 +475,31 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
         time.sleep(0.05)
 
     return result[0] or ""
+
+
+def approve(ctx: ex6.Context, description: str) -> str | None:
+    """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason)."""
+    result = [False, None]  # [answered, denial_reason]
+
+    def on_submit(text):
+        result[0] = True
+        result[1] = text if text.strip() else None
+        ctx.input_stack.pop()
+
+    input_draw = ex6.make_input(on_submit)
+
+    def draw(buf: ex6.ScreenBuffer, inpt, r):
+        x, y, w, h = r
+        buf.puts(x, y, f"  {description}", txt_color='cyan')
+        buf.puts(x, y+1, "  ENTER approve | type reason + ENTER to deny", txt_color='bright_black')
+        input_draw(buf, inpt, (x + 2, y + 2, w - 2, 1))
+
+    ctx.push_ui(draw)
+
+    while draw in ctx.input_stack:
+        time.sleep(0.05)
+
+    return result[1]
 
 
 

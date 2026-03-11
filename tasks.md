@@ -114,6 +114,9 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+- `/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.
+
+
 - IDEA INFRASTRUCTURE:
 - Agents automatically author and maintain their own skill/context files, seeded by a human-defined list of core concepts, with level-of-detail variants for context-efficient runtime injection.
 - The idea is that over time, for every project, you'll build up a SUPER ROBUST ecosystem of contexts and skills.
