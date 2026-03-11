@@ -227,68 +227,73 @@ Available: {names}""", tools={"run_tools": run_tools})
 
 # ==================== RENDERERS ====================
 
+# extract_tags: scan lines for <tag header>content</tag>, remove them, return [(tag, header, content)]
+# works for single-line (<tag h>c</tag>) and multi-line (<tag h>\n...\n</tag>)
+def extract_tags(lines, *tags):
+    found = []
+    i = 0
+    while i < len(lines):
+        if not isinstance(lines[i], str): i += 1; continue
+        tag = next((t for t in tags if lines[i].startswith(f'<{t} ')), None)
+        if not tag: i += 1; continue
+        close = f'</{tag}>'
+        if close in lines[i]:  # single-line
+            gt = lines[i].index('>')
+            found.append((tag, lines[i][len(tag)+2:gt], lines[i][gt+1:].removesuffix(close)))
+            del lines[i]
+        else:  # multi-line
+            header = lines[i][len(tag)+2:].rstrip('>')
+            j, parts = i + 1, []
+            while j < len(lines):
+                if isinstance(lines[j], str) and lines[j].strip() == close: break
+                if isinstance(lines[j], str): parts.append(lines[j])
+                j += 1
+            found.append((tag, header, '\n'.join(parts)))
+            del lines[i:j+1]
+    return found
+
 SPINNER = ['/', '-', '\\', '|']
 
-def make_tools_renderer(code: str, ctx: ex6.Context) -> ex6.RenderFn:
-    lines = [ln.strip() for ln in code.strip().split('\n') if ln.strip()]
-    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-        frame = int(time.time() * 8) % 4
-        running = ctx.llm_suspended
-        icon = SPINNER[frame] if running else '...'
-        for i, call in enumerate(lines):
-            buf.puts(x, y + i, f"[{icon}]", txt_color='yellow', style='bold')
-            buf.puts(x + 6, y + i, call[:w-4], txt_color='blue')
-        return len(lines)
-    return render
+def _tool_line(buf, x, y, w, label, status='ok', detail=None):
+    icon, color = {'running': (SPINNER[int(time.time()*8)%4], 'yellow'), 'error': ('x', 'red')}.get(status, ('v', 'green'))
+    buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
+    buf.puts(x+4, y, label[:w-4], txt_color='blue')
+    if detail:
+        buf.puts(x+5+len(label), y, detail.replace('\n',' ')[:w-6-len(label)], txt_color='bright_black')
 
 
+# render_tools_block: assistant msg has tool-call JSON lines
+# if tools done -> delete them (results render in tool msg)
+# if tools running -> show spinner per code line
 @ex6.output_renderer
-def render_tools_block(role: str, output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+def render_tools_block(role, output, ctx):
+    if role != "assistant": return
     i = 0
     while i < len(output):
-        line = output[i]
-        if isinstance(line, str) and '"run_tools"' in line:
-            try:
-                tc = json.loads(line.strip())
-                if tc.get("name") == "run_tools":
-                    code = tc["args"]["code"]
-                    output[i] = make_tools_renderer(code, ctx)
-                    i += 1
-                    continue
-            except: pass
+        if not isinstance(output[i], str) or '"run_tools"' not in output[i]: i += 1; continue
+        try:
+            tc = json.loads(output[i].strip())
+            if tc.get("name") != "run_tools": i += 1; continue
+            if not ctx.llm_suspended:
+                del output[i]; continue
+            calls = [ln.strip() for ln in tc["args"]["code"].strip().split('\n') if ln.strip()]
+            def render(buf, x, y, w, calls=calls):
+                for j, c in enumerate(calls): _tool_line(buf, x, y+j, w, c, 'running')
+                return len(calls)
+            output[i] = render
+        except: pass
         i += 1
 
 
-def make_tool_result_renderer(call: str, content: str) -> ex6.RenderFn:
-    is_error = content.startswith("ERROR:")
-    preview = content[:50].replace('\n', ' ')
-    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-        if is_error:
-            buf.puts(x, y, "[x]", txt_color='red', style='bold')
-        else:
-            buf.puts(x, y, "[v]", txt_color='green', style='bold')
-        buf.puts(x + 4, y, call, txt_color='blue')
-        buf.puts(x + 5 + len(call), y, preview[:w - 6 - len(call)], txt_color='bright_black')
-        return 1
-    return render
-
-
+# render_tool_results: tool msg has <tool_result>/<tool_status> tags
+# extract them all, replace with one-line renderers
 @ex6.output_renderer
-def render_tool_results(role: str, output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
-    i = 0
-    while i < len(output):
-        line = output[i]
-        if isinstance(line, str) and line.startswith('<tool_result '):
-            call = line[13:].rstrip('>')
-            j = i + 1
-            content_lines = []
-            while j < len(output):
-                if isinstance(output[j], str) and output[j].strip() == '</tool_result>':
-                    break
-                if isinstance(output[j], str):
-                    content_lines.append(output[j])
-                j += 1
-            content = '\n'.join(content_lines)
-            del output[i:j+1]
-            output.insert(i, make_tool_result_renderer(call, content))
-        i += 1
+def render_tool_results(role, output, ctx):
+    if role != "tool": return
+    results = extract_tags(output, 'tool_result', 'tool_status')
+    for tag, call, content in results:
+        is_err = (content != 'OK') if tag == 'tool_status' else content.startswith('ERROR:')
+        def render(buf, x, y, w, call=call, is_err=is_err, content=content):
+            _tool_line(buf, x, y, w, call, 'error' if is_err else 'ok', content)
+            return 1
+        output.append(render)

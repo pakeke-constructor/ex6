@@ -89,15 +89,15 @@ Be kinda like claude-code.
 
 - ~~Ability to spin up subagents~~
 
+- ~~Test caching for claude-models~~
+
+- ~~Tool-result rendering much better. Unify tool-call and tool-results?~~
 
 
 ## ^^^^ DONE TASKS ^^^^
 
 
-- Test caching for claude-models
 
-
-- Tool-result rendering much better. Unify tool-call and tool-results?
 
 - EDIT-APPROVALS: should show git diff. should override ui; take up the whole-screen.
 simple `enter` to approve; any other key cancels and starts typing.

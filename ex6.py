@@ -753,7 +753,7 @@ def make_input(on_submit):
             return
 
         # render multiline with wrapping
-        blink = "█" if int(time.time() * 3) % 2 == 0 else " "
+        cursor_char = "█"
         cy, cx = _cursor_visual(text, cursor, inner_w)
         visual_lines = _wrap(text, inner_w)
         if not visual_lines: visual_lines = ['']
@@ -763,7 +763,7 @@ def make_input(on_submit):
         for i, line in enumerate(visual_lines[scroll:scroll + max_visible]):
             vi = i + scroll
             if vi == cy:
-                buf.puts(r[0], r[1]+i, line[:cx] + blink + line[cx:], txt_color='white')
+                buf.puts(r[0], r[1]+i, line[:cx] + cursor_char + line[cx:], txt_color='white')
             else:
                 buf.puts(r[0], r[1]+i, line, txt_color='white')
 
