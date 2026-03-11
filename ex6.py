@@ -1084,5 +1084,8 @@ if __name__ == "__main__":
                 # displays all keybinds for selection-mode
             
             if state.mode != "scroll":
+                if state.current.input_stack:
+                    r = Region(3, 2, buf.w - 6, buf.h - 4)
+                    state.current.input_stack[-1](buf, inpt, r)
                 buf.flush(term)
 
