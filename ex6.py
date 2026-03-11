@@ -938,9 +938,7 @@ def render_work_mode(buf, inpt, r):
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
     ctx = state.current
-    if ctx.input_stack:
-        ctx.input_stack[-1](buf, inpt, input_r)
-    elif ctx.is_running():
+    if ctx.is_running():
         spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         chunks = ctx.llm_current_output

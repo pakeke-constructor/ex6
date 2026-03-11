@@ -490,14 +490,18 @@ def approve(ctx: ex6.Context, description: str) -> str | None:
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        buf.puts(x, y, f"  {description}", txt_color='cyan')
-        buf.puts(x, y+1, "  ENTER approve | type reason + ENTER to deny", txt_color='bright_black')
-        # check bare ENTER before input_draw consumes keys (empty text = approve)
+        buf.fill(r, char=' ', bg_color='bright_black')
+        buf.rect_line(r, txt_color='cyan', bg_color='bright_black')
+        # content centered vertically
+        cx = x + 3
+        cy = y + h // 2 - 1
+        buf.puts(cx, cy, description, txt_color='cyan', bg_color='bright_black')
+        buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color='bright_black')
         if inpt.consume('KEY_ENTER'):
             result[0] = True
             ctx.input_stack.pop()
             return
-        input_draw(buf, inpt, (x + 2, y + 2, w - 2, 1))
+        input_draw(buf, inpt, (cx, cy + 2, w - 6, 1))
 
     ctx.push_ui(draw)
 
