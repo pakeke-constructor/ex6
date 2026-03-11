@@ -1001,7 +1001,7 @@ if __name__ == "__main__":
     state.term = Terminal()
     term = state.term
     buf = ScreenBuffer(term.width, term.height)
-    keys = []
+    keyls = []
 
     def on_submit(text):
         if text.startswith("/"):
@@ -1019,13 +1019,13 @@ if __name__ == "__main__":
                 if str(key) == '\x03': break
                 if _log_keys:
                     debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
-                keys.append(key)
+                keyls.append(key)
 
             if buf.w != term.width or buf.h != term.height:
                 buf = ScreenBuffer(term.width, term.height)
 
-            inpt = InputPass(keys)
-            keys = []
+            inpt = InputPass(keyls)
+            keyls = []
 
             buf.clear()
 
