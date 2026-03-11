@@ -350,9 +350,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
                 debug_print(f"tool {tc['name']} failed: {e}")
                 result["value"] = f"ERROR: {e}"
         t = threading.Thread(target=run_tool)
+        ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], t))
         t.start()
         threads.append(t)
-        ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], t))
 
     for t in threads:
         t.join()

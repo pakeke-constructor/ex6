@@ -45,6 +45,16 @@ LANG_MODULES = {
     '.kt': 'tree_sitter_kotlin', '.kts': 'tree_sitter_kotlin',
 }
 
+CONTAINER_TYPES = {
+    'class_definition', 'class_declaration', 'class_specifier',
+    'interface_declaration',
+    'struct_specifier', 'struct_item',
+    'enum_item', 'impl_item', 'trait_item',
+    'type_declaration',
+    'module',
+    'object_declaration', 'companion_object',
+}
+
 DEFINITION_TYPES = {
     'tree_sitter_python': ['function_definition', 'class_definition'],
     'tree_sitter_javascript': ['function_declaration', 'class_declaration', 'method_definition'],
@@ -351,7 +361,8 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
                     out.append(f"{line_no}: {prefix}{sig}")
                 else:
                     out.append(prefix + sig)
-                collect(child, indent + 1)
+                if child.type in CONTAINER_TYPES:
+                    collect(child, indent + 1)
             else:
                 collect(child, indent)
 

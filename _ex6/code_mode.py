@@ -188,7 +188,7 @@ def generate_tool_desc(fn) -> str:
 
 def make_code_mode_tool(tools: list):
     """Create the run_tools tool function for sandboxed code execution."""
-    def run_tools(ctx, code="", tool_call_id=None):
+    def run_tools(ctx: ex6.Context, code="", tool_call_id=None):
         """Execute tool calls as Python code.
         - Do NOT use import statements.
         - Tools return a ToolResult. You MUST call .print() or .status() to see results."""
