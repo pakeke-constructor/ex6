@@ -28,8 +28,7 @@ MODELS = {
     # --- Anthropic ---
     "anthropic/claude-opus-4.6":         ModelInfo(200_000, 5, 25, 0.5, 6.25),
     "anthropic/claude-sonnet-4.6":       ModelInfo(200_000, 3, 15, 0.3, 3.75),
-    "anthropic/claude-sonnet-4":         ModelInfo(200_000, 3, 15, 0.3, 3.75),
-    "anthropic/claude-haiku-4":          ModelInfo(200_000, 0.8, 4, 0.08, 1),
+    "anthropic/claude-haiku-4.5":        ModelInfo(200_000, 1, 5, 0.1, 1.25),
     # --- OpenAI ---
     "openai/gpt-5":                      ModelInfo(400_000, 1.25, 10, 0.125),
     "openai/gpt-5-mini":                 ModelInfo(400_000, 0.25, 2, 0.025),
@@ -46,10 +45,10 @@ MODELS = {
     "google/gemini-2.5-flash-lite":      ModelInfo(1_048_576, 0.1, 0.4, 0.01),
     # --- xAI ---
     "x-ai/grok-4":                       ModelInfo(256_000, 3, 15, 0.75),
-    "x-ai/grok-4-fast":                  ModelInfo(2_000_000, 0.2, 0.5, 0.05),
+    "x-ai/grok-4.1-fast":                ModelInfo(2_000_000, 0.2, 0.5, 0.05),
     # --- DeepSeek ---
-    "deepseek/deepseek-chat-v3.1":       ModelInfo(128_000, 0.15, 0.75, 0),
-    "deepseek/deepseek-r1":              ModelInfo(128_000, 0.7, 2.5, 0),
+    "deepseek/deepseek-chat-v3.1":       ModelInfo(32_768, 0.15, 0.75, 0),
+    "deepseek/deepseek-r1":              ModelInfo(64_000, 0.7, 2.5, 0),
     # --- Other ---
     "qwen/qwen3-coder":                  ModelInfo(262_144, 0.22, 1, 0.022),
     "moonshotai/kimi-k2.5":              ModelInfo(262_144, 0.45, 2.2, 0.225),
