@@ -365,6 +365,7 @@ class Context:
     data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _prev_height: int = 0 # how many lines were used in rendering last frame
+    _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
 
     def token_count(self) -> int:
         if self.llm_result:
@@ -396,6 +397,9 @@ class Context:
 
     def get_read_files(self):
         return list(self._read_hashes.keys())
+
+    def set_tool_renderer(self, tool_call_id: str, render_fn):
+        self._tool_renderers[tool_call_id] = render_fn
 
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
@@ -441,6 +445,7 @@ class Context:
         cpy.messages = copy.deepcopy(self.messages)
         cpy._read_hashes = dict(self._read_hashes)
         cpy.data = copy.copy(self.data)
+        cpy._tool_renderers = {}
         cpy.input_stack = []
         cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.parent = self.name
@@ -868,7 +873,7 @@ def _render_chunks(chunks):
         elif c.type == "cot":
             continue
         elif c.type == "tool":
-            parts.append(c.content)
+            continue
     return "".join(parts)
 
 @overridable
@@ -879,9 +884,15 @@ def render_work_mode(buf, inpt, r):
     # Build per-message output: list of (role, lines)
     message_outputs = []
     for msg in ctx.messages:
+        if msg.role == "tool" and msg.tool_call_id in ctx._tool_renderers:
+            continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         lines = c.split('\n')
         for renderer in _output_renderers: renderer(msg.role, lines, ctx)
+        if msg.tool_calls:
+            for tc in msg.tool_calls:
+                rfn = ctx._tool_renderers.get(tc["id"])
+                if rfn: lines.append(rfn)
         message_outputs.append((msg.role, lines))
     if ctx.is_running() and not ctx.llm_suspended:
         lines = (_render_chunks(ctx.llm_current_output) + "█").split('\n')

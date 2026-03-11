@@ -149,7 +149,7 @@ def exec_sandboxed(code: str, env: dict):
     exec(result.code, sandbox_globals)
 
 
-def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
+def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list):
     """Wrap tool to run in thread. Returns ToolResult with .get()/.print()/.status()."""
     def wrapper(*args, **kwargs):
         def _short(a, maxlen=40):
@@ -165,6 +165,7 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list):
         t = threading.Thread(target=run)
         t.start()
         threads.append(t)
+        tool_infos.append((call_str, t, tr))
         return tr
     return wrapper
 
@@ -187,12 +188,24 @@ def generate_tool_desc(fn) -> str:
 
 def make_code_mode_tool(tools: list):
     """Create the run_tools tool function for sandboxed code execution."""
-    def run_tools(ctx, code=""):
+    def run_tools(ctx, code="", tool_call_id=None):
         """Execute tool calls as Python code.
         - Do NOT use import statements.
         - Tools return a ToolResult. You MUST call .print() or .status() to see results."""
-        results, threads = [], []
-        env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads) for fn in tools}
+        results, threads, tool_infos = [], [], []
+        env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads, tool_infos) for fn in tools}
+
+        if tool_call_id:
+            def code_render(buf, x, y, w):
+                row = 0
+                for call_str, t, tr in tool_infos:
+                    alive = t.is_alive()
+                    status = 'running' if alive else ('error' if tr._error else 'ok')
+                    detail = None if alive else (str(tr._error) if tr._error else None)
+                    _tool_line(buf, x, y + row, w, call_str, status, detail)
+                    row += 1
+                return max(row, 1)
+            ctx.set_tool_renderer(tool_call_id, code_render)
         try:
             exec_sandboxed(code, env)
         except Exception as e:
@@ -262,46 +275,3 @@ def _tool_line(buf, x, y, w, label, status='ok', detail=None):
         buf.puts(x+5+len(label), y, detail.replace('\n',' ')[:w-6-len(label)], txt_color='bright_black')
 
 
-# render_tools_block: assistant msg has tool-call JSON lines
-# if tools done -> delete them (results render in tool msg)
-# if tools running -> show spinner per code line
-@ex6.output_renderer
-def render_tools_block(role, output, ctx):
-    if role != "assistant": return
-    i = 0
-    while i < len(output):
-        if not isinstance(output[i], str) or '"run_tools"' not in output[i]: i += 1; continue
-        try:
-            tc = json.loads(output[i].strip())
-            if tc.get("name") != "run_tools": i += 1; continue
-            if not ctx.llm_suspended:
-                del output[i]; continue
-            calls = [ln.strip() for ln in tc["args"]["code"].strip().split('\n') if ln.strip()]
-            def render(buf, x, y, w, calls=calls):
-                for j, c in enumerate(calls): _tool_line(buf, x, y+j, w, c, 'running')
-                return len(calls)
-            output[i] = render
-        except: pass
-        i += 1
-
-
-# render_tool_results: tool msg has <tool_result>/<tool_status> tags
-# extract them all, replace with one-line renderers
-@ex6.output_renderer
-def render_tool_results(role, output, ctx):
-    if role != "tool": return
-    results = extract_tags(output, 'tool_result', 'tool_status')
-    # remaining text (e.g. "No output...") -> render as dim info line
-    remaining = ' '.join(l.strip() for l in output if isinstance(l, str) and l.strip())
-    output.clear()
-    if not results and remaining:
-        def render(buf, x, y, w, text=remaining):
-            _tool_line(buf, x, y, w, text, 'ok')
-            return 1
-        output.append(render)
-    for tag, call, content in results:
-        is_err = (content != 'OK') if tag == 'tool_status' else content.startswith('ERROR:')
-        def render(buf, x, y, w, call=call, is_err=is_err, content=content):
-            _tool_line(buf, x, y, w, call, 'error' if is_err else 'ok', content)
-            return 1
-        output.append(render)
