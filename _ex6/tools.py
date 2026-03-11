@@ -492,6 +492,11 @@ def approve(ctx: ex6.Context, description: str) -> str | None:
         x, y, w, h = r
         buf.puts(x, y, f"  {description}", txt_color='cyan')
         buf.puts(x, y+1, "  ENTER approve | type reason + ENTER to deny", txt_color='bright_black')
+        # check bare ENTER before input_draw consumes keys (empty text = approve)
+        if inpt.consume('KEY_ENTER'):
+            result[0] = True
+            ctx.input_stack.pop()
+            return
         input_draw(buf, inpt, (x + 2, y + 2, w - 2, 1))
 
     ctx.push_ui(draw)
