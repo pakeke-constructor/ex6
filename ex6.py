@@ -539,10 +539,13 @@ class ScreenBuffer:
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
                 parts = [p for p in [fg, s] if p]
-                if bg: parts.append(f"on_{bg}")
+                if bg and isinstance(bg, tuple): styled_bg = term.on_color_rgb(*bg)
+                elif bg: parts.append(f"on_{bg}"); styled_bg = None
+                else: styled_bg = None
                 attr = "_".join(parts) if parts else None
                 styled = getattr(term, attr, None) if attr else None
-                out += styled(c) if styled else c
+                ch = styled(c) if styled else c
+                out += styled_bg(ch) if styled_bg else ch
         print(out, end='', flush=True)
 
     def fill(self, r: Rect, char='█', style=None, txt_color=None, bg_color=None):
@@ -604,6 +607,13 @@ class ScreenBuffer:
                     col += 1  # space
             row += 1
         return max(row, 1)
+
+    def fill_bg(self, x, y, w, h, color):
+        for i in range(h):
+            if 0 <= y+i < self.h:
+                for c in range(w):
+                    if self.bg_colors[y+i][x+c] is None:
+                        self.bg_colors[y+i][x+c] = color
 
     def writer(self, x, y, w):
         return WrapWriter(self, x, y, w)
@@ -954,13 +964,14 @@ def render_work_mode(buf, inpt, r):
                 row += line(buf, x, row, w)
             else:
                 drawn = buf.print_wrapped(line, x, row, w, txt_color='white', bg_color=bg)
-                if bg:
-                    for i in range(drawn):
-                        if 0 <= row+i < buf.h:
-                            for c in range(w):
-                                if buf.bg_colors[row+i][x+c] is None:
-                                    buf.bg_colors[row+i][x+c] = bg
+                if bg: buf.fill_bg(x, row, w, drawn, bg)
                 row += drawn
+    if ctx.llm_result and ctx.llm_result.error:
+        row += 1
+        for line in ctx.llm_result.error.split('\n'):
+            drawn = buf.print_wrapped(line, x, row, w, txt_color='white', bg_color=(80, 0, 0))
+            buf.fill_bg(x, row, w, drawn, (80, 0, 0))
+            row += drawn
     ctx._prev_height = row - (y - scroll_offset)
 
 @overridable
