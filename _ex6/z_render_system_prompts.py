@@ -2,7 +2,7 @@
 import ex6
 
 @ex6.output_renderer
-def compress_system_prompt(msg: ex6.Message, lines: list, ctx: ex6.Context) -> None:
+def compress_system_prompt(lines: list, msg: ex6.Message, ctx: ex6.Context) -> None:
     if msg.role != "system":
         return
 

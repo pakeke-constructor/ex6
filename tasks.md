@@ -112,6 +112,9 @@ Be kinda like claude-code.
 - Abbreviations for system-prompts, so they are more readable.
 
 
+- BUG: AGENTS CAN'T DO MULTIPLE EDITS OF THE SAME FILE PER BLOCK. needs fixing.
+
+
 - Context-window usage visible at top of work-mode.
 - (Conversation-cost visible at top of work-mode?)
 - Daily budget visible at top of work-mode?

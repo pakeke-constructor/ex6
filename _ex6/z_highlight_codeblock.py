@@ -40,7 +40,7 @@ def make_code_renderer(code: str, lang: str) -> ex6.RenderFn:
 
 
 @ex6.output_renderer
-def syntax_highlight(msg: ex6.Message, output: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+def syntax_highlight(output: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.Context) -> None:
     i = 0
     while i < len(output):
         line = output[i]
