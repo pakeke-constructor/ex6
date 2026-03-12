@@ -375,7 +375,7 @@ class Context:
     last_invoke_time_end: float = 0
     last_invoke_time_start: float = 0
     llm_result: Optional[LLMResult] = None
-    input_stack: list = field(default_factory=list)
+    ui_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
     _stop_early: bool = False
@@ -465,7 +465,7 @@ class Context:
         while i < len(self.messages) and self.messages[i].role == "system":
             i += 1
         self.messages = self.messages[:i]
-        self.input_stack = []
+        self.ui_stack = []
         self.llm_result = None
         self.llm_current_output = []
         self.last_invoke_time_start = 0
@@ -479,14 +479,14 @@ class Context:
         cpy._read_hashes = dict(self._read_hashes)
         cpy.data = copy.copy(self.data)
         cpy._tool_renderers = {}
-        cpy.input_stack = []
+        cpy.ui_stack = []
         cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.parent = self.name
         cpy.__post_init__()
         return cpy
 
     def push_ui(self, draw_fn):
-        self.input_stack.append(draw_fn)
+        self.ui_stack.append(draw_fn)
 
 
 
@@ -1111,8 +1111,8 @@ if __name__ == "__main__":
                 # displays all keybinds for selection-mode
             
             if state.mode != "scroll":
-                if state.current.input_stack:
+                if state.current.ui_stack:
                     r = Region(3, 2, buf.w - 6, buf.h - 4)
-                    state.current.input_stack[-1](buf, inpt, r)
+                    state.current.ui_stack[-1](buf, inpt, r)
                 buf.flush(term)
 

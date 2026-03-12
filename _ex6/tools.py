@@ -478,7 +478,7 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
     def on_submit(text):
         result[0] = text
-        ctx.input_stack.pop()
+        ctx.ui_stack.pop()
 
     input_draw = ex6.make_input(on_submit)
 
@@ -489,7 +489,7 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
     ctx.push_ui(draw)
 
-    while draw in ctx.input_stack:
+    while draw in ctx.ui_stack:
         time.sleep(0.05)
 
     return result[0] or ""
@@ -530,21 +530,21 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
     def on_submit(text):
         result[0] = True
         result[1] = text if text.strip() else None
-        ctx.input_stack.pop()
+        ctx.ui_stack.pop()
 
     input_draw = ex6.make_input(on_submit)
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
         buf.fill(r, char=' ', bg_color='black')
-        buf.rect(r, txt_color='cyan', bg_color='bright_black')
+        buf.rect(r, txt_color='bright_black')
         cx = x + 3
         cy = y + 1
         buf.puts(cx, cy,   description, txt_color='cyan', bg_color='bright_black')
         buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color='bright_black')
         if inpt.consume('KEY_ENTER'):
             result[0] = True
-            ctx.input_stack.pop()
+            ctx.ui_stack.pop()
             return
         input_draw(buf, inpt, (cx, cy + 2, w - 6, 1))
         if render_extra:
@@ -555,7 +555,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
 
     ctx.push_ui(draw)
 
-    while draw in ctx.input_stack:
+    while draw in ctx.ui_stack:
         time.sleep(0.05)
 
     return result[1]

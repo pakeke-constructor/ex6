@@ -93,24 +93,25 @@ Be kinda like claude-code.
 
 - ~~Tool-result rendering much better. Unify tool-call and tool-results?~~
 
+- ~~EDIT-APPROVALS: should show git diff. should override ui; take up the whole-screen.~~
+~~simple `enter` to approve; any other key cancels and starts typing.~~
+
 
 ## ^^^^ DONE TASKS ^^^^
+## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
-
-
-
-- EDIT-APPROVALS: should show git diff. should override ui; take up the whole-screen.
-simple `enter` to approve; any other key cancels and starts typing.
 
 
 - Compress sys-prompts in work-mode
 
 
+- Ability to cancel agents from yapping.
 
-## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 - command auto-completion.
 
+
+- better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
 
 
 - `/help` command: (list commands, make ui-panel for it)
