@@ -54,14 +54,9 @@ class M:
     _index: Optional[dict[str, ModelInfo]] = None  # lazy reverse index: model_id -> ModelInfo
 
     @classmethod
-    def __class_getitem__(cls, model_id: str) -> Optional[ModelInfo]:
+    def get(cls, model_id: str) -> Optional["ModelInfo"]:
         if cls._index is None:
-            # build inversion table.
-            cls._index = {
-                v.id: v
-                for v in vars(cls).values()
-                if isinstance(v, ModelInfo)
-            }
+            cls._index = {v.id: v for v in vars(cls).values() if isinstance(v, ModelInfo)}
         return cls._index.get(model_id)
 
 
@@ -247,7 +242,7 @@ def invoke_llm(ctx: ex6.Context):
     if provider_cost is not None:
         cost = provider_cost
     else:
-        info = M[ctx.model]
+        info = M.get(ctx.model)
         if info is None:
             raise ValueError(f"no pricing for model '{ctx.model}' — add it to M in provider.py")
         uncached_input = input_tokens - cached_tokens - cache_write_tokens
