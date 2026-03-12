@@ -53,14 +53,14 @@ _output_renderers = []
 # Type aliases for output rendering
 RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
 OutputLine = Union[str, RenderFn]  # str or render fn
-OutputRendererFn = Callable[[str, list, 'Context'], None]  # fn(role, lines, ctx) -> None
+OutputRendererFn = Callable[['Message', list, 'Context'], None]  # fn(msg, lines, ctx) -> None
 
 def output_renderer(fn: OutputRendererFn) -> OutputRendererFn:
     '''
     Called once per message. Mutate `lines` in-place (replace str with RenderFn).
 
     @ex6.output_renderer
-    def syntax_highlighting(role: str, lines: list[ex6.OutputLine], ctx: ex6.Context) -> None:
+    def syntax_highlighting(msg: ex6.Message, lines: list[ex6.OutputLine], ctx: ex6.Context) -> None:
         ...
     '''
     _output_renderers.append(fn)
@@ -942,15 +942,16 @@ def render_work_mode(buf, inpt, r):
             continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         lines = c.split('\n')
-        for renderer in _output_renderers: renderer(msg.role, lines, ctx)
+        for renderer in _output_renderers: renderer(msg, lines, ctx)
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 rfn = ctx._tool_renderers.get(tc["id"])
                 if rfn: lines.append(rfn)
         message_outputs.append((msg.role, lines))
     if ctx.is_running() and not ctx.llm_suspended:
+        streaming_msg = Message(role="assistant", content="")
         lines = (_render_chunks(ctx.llm_current_output) + "█").split('\n')
-        for renderer in _output_renderers: renderer('assistant', lines, ctx)
+        for renderer in _output_renderers: renderer(streaming_msg, lines, ctx)
         message_outputs.append(('assistant', lines))
 
     # Draw
