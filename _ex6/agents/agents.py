@@ -42,7 +42,7 @@ EXPLORE_MODEL = "google/gemini-3.1-flash-lite-preview"
 
 RUN_TOOLS_NAME = "run_tools"
 
-COMMON_MISTAKES = '''
+COMMON_MISTAKES = """
 ## COMMON MISTAKES — do NOT do these:
 NEVER use `print()`, `open()`, `import`, or any Python builtin. They do not exist. Only the listed tool functions exist.
 
@@ -69,14 +69,14 @@ edit_file("a.py", old, new).status()
 data = read_file("a.py").get()
 search(data).print()
 ```
-'''
+"""
 
 def make_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex6.Message:
     sorted_tools = sorted(tools, key=lambda f: f.__name__)
     tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
     common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
-    return ex6.Message(role="system", content=f'''\
+    return ex6.Message(role="system", content=f"""\
 # Tools
 Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
@@ -104,13 +104,13 @@ read_file("utils.py").print()
 {RUN_TOOLS_NAME}```
 # Write file — .status() to confirm success
 edit_file("src/main.lua",
-"""function Player:update(dt)
+'''function Player:update(dt)
     self.x = self.x + 1
-end""",
-"""function Player:update(dt)
+end''',
+'''function Player:update(dt)
     self.x = self.x + self.speed * dt
     self.y = self.y + self.vy * dt
-end"""
+end'''
 ).status()
 ```
 
@@ -123,7 +123,7 @@ search(x.get()).print()
 
 
 {common_mistakes}
-''', tools={RUN_TOOLS_NAME: run_tools})
+""", tools={RUN_TOOLS_NAME: run_tools})
 
 
 

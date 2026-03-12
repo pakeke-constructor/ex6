@@ -202,9 +202,17 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     search must match exactly one location. errors if zero or multiple matches.
 
     - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
-    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the line numbers.
+    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the line numbers, AND ONLY WHEN THE FILE HASN'T BEEN EDITED.
     - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
-    - IMPORTANT: Use triple-backtick heredoc-style formatting.
+
+    - IMPORTANT: For multiline strings, Use triple-backtick heredoc-style string formatting with ''' for ease of use:
+    edit_file("file.txt"
+    '''
+    <multiline string to search>
+    ''',
+    '''
+    <multiline string to replace>
+    ''')
     """
     _check_read(ctx, file)
 
