@@ -62,7 +62,8 @@ def cm(msg: Optional[str]):
         ex6.enter_scroll_mode()
 
         # mark untracked files with intent-to-add so they show in diff
-        subprocess.run(["git", "add", "-N", "."], capture_output=True)
+        subprocess.run(["git", "add", "."], capture_output=True)
+
         diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
             print("No changes to commit.")
