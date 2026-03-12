@@ -550,6 +550,15 @@ class ScreenBuffer:
             for col in range(x, x + w):
                 self.put(col, row, char, style, txt_color, bg_color)
 
+    def rect(self, r: Rect, char='█', style=None, txt_color=None, bg_color=None):
+        x, y, w, h = r
+        for col in range(x, x + w):
+            self.put(col, y, char, style, txt_color, bg_color)
+            self.put(col, y + h - 1, char, style, txt_color, bg_color)
+        for row in range(y + 1, y + h - 1):
+            self.put(x, row, char, style, txt_color, bg_color)
+            self.put(x + w - 1, row, char, style, txt_color, bg_color)
+
     def rect_line(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
         if w < 2 or h < 2: return

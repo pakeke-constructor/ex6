@@ -536,8 +536,8 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        buf.fill(r, char=' ', bg_color='bright_black')
-        buf.rect_line(r, txt_color='cyan', bg_color='bright_black')
+        buf.fill(r, char=' ', bg_color='black')
+        buf.rect(r, txt_color='cyan', bg_color='bright_black')
         cx = x + 3
         cy = y + 1
         buf.puts(cx, cy,   description, txt_color='cyan', bg_color='bright_black')
