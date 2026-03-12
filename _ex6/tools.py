@@ -270,7 +270,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
 def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: str) -> str:
     """
     Replace lines start..end (inclusive, 1-indexed) with content.
-    Prefer this over edit_file if you know the line numbers and are editing more than 2 lines,
+    Prefer this over edit_file if you know the line numbers and you are deleting many lines,
     or if you want to insert code between function blocks/definitions.
     To insert without removing lines, set end=0 and start=the line to insert before.
     Content should NOT end with a trailing newline — one is added automatically.

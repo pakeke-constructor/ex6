@@ -47,6 +47,14 @@ def _llm_one_shot(model: str, system: str, user: str) -> str:
 
 
 
+CM_SYSTEM_PROMPT = """
+You write git commit messages.
+Use conventional commits: feat(...), fix(...), chore(...), refactor(...), etc.
+One line only. No quotes. No explanation.
+Be extremely concise, grammatical correctness is not important.
+"""
+
+
 @ex6.command
 def cm(msg: Optional[str]):
     """Generate a commit message from git diff and commit."""
@@ -65,11 +73,7 @@ def cm(msg: Optional[str]):
                  else "anthropic/claude-haiku-4.5")
 
         hint = f"User hint: {msg}" if msg else ""
-        system = (
-            "You write git commit messages. "
-            "Use conventional commits: feat(...), fix(...), chore(...), refactor(...), etc. "
-            "One line only. No quotes. No explanation."
-        )
+        system = CM_SYSTEM_PROMPT
         user = f"Write a commit message for this diff:{hint}\n\n{diff[:8000]}"
 
         print("Generating commit message...")

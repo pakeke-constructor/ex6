@@ -111,7 +111,9 @@ simple `enter` to approve; any other key cancels and starts typing.
 
 - command auto-completion.
 
-- `/help` command: (list commands)
+
+
+- `/help` command: (list commands, make ui-panel for it)
 
 - `/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.
 
