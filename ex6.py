@@ -378,6 +378,7 @@ class Context:
     input_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
+    _stop_early: bool = False
     parent: Optional[str] = None # name of parent context (for subagents)
     data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
@@ -431,11 +432,13 @@ class Context:
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
+        self._stop_early = False
 
         def do_llm():
             self.last_invoke_time_start = time.time()
             self.llm_current_output = []
             for item in llm_fn(self):
+                if self._stop_early: return
                 if isinstance(item, ResponseChunk):
                     self.llm_current_output.append(item)
                 elif isinstance(item, LLMResult):
@@ -446,7 +449,7 @@ class Context:
 
         def run():
             should_loop = True
-            while should_loop:
+            while should_loop and not self._stop_early:
                 do_llm()
                 if not self.llm_result: break
                 self.llm_suspended = True

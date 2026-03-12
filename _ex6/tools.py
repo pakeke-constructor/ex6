@@ -201,9 +201,10 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
     search must match exactly one location. errors if zero or multiple matches.
 
-    Use this tool when you need surgical edits, ESPECIALLY edits to 1-3 lines.
-    Prefer edit_file_lines for larger edits or insertions where you know the line numbers.
-    Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
+    - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
+    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the line numbers.
+    - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
+    - IMPORTANT: Use triple-backtick heredoc-style formatting.
     """
     _check_read(ctx, file)
 
@@ -367,7 +368,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     - Use line_numbers=True if you are doing deep work with this file.
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     """
-    time.sleep(3)
+    _check_gitignore(path)
     with open(path, "r") as f:
         content = f.read()
     ctx.mark_file_read(path)
@@ -384,6 +385,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
     You should prefer using this tool first before reading an entire file.
     read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
     """
+    _check_gitignore(file)
     ctx.mark_file_read(file)
     tree, source, mod_name = _parse_file(file)
     if mod_name == 'tree_sitter_lua':
