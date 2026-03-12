@@ -61,11 +61,9 @@ def cm(msg: Optional[str]):
     def run():
         ex6.enter_scroll_mode()
 
-        # stage everything, then get diff
-        subprocess.run(["git", "add", "."], capture_output=True)
+        # mark untracked files with intent-to-add so they show in diff
+        subprocess.run(["git", "add", "-N", "."], capture_output=True)
         diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
-        if not diff:
-            diff = subprocess.run(["git", "diff", "--staged"], capture_output=True, text=True).stdout
         if not diff:
             print("No changes to commit.")
             return
@@ -81,7 +79,8 @@ def cm(msg: Optional[str]):
         commit_msg = _llm_one_shot(model, system, user)
         print(f"Commit: {commit_msg}")
 
-        result = subprocess.run(["git", "commit", "-am", commit_msg], capture_output=True, text=True)
+        subprocess.run(["git", "add", "."], capture_output=True)
+        result = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
         if result.returncode == 0:
             print("Committed.")
         else:
