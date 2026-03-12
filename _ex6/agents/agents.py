@@ -1,7 +1,7 @@
 
 
 
-from _ex6 import provider
+from _ex6.provider import ModelNamespace
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
 import ex6
@@ -35,9 +35,9 @@ You are a coding agent working alongside an experienced engineer in a terminal U
 
 # MODEL = "openai/gpt-5.2-codex"
 # MODEL = "openai/gpt-5.1-codex-mini"
-MODEL = "anthropic/claude-sonnet-4.6"
+MODEL = ModelNamespace.SONNET_46
 
-EXPLORE_MODEL = "google/gemini-3.1-flash-lite-preview"
+EXPLORE_MODEL = ModelNamespace.GEMINI31_FLASH_LITE
 
 
 RUN_TOOLS_NAME = "run_tools"
@@ -142,6 +142,7 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 # Output
 - Bullet points over paragraphs. Code references (file:function_name) over prose.
 - Concrete facts, relevant paths, function names, relationships.
+- Favour conciseness at all costs. Conciseness is much more important than grammatical correctness.
 - If the answer is 3 lines, write 3 lines. If it needs 30, write 30.
 """)
 
@@ -157,7 +158,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
             with open(f, "r") as fh:
                 parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
         prompt = "\n".join(parts) + "\n\n" + prompt
-    sub = Context("explore", model=MODEL, messages=[
+    sub = Context("explore", model=EXPLORE_MODEL, messages=[
         EXPLORE_SYSTEM_PROMPT,
         make_system_prompt(EXPLORE_TOOLS, include_common_mistakes=True),
     ])

@@ -106,11 +106,6 @@ simple `enter` to approve; any other key cancels and starts typing.
 - Compress sys-prompts in work-mode
 
 
-- system reminder infrastructure.
--> Do exactly what was asked. Nothing more, nothing less. Never create files unless necessary. Never add docs/READMEs unprompted.
-https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
-
-
 
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
@@ -119,6 +114,12 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 - `/help` command: (list commands)
 
 - `/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.
+
+
+- system reminder infrastructure.
+-> Do exactly what was asked. Nothing more, nothing less. Never create files unless necessary. Never add docs/READMEs unprompted.
+https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
+
 
 
 - IDEA INFRASTRUCTURE:

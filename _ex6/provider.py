@@ -23,6 +23,34 @@ class ModelInfo:
     cache_write: float = 0 # cost / Mtok (explicit caching, e.g. Anthropic)
 
 
+
+# Model constants (for robust static checks, avoids typos)
+class ModelNamespace:
+    OPUS_46        = "anthropic/claude-opus-4.6"
+    SONNET_46      = "anthropic/claude-sonnet-4.6"
+    HAIKU_45       = "anthropic/claude-haiku-4.5"
+    GPT5           = "openai/gpt-5"
+    GPT5_MINI      = "openai/gpt-5-mini"
+    GPT5_CODEX     = "openai/gpt-5-codex"
+    GPT52_CODEX    = "openai/gpt-5.2-codex"
+    GPT51_CODEX_MINI = "openai/gpt-5.1-codex-mini"
+    CODEX_MINI     = "openai/codex-mini"
+    O4_MINI        = "openai/o4-mini"
+    GEMINI3_PRO    = "google/gemini-3-pro-preview"
+    GEMINI3_FLASH  = "google/gemini-3-flash-preview"
+    GEMINI31_FLASH_LITE = "google/gemini-3.1-flash-lite-preview"
+    GEMINI25_PRO   = "google/gemini-2.5-pro"
+    GEMINI25_FLASH = "google/gemini-2.5-flash"
+    GEMINI25_FLASH_LITE = "google/gemini-2.5-flash-lite"
+    GROK4          = "x-ai/grok-4"
+    GROK41_FAST    = "x-ai/grok-4.1-fast"
+    DEEPSEEK_CHAT  = "deepseek/deepseek-chat-v3.1"
+    DEEPSEEK_R1    = "deepseek/deepseek-r1"
+    QWEN3_CODER    = "qwen/qwen3-coder"
+    KIMI_K25       = "moonshotai/kimi-k2.5"
+
+
+
 # $/M tokens (input, output, cache_read, cache_write)
 MODELS = {
     # --- Anthropic ---
