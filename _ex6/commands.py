@@ -1,5 +1,7 @@
 
 from typing import Optional
+import subprocess
+import threading
 import ex6
 
 
@@ -29,6 +31,59 @@ def fork(name: Optional[str]):
 @ex6.command
 def crash():
     raise RuntimeError("Crash!")
+
+
+def _llm_one_shot(model: str, system: str, user: str) -> str:
+    """Synchronously run one LLM call. Returns assistant text."""
+    ctx = ex6.Context(name="__tmp_cm__", model=model)
+    ctx.messages.append(ex6.Message(role="system", content=system))
+    ctx.messages.append(ex6.Message(role="user", content=user))
+    result_text = []
+    for item in ex6.invoke_llm(ctx):
+        if isinstance(item, ex6.ResponseChunk) and item.type == "text":
+            result_text.append(item.content)
+    del ex6.state.contexts["__tmp_cm__"]
+    return "".join(result_text).strip()
+
+
+
+@ex6.command
+def cm(msg: Optional[str]):
+    """Generate a commit message from git diff and commit."""
+    def run():
+        ex6.enter_scroll_mode()
+
+        # get diff
+        diff = subprocess.run(["git", "diff", "--staged"], capture_output=True, text=True).stdout
+        if not diff:
+            diff = subprocess.run(["git", "diff"], capture_output=True, text=True).stdout
+        if not diff:
+            print("No changes to commit.")
+            return
+
+        model = (ex6.state.current.model if ex6.state.current
+                 else "anthropic/claude-haiku-4.5")
+
+        hint = f"User hint: {msg}" if msg else ""
+        system = (
+            "You write git commit messages. "
+            "Use conventional commits: feat(...), fix(...), chore(...), refactor(...), etc. "
+            "One line only. No quotes. No explanation."
+        )
+        user = f"Write a commit message for this diff:{hint}\n\n{diff[:8000]}"
+
+        print("Generating commit message...")
+        commit_msg = _llm_one_shot(model, system, user)
+        print(f"Commit: {commit_msg}")
+
+        result = subprocess.run(["git", "commit", "-am", commit_msg], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("Committed.")
+        else:
+            print(f"git commit failed:\n{result.stderr}")
+
+    threading.Thread(target=run, daemon=True).start()
+
 
 
 @ex6.command
