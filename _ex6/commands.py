@@ -61,10 +61,10 @@ def cm(msg: Optional[str]):
     def run():
         ex6.enter_scroll_mode()
 
-        # get diff
-        diff = subprocess.run(["git", "diff", "--staged"], capture_output=True, text=True).stdout
+        # get diff (HEAD covers staged new files too; fall back for initial commit)
+        diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
-            diff = subprocess.run(["git", "diff"], capture_output=True, text=True).stdout
+            diff = subprocess.run(["git", "diff", "--staged"], capture_output=True, text=True).stdout
         if not diff:
             print("No changes to commit.")
             return
