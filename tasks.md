@@ -200,3 +200,21 @@ make_subagent("find all entities in this file: " + res.get())
 NOTE: IT DOESNT NEED TO BE `res.get()`.  
 We should ideally use a builtin python abstraction.
 
+
+
+
+## PROBLEM-SOLVING-AGENTS:
+One thing I really want to experiment with is having agents that are specialized in finding solutions of a certain type.
+Because IME, the thing that slows me down a lot with agents is just that they don't find the best solution, even though it seems obvious to us humans. It means I just have to check everything, which sucks.
+
+So I wonder if spinning up different subagents that are specialized in certain "solution classes" could work-
+eg:
+Agent-1: look for a solution by changing the structure of the objects that are being called.
+Agent-2: look for a solution by relaxing the problem requirements
+Agent-3: look for a solution by encoding some of the surrounding data as first class functions or objects
+Agent-4: look for a solution by replacing/removing objects .... etc (opposite of the above)
+... etc
+
+Because one thing I have noticed is that the frontier intelligence models are generally really good at knowing if a solution is elegant, but they can't necessarily come up with the solution on it's own.
+But its like, as soon as they see the solution, they instantly recognize it's utility
+

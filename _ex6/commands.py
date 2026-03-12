@@ -31,6 +31,17 @@ def crash():
     raise RuntimeError("Crash!")
 
 
+@ex6.command
+def help():
+    ex6.enter_scroll_mode()
+    print("Commands:")
+    for name, (fn, spec) in sorted(ex6._commands.items()):
+        args = " ".join(f"<{a}>" for a, _ in spec)
+        doc = (fn.__doc__ or "").strip()
+        line = f"  /{name} {args}".rstrip()
+        print(f"{line}  {doc}" if doc else line)
+
+
 
 @ex6.command
 def show_ctx():
