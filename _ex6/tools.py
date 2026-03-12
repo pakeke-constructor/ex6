@@ -174,10 +174,15 @@ def _signature(node, source, mod_name):
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     """Write content to a file, creating it if needed. Existing files must be read first."""
-    denial = approve(ctx, f"Write file: {file}")
-    if denial: raise ValueError(f"Denied: {denial}")
     if os.path.exists(file):
         _check_read(ctx, file)
+        with open(file, "r") as f:
+            old = f.read()
+    else:
+        old = ""
+    diff = _make_diff(old, content)
+    denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
+    if denial: raise ValueError(f"Denied: {denial}")
     d = os.path.dirname(file)
     if d: os.makedirs(d, exist_ok=True)
     with open(file, "w") as f:
@@ -200,16 +205,18 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     Prefer edit_file_lines for larger edits or insertions where you know the line numbers.
     Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
     """
-    denial = approve(ctx, f"Edit file: {file}")
-    if denial: raise ValueError(f"Denied: {denial}")
     _check_read(ctx, file)
 
     with open(file, "r") as f:
         content = f.read()
 
-    def confirm_edit(content):
+    def do_edit(original):
+        new_content = content.replace(original, replace, 1)
+        diff = _make_diff(original, replace)
+        denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
+        if denial: raise ValueError(f"Denied: {denial}")
         with open(file, "w") as f:
-            f.write(content)
+            f.write(new_content)
         ctx.mark_file_read(file)
         return f"Updated {file}"
 
@@ -217,7 +224,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     if search in content:
         if content.count(search) > 1:
             raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
-        return confirm_edit(content.replace(search, replace, 1))
+        return do_edit(search)
     search_lines = search.splitlines()
     content_lines = content.splitlines()
     n = len(search_lines)
@@ -230,7 +237,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             ws_matches.append(i)
     if len(ws_matches) == 1:
         original = "\n".join(content_lines[ws_matches[0]:ws_matches[0] + n])
-        return confirm_edit(content.replace(original, replace, 1))
+        return do_edit(original)
     if len(ws_matches) > 1:
         raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
 
@@ -245,7 +252,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     if len(matches) == 1:
         ratio, start = matches[0]
         original = "\n".join(content_lines[start:start + n])
-        return confirm_edit(content.replace(original, replace, 1))
+        return do_edit(original)
     if len(matches) > 1:
         raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
     best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
@@ -263,22 +270,26 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     Content should NOT end with a trailing newline — one is added automatically.
     WARNING: Do NOT call this twice in a row; line numbers shift after the first edit. Use edit_file for subsequent edits, or re-read the file headers first.
     """
-    denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})")
-    if denial: raise ValueError(f"Denied: {denial}")
     _check_read(ctx, file)
     with open(file, "r") as f:
         lines = f.readlines()
     if end == 0:
-        # insert mode: insert before 'start', remove nothing
         if start < 1 or start > len(lines) + 1:
             raise ValueError(f"Invalid insert position {start} (file has {len(lines)} lines)")
-        lines.insert(start - 1, content + '\n')
+        new_lines = lines[:]
+        new_lines.insert(start - 1, content + '\n')
     else:
         if start < 1 or end > len(lines) or start > end:
             raise ValueError(f"Invalid range {start}..{end} (file has {len(lines)} lines)")
-        lines[start - 1:end] = [content + '\n']
+        new_lines = lines[:]
+        new_lines[start - 1:end] = [content + '\n']
+    old_text = "".join(lines)
+    new_text = "".join(new_lines)
+    diff = _make_diff(old_text, new_text)
+    denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
+    if denial: raise ValueError(f"Denied: {denial}")
     with open(file, "w") as f:
-        f.writelines(lines)
+        f.writelines(new_lines)
     ctx.mark_file_read(file)
     return f"Edited {file}"
 
@@ -477,8 +488,36 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
     return result[0] or ""
 
 
-def approve(ctx: ex6.Context, description: str) -> str | None:
-    """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason)."""
+def _diff_color(line):
+    if line.startswith('+'): return 'green'
+    if line.startswith('-'): return 'red'
+    if line.startswith('@@'): return 'cyan'
+    return 'white'
+
+def _make_diff(old: str, new: str) -> list:
+    old_lines = old.splitlines(keepends=True)
+    new_lines = new.splitlines(keepends=True)
+    lines = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
+    # strip the --- +++ header (first 2 lines)
+    return lines[2:] if len(lines) > 2 else lines
+
+def _render_diff(buf, diff_lines, x, y, w, h):
+    """Render diff lines into a region. Returns rows used."""
+    max_lines = h
+    truncated = len(diff_lines) > max_lines
+    visible = diff_lines[:max_lines - 1] if truncated else diff_lines
+    for i, line in enumerate(visible):
+        color = _diff_color(line)
+        buf.puts(x, y + i, line[:w], txt_color=color, bg_color='bright_black')
+    if truncated:
+        remainder = len(diff_lines) - len(visible)
+        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color='bright_black', bg_color='bright_black')
+    return len(visible) + (1 if truncated else 0)
+
+
+def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None:
+    """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason).
+    render_extra: optional fn(buf, x, y, w, h) called below the chrome to render extra info."""
     result = [False, None]  # [answered, denial_reason]
 
     def on_submit(text):
@@ -492,16 +531,20 @@ def approve(ctx: ex6.Context, description: str) -> str | None:
         x, y, w, h = r
         buf.fill(r, char=' ', bg_color='bright_black')
         buf.rect_line(r, txt_color='cyan', bg_color='bright_black')
-        # content centered vertically
         cx = x + 3
-        cy = y + h // 2 - 1
-        buf.puts(cx, cy, description, txt_color='cyan', bg_color='bright_black')
+        cy = y + 1
+        buf.puts(cx, cy,   description, txt_color='cyan', bg_color='bright_black')
         buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color='bright_black')
         if inpt.consume('KEY_ENTER'):
             result[0] = True
             ctx.input_stack.pop()
             return
         input_draw(buf, inpt, (cx, cy + 2, w - 6, 1))
+        if render_extra:
+            extra_y = cy + 4
+            extra_h = h - extra_y + y - 1
+            if extra_h > 0:
+                render_extra(buf, cx, extra_y, w - 6, extra_h)
 
     ctx.push_ui(draw)
 
