@@ -107,12 +107,13 @@ Be kinda like claude-code.
 
 - ~~Make it so search ignores gitignored paths~~
 
+- ~~somehow make the agents MUCH more concise. Don't explain themselves after editing unless the user asks for it.~~
+
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
-- somehow make the agents MUCH more concise. Don't explain themselves after editing unless the user asks for it.
 
 
 - Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.
