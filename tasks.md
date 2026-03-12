@@ -99,29 +99,40 @@ Be kinda like claude-code.
 - ~~Compress sys-prompts in work-mode~~
 
 
+- ~~Ability to cancel agents from yapping.~~
+
+- ~~`/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.~~
+
+
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+- Abbreviations for system-prompts, so they are more readable.
 
-- Ability to cancel agents from yapping.
+
+- Context-window usage visible at top of work-mode.
+- (Conversation-cost visible at top of work-mode?)
+- Daily budget visible at top of work-mode?
 
 
 - Fix approve() panel issue.
 In approve-panel; if there is text BEHIND the panel that is overflowing, (e.g. part of the prompt/response,) the panel gets completely messed up on the lines where there are newlines.
 
 
-- command auto-completion.
+- Allow copy-pasted text in input
 
 
 - better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
+- Allow selection-mode to override panels
+
+
+- command auto-completion.
 
 
 - `/help` command: (list commands, make ui-panel for it).  Make help-command a ui-popup
 
-
-- `/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.
 
 
 - system reminder infrastructure.

@@ -230,7 +230,7 @@ def make_code_mode_system_prompt(tools: list) -> ex6.Message:
     """System prompt + run_tools tool for sandboxed code execution."""
     names = ", ".join(fn.__name__ for fn in tools)
     run_tools = make_code_mode_tool(tools)
-    return ex6.Message(role="system", content=f"""\
+    return ex6.Message(role="system", overview="tools", content=f"""\
 # Tools
 Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.

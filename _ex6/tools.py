@@ -569,5 +569,5 @@ def _get_claude_md_content(ctx):
                 return f.read()
     return "(no CLAUDE.md found)"
 
-CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content)
+CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content, overview="CLAUDE.md")
 

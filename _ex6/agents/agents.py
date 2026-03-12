@@ -13,6 +13,7 @@ import math
 
 MAIN_SYSTEM_PROMPT = ex6.Message(
 role ="system",
+overview="main-system",
 content="""\
 You are a coding agent working alongside an experienced engineer in a terminal UI.
 
@@ -79,7 +80,7 @@ def make_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex
     tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
     common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
-    return ex6.Message(role="system", content=f"""\
+    return ex6.Message(role="system", overview="tools", content=f"""\
 <tools>
 Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
@@ -135,7 +136,7 @@ search(x.get()).print()
 
 
 
-EXPLORE_SYSTEM_PROMPT = Message(role="system", content="""\
+EXPLORE_SYSTEM_PROMPT = Message(role="system", overview="explore-system", content="""\
 You are a fast, read-only exploration agent. Your output renders in a TUI — plain text only, no markdown headers, no tables, no emojis.
 
 # Goal

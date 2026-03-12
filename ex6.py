@@ -230,6 +230,7 @@ class Message:
     chunks: Optional[list] = None  # ordered ResponseChunks (for assistant msgs)
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
+    overview: Optional[str] = None  # short label for display (e.g. in selection panel)
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
@@ -906,10 +907,10 @@ def render_selection_right(buf, r):
     msgs = ctx.messages or []
     for msg in msgs:
         if row >= y + h - 1: break
-        role = msg.role
+        label = msg.overview or msg.role
         content = msg.content if isinstance(msg.content, str) else "<fn>"
         toks = len(content) // 4
-        buf.puts(x + 2, row, f"{role} (~{toks//1000}k)", style='dim')
+        buf.puts(x + 2, row, f"{label} (~{toks//1000}k)", style='dim')
         row += 1
     if not msgs:
         buf.puts(x + 2, row, "(no messages)", style='dim')

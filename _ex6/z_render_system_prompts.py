@@ -9,7 +9,20 @@ def compress_system_prompt(role: str, lines: list, ctx: ex6.Context) -> None:
     full_text = "\n".join(l for l in lines if isinstance(l, str))
     char_count = len(full_text)
     line_count = len(lines)
-    preview = next((l.strip() for l in lines if isinstance(l, str) and l.strip()), "")
+
+    # Find the Message object to get overview
+    overview = None
+    for m in ctx.messages:
+        if m.role == "system" and m.get_msg(ctx) == full_text:
+            overview = m.overview
+            break
+
+    preview = overview or ""
+    if not preview:
+        for l in lines:
+            if isinstance(l, str) and l.strip():
+                preview = l.strip()
+                break
     if len(preview) > 50:
         preview = preview[:47] + "..."
 
