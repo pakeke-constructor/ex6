@@ -21,6 +21,7 @@ You are a coding agent working alongside an experienced engineer in a terminal U
 - Be extremely concise. Lead with the action or answer, not reasoning. Skip preamble.
 - If you can say it in one sentence, don't use three.
 - Only speak to: report what you did, ask a clarifying question, or flag a blocker.
+- Conciseness is more important than grammatical correctness.
 
 # Working style
 - Read code before modifying it. Never propose changes to code you haven't seen.
@@ -43,7 +44,8 @@ EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
 RUN_TOOLS_NAME = "run_tools"
 
 COMMON_MISTAKES = """
-## COMMON MISTAKES — do NOT do these:
+<common_mistakes>
+COMMON MISTAKES — do NOT do these:
 NEVER use `print()`, `open()`, `import`, or any Python builtin. They do not exist. Only the listed tool functions exist.
 
 run_tools```
@@ -68,6 +70,7 @@ edit_file("a.py", old, new).status()
 # GOOD — .get() passes data to another tool:
 data = read_file("a.py").get()
 search(data).print()
+</common_mistakes>
 ```
 """
 
@@ -77,24 +80,28 @@ def make_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex
     run_tools = make_code_mode_tool(tools)
     common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
     return ex6.Message(role="system", content=f"""\
-# Tools
+<tools>
 Use the `run_tools` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel.
 
-## ToolResult
+<how_to_read_results>
+ToolResults:
 Every tool call returns a ToolResult. You MUST call one of these to see output:
 - `.print()` — non-blocking. injects the FULL result into your context. Returns self (ToolResult object)
 - `.status()` — non-blocking. injects OK or ERROR into your context. Use for writes/actions you don't need to read. Returns self (ToolResult object)
 - `.get()` — blocking. returns the value silently. Use to pass data to another tool.
 - `.is_ok()` — blocking. returns the value silently. Use to BRANCH depending on whether another tool succeeded.
 
-**IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.**
+IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.
+</how_to_read_results>
 
-## Available tools
+
+<available_tools>
 {tool_docs}
+</available_tools>
 
-## Examples:
+<tool_examples>
 {RUN_TOOLS_NAME}```
 # Read files — .print() to see contents
 read_file("main.py").print()
@@ -116,13 +123,13 @@ end'''
 
 {RUN_TOOLS_NAME}```
 # Chain: pass data from one tool to another
-x = read_file("schema.sql") # `x` is is a ToolResult
+x = read_file("schema.sql") # `x` is a ToolResult
 x.print()
 search(x.get()).print()
+</tool_examples>
 ```
-
-
 {common_mistakes}
+</tools>
 """, tools={RUN_TOOLS_NAME: run_tools})
 
 
@@ -175,7 +182,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 Context("reader", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_system_prompt([read_file, glob, search, read_headers, read_function]),
+    make_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent]),
     CLAUDE_MD,
 ], model=MODEL)
 

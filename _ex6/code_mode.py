@@ -191,7 +191,7 @@ def make_code_mode_tool(tools: list):
     def run_tools(ctx: ex6.Context, code="", tool_call_id=None):
         """Execute tool calls as Python code.
         - Do NOT use import statements.
-        - Tools return a ToolResult. You MUST call .print() or .status() to see results."""
+        - Tools return a ToolResult. You MUST call .print() or .status() to see results, or call .get() or .is_ok() to use the result for another call."""
         results, threads, tool_infos = [], [], []
         env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads, tool_infos) for fn in tools}
 
