@@ -4,13 +4,14 @@ import ex6
 
 
 @ex6.command
-def clear(name: Optional[str]):
+def clr(name: Optional[str]):
     ctx = ex6.state.contexts.get(name) if name else ex6.state.current
     if not ctx: return
     i = 0
     while i < len(ctx.messages) and ctx.messages[i].role == "system":
         i += 1
     ctx.messages = ctx.messages[:i]
+    ctx.input_stack = []
 
 
 @ex6.command

@@ -120,7 +120,7 @@ def dispatch_command(text: str):
 
 
 @command
-def debug():
+def dbg():
     enter_scroll_mode()
     print("="*30)
     print("DEBUG LOG")
@@ -129,8 +129,9 @@ def debug():
     for line in _debug_buffer:
         print(line)
 
+
 @command
-def context():
+def ctx():
     enter_scroll_mode()
     ctx = state.current
     if not ctx:
@@ -148,9 +149,10 @@ def context():
                 print(f"  [tool_call] {tc['name']}({args})")
         print()
 
+
 _log_keys = False
 @command
-def keys():
+def dbg_keys():
     """Toggle key debug logging."""
     global _log_keys
     _log_keys = not _log_keys
