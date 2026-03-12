@@ -105,15 +105,15 @@ Be kinda like claude-code.
 
 - ~~Abbreviations for system-prompts, so they are more readable.~~
 
-
+- ~~Make it so search ignores gitignored paths~~
 
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+- somehow make the agents MUCH more concise. Don't explain themselves after editing unless the user asks for it.
 
-- Make it so search ignores gitignored paths
 
 - Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.
 
@@ -136,14 +136,12 @@ In approve-panel; if there is text BEHIND the panel that is overflowing, (e.g. p
 - better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
 - Allow selection-mode to override panels
 
-
-- command auto-completion.
+- `/help` command: Make help-command a ui-popup
+- `/cm` command: Make cm-command a ui-popup
 
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
 
-
-- `/help` command: (list commands, make ui-panel for it).  Make help-command a ui-popup
 
 
 
@@ -165,15 +163,14 @@ And ideas would be constantly iterated on / tuned.
 
 
 
-- IDEA: instead of showing git-diff; have an auxiliary agent that summarizes changes?
-- Then; the human is acting more as like the architect behind it all.
-
-
 - Allow agents to "watch" and "lock" files:
 - Files that are locked can only be worked on by 1 agent at a time.
 - When a file is read, it is automatically `watched`. Then, whenever a `watched` file is read, agent can receive sys-reminder.
 - POTENTIAL ISSUE: Stale locks. What happens if an agent never unlocks a file? Does lock expire...?
 - SOLUTION: Agent is told what other agent holds the lock. It can then "fork" the agent and as it "hey, are you making any changes to `function_foo`?"
+
+
+- command auto-completion.
 
 
 

@@ -182,7 +182,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
         old = ""
     diff = _make_diff(old, content)
     denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
-    if denial: raise ValueError(f"Denied: {denial}")
+    if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
     d = os.path.dirname(file)
     if d: os.makedirs(d, exist_ok=True)
     with open(file, "w") as f:
@@ -220,7 +220,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
         new_content = content.replace(original, replace, 1)
         diff = _make_diff(original, replace)
         denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
-        if denial: raise ValueError(f"Denied: {denial}")
+        if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
         with open(file, "w") as f:
             f.write(new_content)
         ctx.mark_file_read(file)
@@ -293,7 +293,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     new_text = "".join(new_lines)
     diff = _make_diff(old_text, new_text)
     denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
-    if denial: raise ValueError(f"Denied: {denial}")
+    if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
     with open(file, "w") as f:
         f.writelines(new_lines)
     ctx.mark_file_read(file)
