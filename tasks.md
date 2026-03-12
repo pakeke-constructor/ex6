@@ -103,13 +103,19 @@ Be kinda like claude-code.
 
 - ~~`/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.~~
 
+- ~~Abbreviations for system-prompts, so they are more readable.~~
+
+
 
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
-- Abbreviations for system-prompts, so they are more readable.
+
+- Make it so search ignores gitignored paths
+
+- Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.
 
 
 - BUG: AGENTS CAN'T DO MULTIPLE EDITS OF THE SAME FILE PER BLOCK. needs fixing.
@@ -132,6 +138,9 @@ In approve-panel; if there is text BEHIND the panel that is overflowing, (e.g. p
 
 
 - command auto-completion.
+
+
+- Tell LLMs to write comments in code as a form of "CoT" thinking
 
 
 - `/help` command: (list commands, make ui-panel for it).  Make help-command a ui-popup
@@ -171,9 +180,6 @@ And ideas would be constantly iterated on / tuned.
 - Add this to prompt:
 "When I report a bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test."
 
-
-
-- Tell LLMs to write comments in code as a form of "CoT" thinking
 
 
 - Smarter diffs for `<tool_result edit_file>`:  Have a auxiliary model diff in a brief sentence.

@@ -302,7 +302,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
 
 def glob(ctx: ex6.Context, pattern: str) -> str:
     """Find files matching a glob pattern (recursive). Returns newline-separated paths."""
-    matches = _glob.glob(pattern, recursive=True)
+    matches = [m for m in _glob.glob(pattern, recursive=True) if not _is_gitignored(m)]
     return "\n".join(matches) if matches else "No matches."
 
 
@@ -321,6 +321,8 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     results = []
     for f in matched_files:
         if not os.path.isfile(f):
+            continue
+        if _is_gitignored(f):
             continue
         parts = f.replace("\\", "/").split("/")
         if any(p in _SKIP_DIRS for p in parts):
