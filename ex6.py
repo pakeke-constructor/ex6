@@ -457,6 +457,19 @@ class Context:
 
         threading.Thread(target=run, daemon=True).start()
     
+    def clear(self):
+        i = 0
+        while i < len(self.messages) and self.messages[i].role == "system":
+            i += 1
+        self.messages = self.messages[:i]
+        self.input_stack = []
+        self.llm_result = None
+        self.llm_current_output = []
+        self.last_invoke_time_start = 0
+        self.last_invoke_time_end = 0
+        self._tool_renderers = {}
+        self._read_hashes = {}
+
     def fork(self, new_name: Optional[str] = None) -> 'Context':
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
