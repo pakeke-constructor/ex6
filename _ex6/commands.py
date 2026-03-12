@@ -61,7 +61,8 @@ def cm(msg: Optional[str]):
     def run():
         ex6.enter_scroll_mode()
 
-        # get diff (HEAD covers staged new files too; fall back for initial commit)
+        # stage everything, then get diff
+        subprocess.run(["git", "add", "."], capture_output=True)
         diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
             diff = subprocess.run(["git", "diff", "--staged"], capture_output=True, text=True).stdout
