@@ -205,15 +205,11 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the line numbers, AND ONLY WHEN THE FILE HASN'T BEEN EDITED.
     - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
 
-    **IMPORTANT**: For multiline string editing, You MUST use triple-backtick heredoc string formatting for the arguments.
-    EXAMPLE: 
+    IMPORTANT: For multiline editing, you MUST use raw triple-backtick strings. Otherwise, \\n sequences will wreck the strings.
+    Correct usage:
     edit_file("file.txt",
-    '''
-    <multiline string to search>
-    ''',
-    '''
-    <multiline string to replace>
-    ''')
+    r'''search''',
+    r'''replace''')
     """
     _check_read(ctx, file)
 

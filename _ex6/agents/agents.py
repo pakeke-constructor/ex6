@@ -104,10 +104,10 @@ read_file("utils.py").print()
 {RUN_TOOLS_NAME}```
 # Write file — .status() to confirm success
 edit_file("src/main.lua",
-'''function Player:update(dt)
+r'''function Player:update(dt)
     self.x = self.x + 1
 end''',
-'''function Player:update(dt)
+r'''function Player:update(dt)
     self.x = self.x + self.speed * dt
     self.y = self.y + self.vy * dt
 end'''
