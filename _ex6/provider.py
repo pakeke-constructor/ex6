@@ -16,72 +16,53 @@ _cost_lock = threading.Lock()
 
 @dataclass
 class ModelInfo:
+    id: str             # model id (e.g. "anthropic/claude-opus-4.6")
     context_window: int # ctx-window size
-    input: float # cost / Mtok
-    output: float # cost / Mtok
-    cache_read: float # cost / Mtok
+    input: float        # cost / Mtok
+    output: float       # cost / Mtok
+    cache_read: float   # cost / Mtok
     cache_write: float = 0 # cost / Mtok (explicit caching, e.g. Anthropic)
 
 
 
-# Model constants (for robust static checks, avoids typos)
-class ModelNamespace:
-    OPUS_46        = "anthropic/claude-opus-4.6"
-    SONNET_46      = "anthropic/claude-sonnet-4.6"
-    HAIKU_45       = "anthropic/claude-haiku-4.5"
-    GPT5           = "openai/gpt-5"
-    GPT5_MINI      = "openai/gpt-5-mini"
-    GPT5_CODEX     = "openai/gpt-5-codex"
-    GPT52_CODEX    = "openai/gpt-5.2-codex"
-    GPT51_CODEX_MINI = "openai/gpt-5.1-codex-mini"
-    CODEX_MINI     = "openai/codex-mini"
-    O4_MINI        = "openai/o4-mini"
-    GEMINI3_PRO    = "google/gemini-3-pro-preview"
-    GEMINI3_FLASH  = "google/gemini-3-flash-preview"
-    GEMINI31_FLASH_LITE = "google/gemini-3.1-flash-lite-preview"
-    GEMINI25_PRO   = "google/gemini-2.5-pro"
-    GEMINI25_FLASH = "google/gemini-2.5-flash"
-    GEMINI25_FLASH_LITE = "google/gemini-2.5-flash-lite"
-    GROK4          = "x-ai/grok-4"
-    GROK41_FAST    = "x-ai/grok-4.1-fast"
-    DEEPSEEK_CHAT  = "deepseek/deepseek-chat-v3.1"
-    DEEPSEEK_R1    = "deepseek/deepseek-r1"
-    QWEN3_CODER    = "qwen/qwen3-coder"
-    KIMI_K25       = "moonshotai/kimi-k2.5"
+# Unified model registry. Each field is a ModelInfo.
+# On first lookup via M[model_id], builds a reverse index for O(1) access.
+class M:
+    OPUS_46          = ModelInfo("anthropic/claude-opus-4.6",         200_000, 5,    25,   0.5,  6.25)
+    SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       200_000, 3,    15,   0.3,  3.75)
+    HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",        200_000, 1,    5,    0.1,  1.25)
+    GPT5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
+    GPT5_MINI        = ModelInfo("openai/gpt-5-mini",                 400_000, 0.25, 2,    0.025)
+    GPT5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
+    GPT52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
+    GPT51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",         400_000, 0.25, 2,    0.025)
+    CODEX_MINI       = ModelInfo("openai/codex-mini",                 200_000, 1.5,  6,    0.375)
+    O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
+    GEMINI3_PRO      = ModelInfo("google/gemini-3-pro-preview",     1_048_576, 2,    12,   0.2)
+    GEMINI3_FLASH    = ModelInfo("google/gemini-3-flash-preview",   1_048_576, 0.5,  3,    0.05)
+    GEMINI31_FLASH_LITE = ModelInfo("google/gemini-3.1-flash-lite-preview", 1_048_576, 0.25, 1.5, 0.025)
+    GEMINI25_PRO     = ModelInfo("google/gemini-2.5-pro",           1_048_576, 1.25, 10,   0.125)
+    GEMINI25_FLASH   = ModelInfo("google/gemini-2.5-flash",         1_048_576, 0.3,  2.5,  0.03)
+    GEMINI25_FLASH_LITE = ModelInfo("google/gemini-2.5-flash-lite", 1_048_576, 0.1,  0.4,  0.01)
+    GROK4            = ModelInfo("x-ai/grok-4",                      256_000, 3,    15,   0.75)
+    GROK41_FAST      = ModelInfo("x-ai/grok-4.1-fast",             2_000_000, 0.2,  0.5,  0.05)
+    DEEPSEEK_CHAT    = ModelInfo("deepseek/deepseek-chat-v3.1",       32_768, 0.15, 0.75,  0)
+    DEEPSEEK_R1      = ModelInfo("deepseek/deepseek-r1",              64_000, 0.7,  2.5,   0)
+    QWEN3_CODER      = ModelInfo("qwen/qwen3-coder",                 262_144, 0.22, 1,    0.022)
+    KIMI_K25         = ModelInfo("moonshotai/kimi-k2.5",             262_144, 0.45, 2.2,  0.225)
 
+    _index: Optional[dict[str, ModelInfo]] = None  # lazy reverse index: model_id -> ModelInfo
 
-
-# $/M tokens (input, output, cache_read, cache_write)
-MODELS = {
-    # --- Anthropic ---
-    "anthropic/claude-opus-4.6":         ModelInfo(200_000, 5, 25, 0.5, 6.25),
-    "anthropic/claude-sonnet-4.6":       ModelInfo(200_000, 3, 15, 0.3, 3.75),
-    "anthropic/claude-haiku-4.5":        ModelInfo(200_000, 1, 5, 0.1, 1.25),
-    # --- OpenAI ---
-    "openai/gpt-5":                      ModelInfo(400_000, 1.25, 10, 0.125),
-    "openai/gpt-5-mini":                 ModelInfo(400_000, 0.25, 2, 0.025),
-    "openai/gpt-5-codex":               ModelInfo(400_000, 1.25, 10, 0.125),
-    "openai/gpt-5.2-codex":             ModelInfo(400_000, 1.75, 14, 0.175),
-    "openai/gpt-5.1-codex-mini":         ModelInfo(400_000, 0.25, 2, 0.025),
-    "openai/codex-mini":                 ModelInfo(200_000, 1.5, 6, 0.375),
-    "openai/o4-mini":                    ModelInfo(200_000, 1.1, 4.4, 0.275),
-    # --- Google ---
-    "google/gemini-3-pro-preview":       ModelInfo(1_048_576, 2, 12, 0.2),
-    "google/gemini-3-flash-preview":     ModelInfo(1_048_576, 0.5, 3, 0.05),
-    "google/gemini-3.1-flash-lite-preview": ModelInfo(1_048_576, 0.25, 1.5, 0.025),
-    "google/gemini-2.5-pro":             ModelInfo(1_048_576, 1.25, 10, 0.125),
-    "google/gemini-2.5-flash":           ModelInfo(1_048_576, 0.3, 2.5, 0.03),
-    "google/gemini-2.5-flash-lite":      ModelInfo(1_048_576, 0.1, 0.4, 0.01),
-    # --- xAI ---
-    "x-ai/grok-4":                       ModelInfo(256_000, 3, 15, 0.75),
-    "x-ai/grok-4.1-fast":                ModelInfo(2_000_000, 0.2, 0.5, 0.05),
-    # --- DeepSeek ---
-    "deepseek/deepseek-chat-v3.1":       ModelInfo(32_768, 0.15, 0.75, 0),
-    "deepseek/deepseek-r1":              ModelInfo(64_000, 0.7, 2.5, 0),
-    # --- Other ---
-    "qwen/qwen3-coder":                  ModelInfo(262_144, 0.22, 1, 0.022),
-    "moonshotai/kimi-k2.5":              ModelInfo(262_144, 0.45, 2.2, 0.225),
-}
+    @classmethod
+    def __class_getitem__(cls, model_id: str) -> Optional[ModelInfo]:
+        if cls._index is None:
+            # build inversion table.
+            cls._index = {
+                v.id: v
+                for v in vars(cls).values()
+                if isinstance(v, ModelInfo)
+            }
+        return cls._index.get(model_id)
 
 
 def set_daily_limit(limit: float):
@@ -266,9 +247,9 @@ def invoke_llm(ctx: ex6.Context):
     if provider_cost is not None:
         cost = provider_cost
     else:
-        if ctx.model not in MODELS:
-            raise ValueError(f"no pricing for model '{ctx.model}' — add it to MODELS in provider.py")
-        info = MODELS[ctx.model]
+        info = M[ctx.model]
+        if info is None:
+            raise ValueError(f"no pricing for model '{ctx.model}' — add it to M in provider.py")
         uncached_input = input_tokens - cached_tokens - cache_write_tokens
         cost = (uncached_input * info.input + cached_tokens * info.cache_read
                 + cache_write_tokens * info.cache_write + output_tokens * info.output) / 1_000_000

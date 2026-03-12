@@ -1,7 +1,7 @@
 
 
 
-from _ex6.provider import ModelNamespace
+from _ex6.provider import M
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
 import ex6
@@ -35,9 +35,9 @@ You are a coding agent working alongside an experienced engineer in a terminal U
 
 # MODEL = "openai/gpt-5.2-codex"
 # MODEL = "openai/gpt-5.1-codex-mini"
-MODEL = ModelNamespace.SONNET_46
+MODEL = M.SONNET_46.id
 
-EXPLORE_MODEL = ModelNamespace.GEMINI31_FLASH_LITE
+EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
 
 
 RUN_TOOLS_NAME = "run_tools"
