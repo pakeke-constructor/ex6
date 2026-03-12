@@ -437,6 +437,7 @@ class Context:
         def do_llm():
             self.last_invoke_time_start = time.time()
             self.llm_current_output = []
+            self.llm_result = None
             for item in llm_fn(self):
                 if self._stop_early: return
                 if isinstance(item, ResponseChunk):
@@ -703,7 +704,7 @@ class Region(tuple):
 
 
 class InputPass:
-    KEY_ALIASES = {'\x17': 'KEY_CTRL_BACKSPACE', '\x7f': 'KEY_CTRL_BACKSPACE', '\x1bd': 'KEY_CTRL_DELETE'}
+    KEY_ALIASES = {'\x17': 'KEY_CTRL_BACKSPACE', '\x7f': 'KEY_CTRL_BACKSPACE', '\x1bd': 'KEY_CTRL_DELETE', '\x18': 'KEY_CTRL_X', '\x03': 'KEY_CTRL_C'}
 
     def __init__(self, keys: list):
         self._keys = list(keys)
@@ -711,7 +712,7 @@ class InputPass:
     def consume(self, name: str) -> bool:
         for i, k in enumerate(self._keys):
             key_name = self.KEY_ALIASES.get(str(k), k.name)
-            if key_name == name or k.name == name:
+            if key_name == name or k.name == name or str(k) == name:
                 self._keys.pop(i)
                 return True
         return False
@@ -1043,7 +1044,6 @@ if __name__ == "__main__":
                 raise RuntimeError(f"FATAL: {_fatal_error}")
             key = term.inkey(timeout=0.011)
             if key:
-                if str(key) == '\x03': break
                 if _log_keys:
                     debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
                 keyls.append(key)
@@ -1097,6 +1097,8 @@ if __name__ == "__main__":
                 buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
                 if inpt.consume('KEY_ESCAPE'):
                     state.mode = "selection"
+                if inpt.consume('KEY_CTRL_X') and state.current.is_running():
+                    state.current._stop_early = True
             elif state.mode == "selection":
                 if inpt.consume("KEY_ENTER"):
                     state.mode = "work"
