@@ -1,7 +1,7 @@
 
 
 
-from _ex6.provider import M
+from _ex6.models import M
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
 import ex6

@@ -69,8 +69,8 @@ def cm(msg: Optional[str]):
             print("No changes to commit.")
             return
 
-        model = (ex6.state.current.model if ex6.state.current
-                 else "anthropic/claude-haiku-4.5")
+        from _ex6.models import M
+        model = M.GEMINI31_FLASH_LITE.id
 
         hint = f"User hint: {msg}" if msg else ""
         system = CM_SYSTEM_PROMPT

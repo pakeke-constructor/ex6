@@ -96,16 +96,20 @@ Be kinda like claude-code.
 - ~~EDIT-APPROVALS: should show git diff. should override ui; take up the whole-screen.~~
 ~~simple `enter` to approve; any other key cancels and starts typing.~~
 
+- ~~Compress sys-prompts in work-mode~~
+
+
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
 
-- Compress sys-prompts in work-mode
-
-
 - Ability to cancel agents from yapping.
+
+
+- Fix approve() panel issue.
+In approve-panel; if there is text BEHIND the panel that is overflowing, (e.g. part of the prompt/response,) the panel gets completely messed up on the lines where there are newlines.
 
 
 - command auto-completion.
@@ -114,7 +118,8 @@ Be kinda like claude-code.
 - better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
 
 
-- `/help` command: (list commands, make ui-panel for it)
+- `/help` command: (list commands, make ui-panel for it).  Make help-command a ui-popup
+
 
 - `/cm` command: automatically analyzes diffs, generates a commit-message, and commits to repo automatically.
 
