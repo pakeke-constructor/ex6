@@ -839,6 +839,8 @@ def make_input(on_submit):
             text = text[:cursor] + text[next_word(text, cursor):]
         if inpt.consume('KEY_CTRL_LEFT'): cursor = prev_word(text, cursor)
         if inpt.consume('KEY_CTRL_RIGHT'): cursor = next_word(text, cursor)
+        if inpt.consume('KEY_HOME'): cursor = 0
+        if inpt.consume('KEY_END'): cursor = len(text)
         if inpt.consume('KEY_ENTER') and text:
             on_submit(text)
             text, cursor = "", 0
