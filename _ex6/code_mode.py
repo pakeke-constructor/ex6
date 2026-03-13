@@ -225,10 +225,13 @@ def make_code_mode_tool(tools: list):
                 else:
                     val = str(tr._error) if tr._error else tr.value
                     if len(full_results) == 1:
+                        # only 1 result -> just append the result string directly
                         parts.append(val)
                     elif tr._fn_name in duplicate_names:
+                        # more than 1 result, with duplicate type -> append full call-sig
                         parts.append(f"<tool_result {tr._call_str}>\n{val}\n</tool_result>")
                     else:
+                        # more than 1 result, but all different types -> append func-names only.
                         parts.append(f"<tool_result {tr._fn_name}>\n{val}\n</tool_result>")
             return "\n\n".join(parts)
         return "No output. (Use `.print()` or `.status()` if you want to see results)"
