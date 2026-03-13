@@ -551,11 +551,13 @@ class ScreenBuffer:
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
-                parts = [p for p in [fg, s] if p]
+                if fg and s: attr = f"{fg}_{s}"
+                elif fg: attr = fg
+                elif s: attr = s
+                else: attr = None
                 if bg and isinstance(bg, tuple): styled_bg = term.on_color_rgb(*bg)
-                elif bg: parts.append(f"on_{bg}"); styled_bg = None
+                elif bg: attr = f"{attr}_on_{bg}" if attr else f"on_{bg}"; styled_bg = None
                 else: styled_bg = None
-                attr = "_".join(parts) if parts else None
                 styled = getattr(term, attr, None) if attr else None
                 ch = styled(c) if styled else c
                 out += styled_bg(ch) if styled_bg else ch
