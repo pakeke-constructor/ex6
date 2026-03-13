@@ -212,7 +212,8 @@ def _env_content(ctx):
         branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL).strip()
     except Exception:
         branch = "unknown"
-    return f"# Environment\n- cwd: {cwd}\n- platform: {plat}\n- date: {now}\n- git branch: {branch}"
+    return f"<environment>\n- cwd: {cwd}\n- platform: {plat}\n- date: {now}\n- git branch: {branch}\n</environment>"
+
 
 ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
