@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "WebFetch"
+      "WebFetch",
+      "Bash(ls -la /c/_PROGRAMMING/LLMS/ex6/ | grep -E \"\\\\.py$|_ex6\")"
     ]
   }
 }
