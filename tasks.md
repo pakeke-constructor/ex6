@@ -109,13 +109,15 @@ Be kinda like claude-code.
 
 - ~~somehow make the agents MUCH more concise. Don't explain themselves after editing unless the user asks for it.~~
 
+- ~~Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.~~
+
+
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
 
-- Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.
 
 
 - BUG: AGENTS CAN'T DO MULTIPLE EDITS OF THE SAME FILE PER BLOCK. needs fixing.

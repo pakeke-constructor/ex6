@@ -100,12 +100,13 @@ SAFE_BUILTINS = {
 
 class ToolResult:
     """Future-like object returned by tool calls."""
-    __slots__ = ('value', '_error', '_event', '_call_str', '_results')
+    __slots__ = ('value', '_error', '_event', '_call_str', '_fn_name', '_results')
     def __init__(self, call_str, results):
         self.value = None
         self._error = None
         self._event = threading.Event()
         self._call_str = call_str
+        self._fn_name = call_str.split('(')[0]
         self._results = results
     def _set(self, val):
         self.value = val
@@ -213,6 +214,9 @@ def make_code_mode_tool(tools: list):
             raise ValueError(f"exec failed: {e}")
         for t in threads: t.join()
         if results:
+            full_results = [(tr, mode) for tr, mode in results if mode == "full"]
+            fn_names = [tr._fn_name for tr, mode in full_results]
+            duplicate_names = {n for n in fn_names if fn_names.count(n) > 1}
             parts = []
             for tr, mode in results:
                 if mode == "status":
@@ -220,7 +224,12 @@ def make_code_mode_tool(tools: list):
                     parts.append(f"<tool_status {tr._call_str}>{val}</tool_status>")
                 else:
                     val = str(tr._error) if tr._error else tr.value
-                    parts.append(f"<tool_result {tr._call_str}>\n{val}\n</tool_result>")
+                    if len(full_results) == 1:
+                        parts.append(val)
+                    elif tr._fn_name in duplicate_names:
+                        parts.append(f"<tool_result {tr._call_str}>\n{val}\n</tool_result>")
+                    else:
+                        parts.append(f"<tool_result {tr._fn_name}>\n{val}\n</tool_result>")
             return "\n\n".join(parts)
         return "No output. (Use `.print()` or `.status()` if you want to see results)"
     return run_tools

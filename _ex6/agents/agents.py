@@ -52,7 +52,7 @@ Go straight to the point. Try the simplest approach first. Do not overdo it.
 - Before using an API or module, look up the actual definition first.
 - Write the simplest code that works. Avoid over-engineering, unnecessary abstractions, and speculative features.
 - Prefer editing existing files over creating new ones.
-- Use explore_agent for broad codebase questions — it's cheaper than reading files yourself.
+- You MUST use explore_agent for broad codebase questions; it's a lot cheaper than exploring yourself.
 """
 )
 
