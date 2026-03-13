@@ -26,6 +26,13 @@ printing/debugging: If you want to print, you must use `ex6.debug_print()`. (Sam
 `_ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `_ex6` folder.  
 Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add even define what terminal-UI is.
 
+## Core plugins:
+- _ex6/tools.py - contains all tool-definitions like read_file, edit_file, etc
+- _ex6/provider.py - openrouter provider, overrides invoke_llm
+- _ex6/code_mode.py - Custom tool-calling pipeline. Unlike typical LLM tool-formats, code-mode only exposes one `run_tools` tool to the agent, alongside a whitelist of python functions. The agent then calls `run_tools`, passing a block of python code that contains all the tool-calls they want to do. See code_mode.py for details.
+- _ex6/agents.py - agent definitions.
+- _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command
+
 
 ## UI layout / UX:
 ex6 has two modes: selection-mode, and work-mode.
@@ -33,36 +40,8 @@ ex6 has two modes: selection-mode, and work-mode.
 **Selection-mode:**  
 Displays list of named context-windows, user chooses what one to work in.
 This UI has 2 panels, split horizontally:
-
-- SelectionMode-Left-panel:
-Displays a list of LLM context-windows.  
-Each context has a name, and a list of prompts/system prompts.
-
-eg:
-```
-ctx1
-ctx2
-ctx2_child
-blah_second_child
-nested_child
->> foobar  (the '>>' means that foobar is hovered)
-debug_ctx
-```
-User can hover over contexts via up/down arrow keys, and select a context with enter. (selecting a context will go to work-mode.)
-
-- SelectionMode-Right-panel: 
-Displays information about the currently hovered context window.
-Example:
-```
-my-context    opus-4.5
-[XXX-------------]
-32k / 200k tokens, $0.15
-------------
-sys-prompt-1 (12k)
-sys-prompt-2 (8k)
-user-prompt (400)
-assistant (300)
-```
+Left panel - used to select model
+Right panel - used to select model
 
 **Work-mode:**  
 Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)

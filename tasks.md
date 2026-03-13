@@ -130,12 +130,6 @@ Be kinda like claude-code.
 - Daily budget visible at top of work-mode?
 
 
-approve() panel issue:
-when approve-panel is rendering; (specifically, edit_file diff), if there is text BEHIND the panel, (e.g. part of the prompt/response,) the panel often gets completely messed up on random lines. Basically, the panel appears to be "shredded", such that after diffs on the panel, you can see the text there are newlines. eg, you might have a diff-line like "++ call_func(1,2,3) XXXXXXXXXXXXXXXX" and the `X`s represent the panel being "sliced", such that you can see what's behind the panel. I originally thought this was a text-wrap issue, but I am not too sure; since it occurs on lines without text-wrap. I also wonder if it could be a windows terminal issue... but I can't see how screenBuffer.flush() would allow it. 
-
-Please analyze the code with me, and lets get to the bottom of this bug.
-
-
 - Allow copy-pasted text in input
 
 
