@@ -884,11 +884,14 @@ def render_selection_left(buf, inpt, r):
 @overridable
 def render_context_window_bar(buf, ctx, x, y, bar_w):
     ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
-    filled = int(ratio * bar_w)
-    bar = "█" * filled + "░" * (bar_w - filled)
+    filled = int(ratio * (bar_w - 2))
+    empty = (bar_w - 2) - filled
     approx = "~" if ctx.is_token_count_estimate() else ""
     tok_str = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
-    buf.puts(x, y, bar, txt_color='cyan')
+    buf.puts(x, y, "[", txt_color='bright_black')
+    buf.puts(x + 1, y, "█" * filled, txt_color='cyan')
+    buf.puts(x + 1 + filled, y, "-" * empty, txt_color='bright_black')
+    buf.puts(x + bar_w - 1, y, "]", txt_color='bright_black')
     buf.puts(x + bar_w + 1, y, tok_str, txt_color='cyan')
 
 @overridable
