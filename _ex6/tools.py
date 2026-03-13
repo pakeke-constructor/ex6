@@ -522,8 +522,8 @@ def _make_diff(old: str, new: str) -> list:
 
 def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     """Render diff lines into a region, with optional syntax highlighting."""
+    from _ex6.z_highlight_codeblock import render_highlighted_line
     try:
-        from _ex6.z_highlight_codeblock import render_highlighted_line
         from pygments.lexers import get_lexer_for_filename
         lexer = get_lexer_for_filename(filename) if filename else None
     except:
@@ -560,12 +560,12 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        buf.fill(r, char=' ', bg_color='black')
-        buf.rect(r, txt_color='bright_black')
+        buf.fill(r, char=' ', bg_color=None)
+        buf.rect(r, txt_color='black')
         cx = x + 3
         cy = y + 1
-        buf.puts(cx, cy,   description, txt_color='cyan', bg_color='bright_black')
-        buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color='bright_black')
+        buf.puts(cx, cy,   description, txt_color='cyan', bg_color=None)
+        buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color=None)
         if inpt.consume('KEY_ENTER'):
             result[0] = True
             ctx.ui_stack.pop()
