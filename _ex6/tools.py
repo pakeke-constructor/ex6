@@ -403,7 +403,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     _check_gitignore(path)
     with open(path, "r") as f:
         content = f.read()
-    ctx.mark_file_read(path, list(range(1, content.count('\n') + 2)))
+    ctx.mark_file_read(path, list(range(1, len(content.splitlines()) + 1)))
     if line_numbers:
         return _add_line_numbers(content)
     return content
@@ -421,7 +421,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
     tree, source, mod_name = _parse_file(file)
     if mod_name == 'tree_sitter_lua':
         result = _read_headers_lua(tree, source)
-        n = source.decode().count('\n') + 1
+        n = len(source.decode().splitlines())
         ctx.mark_file_read(file, list(range(1, n + 1)))
         if line_numbers:
             return _add_line_numbers(result)
@@ -517,11 +517,12 @@ def _diff_color(line):
     return 'white'
 
 def _make_diff(old: str, new: str) -> list:
-    old_lines = old.splitlines(keepends=True)
-    new_lines = new.splitlines(keepends=True)
+    old_lines = old.splitlines()
+    new_lines = new.splitlines()
     lines = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
     # strip the --- +++ header (first 2 lines)
-    return lines[2:] if len(lines) > 2 else lines
+    lines = lines[2:] if len(lines) > 2 else lines
+    return [l.replace('\n', ' ').replace('\r', '') for l in lines]
 
 def _render_diff(buf, diff_lines, x, y, w, h):
     """Render diff lines into a region. Returns rows used."""

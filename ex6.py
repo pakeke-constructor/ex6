@@ -535,6 +535,7 @@ class ScreenBuffer:
             self.bg_colors[y][x] = bg_color
 
     def puts(self, x, y, text, style=None, txt_color=None, bg_color=None):
+        assert '\n' not in text and '\r' not in text, f"puts() got newline in text: {text!r}"
         for i, c in enumerate(text):
             self.put(x + i, y, c, style, txt_color, bg_color)
 
