@@ -181,7 +181,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     else:
         old = ""
     diff = _make_diff(old, content)
-    denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
+    denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
     if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
     d = os.path.dirname(file)
     if d: os.makedirs(d, exist_ok=True)
@@ -224,7 +224,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     def do_edit(original):
         new_content = content.replace(original, replace, 1)
         diff = _make_diff(original, replace)
-        denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
+        denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
         with open(file, "w") as f:
             f.write(new_content)
@@ -317,7 +317,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     old_text = "".join(lines)
     new_text = "".join(new_lines)
     diff = _make_diff(old_text, new_text)
-    denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h))
+    denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
     if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
     with open(file, "w") as f:
         f.writelines(new_lines)
@@ -510,12 +510,6 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
     return result[0] or ""
 
 
-def _diff_color(line):
-    if line.startswith('+'): return 'white', (18, 60, 18)
-    if line.startswith('-'): return 'white', (60, 18, 18)
-    if line.startswith('@@'): return 'cyan', None
-    return 'white', None
-
 def _make_diff(old: str, new: str) -> list:
     old_lines = old.splitlines()
     new_lines = new.splitlines()
@@ -524,14 +518,28 @@ def _make_diff(old: str, new: str) -> list:
     lines = lines[2:] if len(lines) > 2 else lines
     return [l.replace('\n', ' ').replace('\r', '') for l in lines]
 
-def _render_diff(buf, diff_lines, x, y, w, h):
-    """Render diff lines into a region. Returns rows used."""
+
+
+def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
+    """Render diff lines into a region, with optional syntax highlighting."""
+    try:
+        from _ex6.z_highlight_codeblock import render_highlighted_line
+        from pygments.lexers import get_lexer_for_filename
+        lexer = get_lexer_for_filename(filename) if filename else None
+    except:
+        lexer = False
+
     max_lines = h
     truncated = len(diff_lines) > max_lines
     visible = diff_lines[:max_lines - 1] if truncated else diff_lines
     for i, line in enumerate(visible):
-        fg, bg = _diff_color(line)
-        buf.puts(x, y + i, line[:w], txt_color=fg, bg_color=bg)
+        if line.startswith('@@'):
+            buf.puts(x, y + i, line[:w], txt_color='cyan'); continue
+        bg = (18, 60, 18) if line.startswith('+') else (60, 18, 18) if line.startswith('-') else None
+        if lexer:
+            render_highlighted_line(buf, x, y + i, w, line, lexer, bg_color=bg)
+        else:
+            buf.puts(x, y + i, line[:w], txt_color='white', bg_color=bg); continue
     if truncated:
         remainder = len(diff_lines) - len(visible)
         buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color='bright_black')

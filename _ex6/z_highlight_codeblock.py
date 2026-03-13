@@ -24,6 +24,18 @@ def get_color(ttype) -> str:
     return 'white'
 
 
+def render_highlighted_line(buf, x, y, w, text, lexer, bg_color=None):
+    """Render a single syntax-highlighted line into buf. Returns nothing."""
+    col = x
+    for ttype, tok in lexer.get_tokens(text):
+        fg = get_color(ttype)
+        for ch in tok:
+            if col - x >= w: return
+            if ch not in '\n\r':
+                buf.put(col, y, ch, txt_color=fg, bg_color=bg_color)
+                col += 1
+
+
 def make_code_renderer(code: str, lang: str) -> ex6.RenderFn:
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         try: lexer = get_lexer_by_name(lang)
