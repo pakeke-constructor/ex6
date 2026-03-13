@@ -882,6 +882,16 @@ def render_selection_left(buf, inpt, r):
 
 
 @overridable
+def render_context_window_bar(buf, ctx, x, y, bar_w):
+    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
+    filled = int(ratio * bar_w)
+    bar = "█" * filled + "░" * (bar_w - filled)
+    approx = "~" if ctx.is_token_count_estimate() else ""
+    tok_str = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
+    buf.puts(x, y, bar, txt_color='cyan')
+    buf.puts(x + bar_w + 1, y, tok_str, txt_color='cyan')
+
+@overridable
 def render_selection_right(buf, r):
     x, y, w, h = r
     buf.rect_line(r, txt_color='blue')
@@ -892,13 +902,8 @@ def render_selection_right(buf, r):
     buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, style='dim')
 
     # token bar
-    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
     bar_w = min(w - 4, 20)
-    filled = int(ratio * bar_w)
-    bar = "█" * filled + "░" * (bar_w - filled)
-    buf.puts(x + 2, y + 2, bar, txt_color='cyan')
-    approx = "~" if ctx.is_token_count_estimate() else ""
-    buf.puts(x + 2 + bar_w + 1, y + 2, f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k", txt_color='cyan')
+    render_context_window_bar(buf, ctx, x + 2, y + 2, bar_w)
 
 
     # messages
@@ -955,14 +960,8 @@ def render_work_mode(buf, inpt, r):
         message_outputs.append(('assistant', lines))
 
     # Token bar at top
-    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
     bar_w = min(w - 20, 30)
-    filled = int(ratio * bar_w)
-    bar = "█" * filled + "░" * (bar_w - filled)
-    approx = "~" if ctx.is_token_count_estimate() else ""
-    tok_str = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
-    buf.puts(x, y, bar, txt_color='cyan')
-    buf.puts(x + bar_w + 1, y, tok_str, txt_color='cyan', style='dim')
+    render_context_window_bar(buf, ctx, x, y, bar_w)
 
     # Draw (start 1 row below token bar)
     available = h - 1
