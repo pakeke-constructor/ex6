@@ -511,8 +511,8 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
 
 def _diff_color(line):
-    if line.startswith('+'): return 'white', (0, 60, 0)
-    if line.startswith('-'): return 'white', (60, 0, 0)
+    if line.startswith('+'): return 'white', (18, 60, 18)
+    if line.startswith('-'): return 'white', (60, 18, 18)
     if line.startswith('@@'): return 'cyan', None
     return 'white', None
 
@@ -534,7 +534,7 @@ def _render_diff(buf, diff_lines, x, y, w, h):
         buf.puts(x, y + i, line[:w], txt_color=fg, bg_color=bg)
     if truncated:
         remainder = len(diff_lines) - len(visible)
-        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color='bright_black', bg_color='bright_black')
+        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color='bright_black')
     return len(visible) + (1 if truncated else 0)
 
 
