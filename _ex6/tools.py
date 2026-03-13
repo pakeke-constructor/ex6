@@ -40,8 +40,9 @@ _GITIGNORE_PATTERNS = _load_gitignore()
 def _is_gitignored(path):
     rel = os.path.relpath(path).replace("\\", "/")
     parts = rel.split("/")
+    if any(p in _SKIP_DIRS for p in parts):
+        return True
     for pat in _GITIGNORE_PATTERNS:
-        # match against basename or any path component or full relative path
         if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(os.path.basename(rel), pat):
             return True
         if any(fnmatch.fnmatch(p, pat) for p in parts):
@@ -332,7 +333,7 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
 
 
 
-_SKIP_DIRS = set(['.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'])
+_SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
 
 
 def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 15, line_numbers: bool = True) -> str:
@@ -342,15 +343,9 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     When you just want to check whether a pattern exists, (e.g. after a refactor) use max_results=1 to save context.
     """
     regex = re.compile(pattern)
-    matched_files = _glob.glob(match, recursive=True)
     results = []
-    for f in matched_files:
-        if not os.path.isfile(f):
-            continue
-        if _is_gitignored(f):
-            continue
-        parts = f.replace("\\", "/").split("/")
-        if any(p in _SKIP_DIRS for p in parts):
+    for f in _glob.glob(match, recursive=True):
+        if not os.path.isfile(f) or _is_gitignored(f):
             continue
         try:
             with open(f, "r", errors="ignore") as fh:
