@@ -79,49 +79,6 @@ def web_search(ctx: ex6.Context, query: str) -> str:
 
 
 
-WEBSEARCH_MODEL = M.GEMINI31_FLASH_LITE.id
-
-WEBSEARCH_SYSTEM_PROMPT = ex6.Message(role="system", content="""\
-You are a focused web research agent. Answer the given question using web_search and web_scrape tools.
-Strategy:
-- Search for the question. Read 1-2 top results if needed for detail.
-- Answer concisely — facts only, no padding. Conciseness is much more important than grammatical correctness.
-- If you can answer from search snippets alone, do so without scraping.
-- Plain text only, no markdown.
-""")
-
-def websearch_agent(ctx: ex6.Context, question: str) -> str:
-    """Spawn a websearch subagent to research a question. Returns a concise answer.
-    Use this when you need up-to-date information from the web."""
-
-    from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
-    RUN_TOOLS_NAME = "run_tools"
-    tools = [web_search, web_scrape]
-    tool_docs = "\n".join(generate_tool_desc(fn) for fn in tools)
-    run_tools_fn = make_code_mode_tool(tools)
-    tools_msg = ex6.Message(role="system", overview="tools", content=f"""\
-<tools>
-Use the `run_tools` tool. Imports are NOT available. Only listed functions exist.
-Combine calls in one block — they execute in parallel.
-Call .print() or .status() on every result or you will NOT see it.
-<available_tools>
-{tool_docs}
-</available_tools>
-</tools>
-""", tools={RUN_TOOLS_NAME: run_tools_fn})
-
-    sub = ex6.Context("websearch", model=WEBSEARCH_MODEL, messages=[WEBSEARCH_SYSTEM_PROMPT, tools_msg])
-    sub.parent = ctx.name
-    sub.invoke(question)
-    while sub.llm_is_running:
-        time.sleep(0.05)
-    result = sub.messages[-1].content if sub.messages else "No answer."
-    del ex6.state.contexts[sub.name]
-    return result
-
-
-
-
 def web_scrape(ctx: ex6.Context, url: str, max_chars: int = 50_000) -> str:
     """
     Fetch and return the readable text content of a webpage.
@@ -137,11 +94,42 @@ def web_scrape(ctx: ex6.Context, url: str, max_chars: int = 50_000) -> str:
         capture_output=True, text=True, timeout=120
     )
     if result.returncode != 0:
-        # only keep last line of stderr (the actual error, not the traceback)
         err = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "unknown error"
         raise RuntimeError(f"web_scrape failed: {err}")
     data = json.loads(result.stdout)
     if not data["ok"]:
         raise RuntimeError(data["error"])
     return data["markdown"]
+
+
+
+
+
+WEBSEARCH_MODEL = M.GEMINI31_FLASH_LITE.id
+
+WEBSEARCH_SYSTEM_PROMPT = ex6.Message(role="system", content="""\
+You are a focused web research agent. Answer the given question using web_search and web_scrape tools.
+Strategy:
+- Search for the question. Read 1-2 top results if needed for detail.
+- Answer concisely — facts only, no padding. Conciseness is much more important than grammatical correctness.
+- If you can answer from search snippets alone, do so without scraping.
+- Plain text only, no markdown.
+""")
+
+
+WEBSEARCH_TOOLS_MSG = ex6.Message(role="system", overview="tools",
+    content="Use web_search to find pages, and web_scrape to read a page in full.",
+    tools={"web_search": web_search, "web_scrape": web_scrape})
+
+def websearch_agent(ctx: ex6.Context, question: str) -> str:
+    """Spawn a websearch subagent to research a question. Returns a concise answer.
+    Use this when you need up-to-date information from the web."""
+    sub = ex6.Context("websearch", model=WEBSEARCH_MODEL, messages=[WEBSEARCH_SYSTEM_PROMPT, WEBSEARCH_TOOLS_MSG])
+    sub.parent = ctx.name
+    sub.invoke(question)
+    while sub.llm_is_running:
+        time.sleep(0.05)
+    result = sub.messages[-1].content if sub.messages else "No answer."
+    del ex6.state.contexts[sub.name]
+    return result
 
