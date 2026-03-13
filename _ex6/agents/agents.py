@@ -4,7 +4,7 @@
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
-from _ex6.web.web_tools import web_search
+from _ex6.web.web_tools import web_search, websearch_agent
 import ex6
 from ex6 import Context, Message
 import time
@@ -186,7 +186,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 Context("reader", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search]),
+    make_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
     CLAUDE_MD,
 ], model=MODEL)
 
@@ -195,7 +195,7 @@ Context("reader", messages=[
 
 coder = Context("coder", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search]),
+    make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search, websearch_agent]),
     CLAUDE_MD,
 ], model=MODEL)
 

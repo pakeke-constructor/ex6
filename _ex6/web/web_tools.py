@@ -1,6 +1,9 @@
 
 import os, sys, re, subprocess, json
 import ex6
+import time
+from _ex6.models import M
+
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _VENV = os.path.join(_DIR, ".venv")
@@ -72,6 +75,50 @@ def web_search(ctx: ex6.Context, query: str) -> str:
     if not out:
         raise ValueError("No results found! Do NOT make up results; inform your user that there was likely a search error.")
     return "\n\n".join(out)
+
+
+
+
+WEBSEARCH_MODEL = M.GEMINI31_FLASH_LITE.id
+
+WEBSEARCH_SYSTEM_PROMPT = ex6.Message(role="system", content="""\
+You are a focused web research agent. Answer the given question using web_search and web_scrape tools.
+Strategy:
+- Search for the question. Read 1-2 top results if needed for detail.
+- Answer concisely — facts only, no padding. Conciseness is much more important than grammatical correctness.
+- If you can answer from search snippets alone, do so without scraping.
+- Plain text only, no markdown.
+""")
+
+def websearch_agent(ctx: ex6.Context, question: str) -> str:
+    """Spawn a websearch subagent to research a question. Returns a concise answer.
+    Use this when you need up-to-date information from the web."""
+
+    from _ex6.code_mode import make_code_mode_tool, generate_tool_desc
+    RUN_TOOLS_NAME = "run_tools"
+    tools = [web_search, web_scrape]
+    tool_docs = "\n".join(generate_tool_desc(fn) for fn in tools)
+    run_tools_fn = make_code_mode_tool(tools)
+    tools_msg = ex6.Message(role="system", overview="tools", content=f"""\
+<tools>
+Use the `run_tools` tool. Imports are NOT available. Only listed functions exist.
+Combine calls in one block — they execute in parallel.
+Call .print() or .status() on every result or you will NOT see it.
+<available_tools>
+{tool_docs}
+</available_tools>
+</tools>
+""", tools={RUN_TOOLS_NAME: run_tools_fn})
+
+    sub = ex6.Context("websearch", model=WEBSEARCH_MODEL, messages=[WEBSEARCH_SYSTEM_PROMPT, tools_msg])
+    sub.parent = ctx.name
+    sub.invoke(question)
+    while sub.llm_is_running:
+        time.sleep(0.05)
+    result = sub.messages[-1].content if sub.messages else "No answer."
+    del ex6.state.contexts[sub.name]
+    return result
+
 
 
 

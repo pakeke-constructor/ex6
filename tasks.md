@@ -115,11 +115,13 @@ Be kinda like claude-code.
 
 
 
-
 - Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.
 
 
 - BUG: AGENTS CAN'T DO MULTIPLE EDITS OF THE SAME FILE PER BLOCK. needs fixing.
+
+
+- BUG/FIX: make it so selected-ctx is done by name, not index. (Makes it so when a context/subagent dies, it doesn't change to a different ctx randomly) 
 
 
 - Context-window usage visible at top of work-mode.
