@@ -954,10 +954,20 @@ def render_work_mode(buf, inpt, r):
         for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
         message_outputs.append(('assistant', lines))
 
-    # Draw
-    available = h
+    # Token bar at top
+    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
+    bar_w = min(w - 20, 30)
+    filled = int(ratio * bar_w)
+    bar = "█" * filled + "░" * (bar_w - filled)
+    approx = "~" if ctx.is_token_count_estimate() else ""
+    tok_str = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
+    buf.puts(x, y, bar, txt_color='cyan')
+    buf.puts(x + bar_w + 1, y, tok_str, txt_color='cyan', style='dim')
+
+    # Draw (start 1 row below token bar)
+    available = h - 1
     scroll_offset = max(0, ctx._prev_height - available)
-    row = y - scroll_offset
+    row = (y + 1) - scroll_offset
     for role, lines in message_outputs:
         row += 1  # spacer between messages
         bg = 'bright_black' if role == 'user' else None
