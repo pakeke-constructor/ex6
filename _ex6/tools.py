@@ -424,45 +424,6 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
     return "\n".join(out) if out else "No classes/functions found."
 
 
-def web_search(ctx: ex6.Context, query: str) -> str:
-    """Search the web. Returns top results as text."""
-    import urllib.request, urllib.parse, json
-    url = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query})
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        html = r.read().decode()
-    results = re.findall(r'class="result__a"[^>]*href="(.*?)"[^>]*>(.*?)</a>.*?class="result__snippet"[^>]*>(.*?)</span>', html, re.DOTALL)
-    if not results:
-        raise ValueError("No results found! Do NOT make up results; inform your user that there was likely a search error.")
-    out = []
-    for href, title, snippet in results[:8]:
-        title = re.sub(r'<[^>]+>', '', title).strip()
-        snippet = re.sub(r'<[^>]+>', '', snippet).strip()
-        out.append(f"{title}\n  {href}\n  {snippet}")
-    return "\n\n".join(out)
-
-
-
-def web_scrape(ctx: ex6.Context, url: str) -> str:
-    """
-    Fetch and return the readable text content of a webpage.
-    - Use this after web_search() to read the full content of a result
-    - Output is cleaned markdown — much less noisy than raw HTML
-    - Will fail gracefully on paywalled, bot-protected, or JS-only pages
-    - Avoid scraping the same URL repeatedly in one session
-    """
-    import asyncio
-    from crawl4ai import AsyncWebCrawler
-
-    async def _scrape():
-        async with AsyncWebCrawler() as crawler:
-            return await crawler.arun(url=url)
-
-    result = asyncio.run(_scrape())
-    return result.markdown.strip()
-
-
-
 def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = False) -> str:
     """
     Read a function or class body by name from a file.

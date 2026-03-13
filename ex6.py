@@ -1024,8 +1024,8 @@ def _load_plugins():
     _register_pkg("_ex6", plugin_dir)
 
     for dirpath, dirnames, filenames in os.walk(plugin_dir):
-        # skip dirs starting with _  (but not _ex6 root itself)
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith("_"))
+        # skip dirs starting with _ or .  (but not _ex6 root itself)
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith(("_", ".")))
         # register subdirs as subpackages
         rel = os.path.relpath(dirpath, plugin_dir).replace(os.sep, ".")
         pkg_name = "_ex6" if rel == "." else f"_ex6.{rel}"
