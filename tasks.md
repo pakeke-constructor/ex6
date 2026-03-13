@@ -113,14 +113,14 @@ Be kinda like claude-code.
 
 
 
+
+
+
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
-
-- Context-window usage visible at top of work-mode.
-- (Conversation-cost visible at top of work-mode?)
-- Daily budget visible at top of work-mode?
+- Daily budget visible at top of selection-mode
 
 
 - Allow copy-pasted text in input
@@ -136,6 +136,9 @@ Be kinda like claude-code.
 - Tell LLMs to write comments in code as a form of "CoT" thinking
 
 
+- Allow agents to "undo" edits if they think they have made a mistake. Something as simple as `ToolResult.undo`
+
+- Allow agents to compress their own context-windows.
 
 
 - system reminder infrastructure.
@@ -172,16 +175,6 @@ And ideas would be constantly iterated on / tuned.
 
 
 
-- Smarter diffs for `<tool_result edit_file>`:  Have a auxiliary model diff in a brief sentence.
-- (Eg instead of showing diff directly, maybe it should say: "changed XYZ by using ringbuffer")
-
-
-
-
-- Compress sys-prompts when viewing in compact-mode
-
-- Make LLM output better, cleaner, clearer.
-
 - NEW TOOL: read_warnings("my_file.py")  reads warnings/errors from file (pylance, LuaLS)
 
 
@@ -194,19 +187,28 @@ And ideas would be constantly iterated on / tuned.
 
 - choice/options plugin, like claude-code.
 
-- add filesystem api/getter? maybe `ex6.get_filesystem()`?
-- add daily cost-caps for litellm plugin (PROPER VIA FILESYSTEM!)
 
-- multiline input (shift-enter)
-
-- Make it look prettier (currently looks shit.)
-
-- COOL IDEA: Have in-editor-LLM invocation, like _99 from primeagen.
-^^^ we should implement this by typing a comment, maybe? like:
+- In-editor LLM invocation (like _99 from primeagen):
+The real value: invoke LLMs directly from your editor without leaving your flow.
+use `watchfiles` to monitor project files. User ends a line with `;;;` to trigger.
 ```lua
-local function foo()--[[
-;LLM returns a random prime number lower than 1000
-]]end
+function my_func()
+refactor this to use async;;;
+-- ^^^ the system will detect this text, delete it, and fire a callback.
+-- An agent will boot up instantly and start working.
+end
+```
+Could even do other cooler stuff, like different char-combinations:
+```py
+def my_func():
+    see if we can remove this. ;;;e
+    # a `e` at the end could mean like: `explore`? so 
+    # maybe different characters mean different things:
+
+    # s = simplify code
+    # p = create a plan, don't edit anything
+
+    # not sure. maybe best to keep it simple. See what works first; dont guess features
 ```
 
 
