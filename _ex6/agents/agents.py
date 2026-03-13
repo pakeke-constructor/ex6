@@ -9,6 +9,10 @@ import ex6
 from ex6 import Context, Message
 import time
 import math
+import os
+import platform
+import subprocess
+import datetime
 
 
 
@@ -200,9 +204,23 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 
 
+def _env_content(ctx):
+    cwd = os.getcwd()
+    plat = platform.system()
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    try:
+        branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL).strip()
+    except Exception:
+        branch = "unknown"
+    return f"# Environment\n- cwd: {cwd}\n- platform: {plat}\n- date: {now}\n- git branch: {branch}"
+
+ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
+
+
 Context("reader", messages=[
     MAIN_SYSTEM_PROMPT,
     make_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
+    ENV_PROMPT,
     CLAUDE_MD,
 ], model=MODEL)
 
@@ -212,6 +230,7 @@ Context("reader", messages=[
 coder = Context("coder", messages=[
     MAIN_SYSTEM_PROMPT,
     make_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search, websearch_agent]),
+    ENV_PROMPT,
     CLAUDE_MD,
 ], model=MODEL)
 
