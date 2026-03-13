@@ -1,1 +1,5 @@
-test
+
+Duckduckgo API getting search results - Stack Overflow
+  //duckduckgo.com/l/?uddg=https%3A%2F%2Fstackoverflow.com%2Fquestions%2F37012469%2Fduckduckgo%2Dapi%2Dgetting%2Dsearch%2Dresults&amp;rut=52bc7cb9497c3b1e13c056f005c3415c08b9b6a9587ecca4116b82554b6017e8
+  That is, it is not a full search results API or a way to get DuckDuckGo results into your applications beyond our instant answers. Because of the way we generate our search results, we unfortunately do not have the rights to fully syndicate our results.
+
