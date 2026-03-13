@@ -383,6 +383,7 @@ class Context:
     parent: Optional[str] = None # name of parent context (for subagents)
     data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
+    _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
     _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
 
@@ -402,17 +403,26 @@ class Context:
     def __eq__(self, other): return self is other
     def is_running(self): return self.llm_is_running
 
-    @staticmethod
-    def _file_hash(path):
+    def mark_file_read(self, path, read_line_numbers=None):
+        p = os.path.abspath(path)
         with open(path, "rb") as f:
-            return hashlib.md5(f.read()).hexdigest()
+            data = f.read()
+        self._read_hashes[p] = hashlib.md5(data).hexdigest()
+        if read_line_numbers is not None:
+            lines = data.decode().splitlines()
+            if p not in self._line_snapshots:
+                self._line_snapshots[p] = {}
+            self._line_snapshots[p].update({n: lines[n-1] for n in read_line_numbers})
 
-    def mark_file_read(self, path):
-        self._read_hashes[os.path.abspath(path)] = self._file_hash(path)
+    def get_line_snapshot(self, path):
+        return self._line_snapshots.get(os.path.abspath(path), {})
 
     def has_read_file(self, path):
         p = os.path.abspath(path)
-        return p in self._read_hashes and self._read_hashes[p] == self._file_hash(p)
+        if p not in self._read_hashes:
+            return False
+        with open(path, "rb") as f:
+            return self._read_hashes[p] == hashlib.md5(f.read()).hexdigest()
 
     def get_read_files(self):
         return list(self._read_hashes.keys())
@@ -474,11 +484,13 @@ class Context:
         self.last_invoke_time_end = 0
         self._tool_renderers = {}
         self._read_hashes = {}
+        self._line_snapshots = {}
 
     def fork(self, new_name: Optional[str] = None) -> 'Context':
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
         cpy._read_hashes = dict(self._read_hashes)
+        cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
         cpy.data = copy.copy(self.data)
         cpy._tool_renderers = {}
         cpy.ui_stack = []

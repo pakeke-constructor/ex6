@@ -203,7 +203,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
 
     Usage:
     - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
-    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the line numbers, AND ONLY WHEN THE FILE HASN'T BEEN EDITED.
+    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines. but only when you know the lines. If you need to delete a lot of code; edit_file_lines is better because it avoids you rewriting the entire code.
     - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
 
     Argument Formatting:
@@ -275,15 +275,31 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
 def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: str) -> str:
     """
     Replace lines start..end (inclusive, 1-indexed) with content.
-    Prefer this over edit_file if you know the line numbers and you are deleting many lines,
-    or if you want to insert code between function blocks/definitions.
-    To insert without removing lines, set end=0 and start=the line to insert before.
-    Content should NOT end with a trailing newline — one is added automatically.
-    WARNING: Do NOT call this twice in a row; line numbers shift after the first edit. Use edit_file for subsequent edits, or re-read the file headers first.
+    Prefer this over edit_file for deleting large code blocks, or inserting between definitions.
+    To delete lines, pass content="" (empty string).
+    A trailing newline is added automatically after your edit.
+
+    If you have not read the lines or headers, your edits will automatically be rejected.
+    Use this in conjunction with read_headers and/or read_function to replace/rewrite entire functions or classes.
     """
     _check_read(ctx, file)
     with open(file, "r") as f:
         lines = f.readlines()
+
+    # snapshot check
+    snapshot = ctx.get_line_snapshot(file)
+    def assert_line(L):
+        if L not in snapshot:
+            raise ValueError(f"Line {L} not in any snapshot for {file}, re-read the file first.")
+        expected = snapshot[L]
+        actual = lines[L - 1].rstrip('\n') if L <= len(lines) else ""
+        if expected != actual:
+            raise ValueError(f"Line {L} has shifted since last read, re-read the file.")
+
+    # assert that 
+    assert_line(start)
+    assert_line(end)
+
     if end == 0:
         if start < 1 or start > len(lines) + 1:
             raise ValueError(f"Invalid insert position {start} (file has {len(lines)} lines)")
@@ -293,7 +309,11 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         if start < 1 or end > len(lines) or start > end:
             raise ValueError(f"Invalid range {start}..{end} (file has {len(lines)} lines)")
         new_lines = lines[:]
-        new_lines[start - 1:end] = [content + '\n']
+        if content == "":
+            new_lines[start - 1:end] = []
+        else:
+            new_lines[start - 1:end] = [content + '\n']
+
     old_text = "".join(lines)
     new_text = "".join(new_lines)
     diff = _make_diff(old_text, new_text)
@@ -301,7 +321,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
     with open(file, "w") as f:
         f.writelines(new_lines)
-    ctx.mark_file_read(file)
+    ctx.mark_file_read(file, list(range(1, len(new_lines) + 1)))
     return f"Edited {file}"
 
 
@@ -383,7 +403,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     _check_gitignore(path)
     with open(path, "r") as f:
         content = f.read()
-    ctx.mark_file_read(path)
+    ctx.mark_file_read(path, list(range(1, content.count('\n') + 2)))
     if line_numbers:
         return _add_line_numbers(content)
     return content
@@ -398,15 +418,17 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
     read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
     """
     _check_gitignore(file)
-    ctx.mark_file_read(file)
     tree, source, mod_name = _parse_file(file)
     if mod_name == 'tree_sitter_lua':
         result = _read_headers_lua(tree, source)
+        n = source.decode().count('\n') + 1
+        ctx.mark_file_read(file, list(range(1, n + 1)))
         if line_numbers:
             return _add_line_numbers(result)
         return result
     def_types = DEFINITION_TYPES.get(mod_name, [])
     out = []
+    sig_line_nos = []
 
     def collect(node, indent=0):
         prefix = "  " * indent
@@ -415,6 +437,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
                 if indent == 0 and out:
                     out.append("")  # gap between top-level defs
                 line_no = source[:child.start_byte].count(b'\n') + 1
+                sig_line_nos.append(line_no)
                 sig = _signature(child, source, mod_name).strip()
                 if line_numbers:
                     out.append(f"{line_no}: {prefix}{sig}")
@@ -426,6 +449,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
                 collect(child, indent)
 
     collect(tree.root_node)
+    ctx.mark_file_read(file, sig_line_nos)
     return "\n".join(out) if out else "No classes/functions found."
 
 
@@ -435,7 +459,6 @@ def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = F
     - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
     - Use this tool when you only need bits of information, like details about a particular function
     """
-    ctx.mark_file_read(file)
     tree, source, mod_name = _parse_file(file)
     def_types = DEFINITION_TYPES.get(mod_name, [])
 
@@ -444,6 +467,9 @@ def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = F
             if child.type in def_types and _get_name(child) == name:
                 start_line = source[:child.start_byte].count(b'\n') + 1
                 text = source[child.start_byte:child.end_byte].decode()
+                fn_lines = text.splitlines()
+                read_line_numbers = list(range(start_line, start_line + len(fn_lines)))
+                ctx.mark_file_read(file, read_line_numbers)
                 if line_numbers:
                     return _add_line_numbers(text, start_line)
                 return text
