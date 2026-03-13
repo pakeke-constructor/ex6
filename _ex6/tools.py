@@ -511,10 +511,10 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
 
 def _diff_color(line):
-    if line.startswith('+'): return 'green'
-    if line.startswith('-'): return 'red'
-    if line.startswith('@@'): return 'cyan'
-    return 'white'
+    if line.startswith('+'): return 'white', (0, 60, 0)
+    if line.startswith('-'): return 'white', (60, 0, 0)
+    if line.startswith('@@'): return 'cyan', None
+    return 'white', None
 
 def _make_diff(old: str, new: str) -> list:
     old_lines = old.splitlines()
@@ -530,8 +530,8 @@ def _render_diff(buf, diff_lines, x, y, w, h):
     truncated = len(diff_lines) > max_lines
     visible = diff_lines[:max_lines - 1] if truncated else diff_lines
     for i, line in enumerate(visible):
-        color = _diff_color(line)
-        buf.puts(x, y + i, line[:w], txt_color=color, bg_color='bright_black')
+        fg, bg = _diff_color(line)
+        buf.puts(x, y + i, line[:w], txt_color=fg, bg_color=bg)
     if truncated:
         remainder = len(diff_lines) - len(visible)
         buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color='bright_black', bg_color='bright_black')
