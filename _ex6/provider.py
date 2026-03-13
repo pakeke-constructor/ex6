@@ -212,6 +212,14 @@ def invoke_llm(ctx: ex6.Context):
     yield result
 
 
+@ex6.command
+def usage():
+    """Print today's spending."""
+    ex6.enter_scroll_mode()
+    is_over_budget()
+    print(f"Today: ${(_daily_cost or 0.0):.4f} / ${DAILY_LIMIT:.2f}")
+
+
 def _log_invoke(ctx, messages, result):
     from datetime import datetime
     import random
