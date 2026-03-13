@@ -201,11 +201,16 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
     search must match exactly one location. errors if zero or multiple matches.
 
+    Usage:
     - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
     - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the line numbers, AND ONLY WHEN THE FILE HASN'T BEEN EDITED.
     - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
 
-    IMPORTANT: For multiline editing, you MUST use raw triple-backtick strings. Otherwise, \\n sequences will wreck the strings.
+    Argument Formatting:
+    - For multiline editing, you MUST use raw triple-backtick strings, (using r'''). Otherwise, \\n sequences will wreck the strings, and you will find it hard to code.
+    - Do NOT use random \\ characters to escape ' or " characters. Python allows you to use ' or " characters in r''' strings without escaping.
+    - For multiline edits, you MUST format over multiple lines. DO NOT use a string like r'foo\\nbar\\nbaz'.
+
     Correct usage:
     edit_file("file.txt",
     r'''search''',
