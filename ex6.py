@@ -526,6 +526,12 @@ class ScreenBuffer:
         self.styles: List[List[Optional[str]]] = [[None] * w for _ in range(h)]
         self.txt_colors: List[List[Optional[str]]] = [[None] * w for _ in range(h)]
         self.bg_colors: List[List[Optional[str]]] = [[None] * w for _ in range(h)]
+        # double-buffer: prev holds last-flushed frame for diffing
+        # _prev_chars uses sentinel to guarantee full first-frame draw (None != ' ')
+        self._prev_chars: List[List[str]] = [['\x00'] * w for _ in range(h)]
+        self._prev_styles: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
+        self._prev_txt_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
+        self._prev_bg_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
 
     def put(self, x, y, char, style=None, txt_color=None, bg_color=None):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -547,11 +553,17 @@ class ScreenBuffer:
 
     def flush(self, term):
         out = ""
+        pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
         for y in range(self.h):
-            out += term.move(y, 0)
+            last_x = -1
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
+                if pc[y][x] == c and pf[y][x] == fg and ps[y][x] == s and pb[y][x] == bg:
+                    continue
+                if last_x != x:
+                    out += term.move(y, x)
+                last_x = x + 1
                 if fg and s: attr = f"{fg}_{s}"
                 elif fg: attr = fg
                 elif s: attr = s
@@ -562,7 +574,13 @@ class ScreenBuffer:
                 styled = getattr(term, attr, None) if attr else None
                 ch = styled(c) if styled else c
                 out += styled_bg(ch) if styled_bg else ch
-        print(out, end='', flush=True)
+        if out:
+            print(out, end='', flush=True)
+        # swap: current becomes prev, prev becomes current (will be cleared next frame)
+        self.chars, self._prev_chars = self._prev_chars, self.chars
+        self.styles, self._prev_styles = self._prev_styles, self.styles
+        self.txt_colors, self._prev_txt_colors = self._prev_txt_colors, self.txt_colors
+        self.bg_colors, self._prev_bg_colors = self._prev_bg_colors, self.bg_colors
 
     def fill(self, r: Rect, char='█', style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
