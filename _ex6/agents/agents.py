@@ -60,7 +60,9 @@ Go straight to the point. Try the simplest approach first. Do not overdo it.
 
 # MODEL = "openai/gpt-5.2-codex"
 # MODEL = "openai/gpt-5.1-codex-mini"
-MODEL = M.SONNET_46.id
+# MODEL = M.SONNET_46.id
+MODEL = M.OPUS_46.id
+
 
 EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
 
