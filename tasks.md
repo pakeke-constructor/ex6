@@ -140,9 +140,24 @@ Be kinda like claude-code.
 - Allow agents to compress their own context-windows.
 
 
+- `escalate(reason: str, severity=1)`
+escalates an issue to the human operator, OR to the parent agent. 
+Situations where escalate is useful:
+- when there appears to be no simple solution to their task
+- when the agent thinks that the task was requested in error. E.g. task is to optimize by adding caching, but upon further discovery, it turns out caching will 
+- Use escalate when the agent is otherwise unable to complete the task
+
+
 - system reminder infrastructure.
 -> Do exactly what was asked. Nothing more, nothing less. Never create files unless necessary. Never add docs/READMEs unprompted.
 https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
+
+
+- Create a new agent `debugger`, that uses codex 5.3 Apparently codex is excellent at debugging.
+
+
+
+- Create a new agent `tester`, that uses codex 5.3. Codex will be great at testing stuff, and figuring out core issues.
 
 
 

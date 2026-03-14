@@ -283,16 +283,17 @@ Use the `{RUN_TOOLS_NAME}` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel.
 
-<how_to_read_results>
-ToolResults:
-Every tool call returns a ToolResult. You MUST call one of these to see output:
+<tool_results>
+Every tool call returns a ToolResult, which is a future containing the task's output and status.
+On their own, tool-calls don't output anything in your context window.
+You MUST call one of these to see output:
 - `.print()` — non-blocking. injects the FULL result into your context. Returns self (ToolResult object)
 - `.status()` — non-blocking. injects OK or ERROR into your context. Use for writes/actions you don't need to read. Returns self (ToolResult object)
 - `.get()` — blocking. returns the value silently. Use to pass data to another tool.
-- `.is_ok()` — blocking. returns the value silently. Use to BRANCH depending on whether another tool succeeded.
+- `.is_ok()` — blocking. returns the value silently. Use to branch depending on whether another tool succeeded.
 
 IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.
-</how_to_read_results>
+</tool_results>
 
 
 <available_tools>
