@@ -58,11 +58,10 @@ Go straight to the point. Try the simplest approach first. Do not overdo it.
 
 
 
-# MODEL = "openai/gpt-5.2-codex"
-# MODEL = "openai/gpt-5.1-codex-mini"
-# MODEL = M.SONNET_46.id
-# MODEL = M.OPUS_46.id
-MODEL = "cc/opus"
+# SMART_MODEL = "openai/gpt-5.2-codex"
+# SMART_MODEL = "openai/gpt-5.1-codex-mini"
+# SMART_MODEL = M.SONNET_46.id
+SMART_MODEL = M.OPUS_46.id
 
 
 EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
@@ -127,13 +126,13 @@ def _env_content(ctx):
 ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 
+
 Context("reader", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
     ENV_PROMPT,
     CLAUDE_MD,
-], model=MODEL)
-
+], model=SMART_MODEL)
 
 
 
@@ -142,7 +141,15 @@ coder = Context("coder", messages=[
     make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search, websearch_agent]),
     ENV_PROMPT,
     CLAUDE_MD,
-], model=MODEL)
+], model=SMART_MODEL)
+
+coder = Context("coder_cc", messages=[
+    MAIN_SYSTEM_PROMPT,
+    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search, websearch_agent]),
+    ENV_PROMPT,
+    CLAUDE_MD,
+], model="cc/opus")
+
 
 
 

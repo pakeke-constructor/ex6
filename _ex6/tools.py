@@ -276,9 +276,11 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
 def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: str) -> str:
     """
     Replace lines start..end (inclusive, 1-indexed) with content.
-    Prefer this over edit_file for deleting large code blocks, or inserting between definitions.
     To delete lines, pass content="" (empty string).
     A trailing newline is added automatically after your edit.
+
+    Prefer this over edit_file for deleting large code blocks, or inserting between definitions.
+    ALWAYS Prefer edit_file_lines for edits larger than 3 lines. but only when you know the lines. If you need to delete a lot of code; edit_file_lines is better because it avoids you rewriting the entire code.
 
     If you have not read the lines or headers, your edits will automatically be rejected.
     Use this in conjunction with read_headers and/or read_function to replace/rewrite entire functions or classes.
@@ -463,10 +465,15 @@ def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = F
                 start_line = source[:child.start_byte].count(b'\n') + 1
                 text = source[child.start_byte:child.end_byte].decode()
                 fn_lines = text.splitlines()
-                read_line_numbers = list(range(start_line, start_line + len(fn_lines)))
+                end_line = start_line + len(fn_lines) - 1
+                read_line_numbers = list(range(start_line, end_line + 1))
                 ctx.mark_file_read(file, read_line_numbers)
                 if line_numbers:
-                    return _add_line_numbers(text, start_line)
+                    all_lines = source.decode().splitlines()
+                    s = max(start_line - 1, 1)
+                    e = min(end_line + 1, len(all_lines))
+                    chunk = "\n".join(all_lines[s-1:e])
+                    return _add_line_numbers(chunk, s)
                 return text
             result = find(child)
             if result:
