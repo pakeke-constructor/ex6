@@ -336,11 +336,11 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
 _SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
 
 
-def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 15, line_numbers: bool = True) -> str:
+def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 15) -> str:
     """Search file contents for a regex pattern, filtered by glob.
     Returns matching lines with file:line: prefix.
-    Use line_numbers=False when you only care about the content of matches, not their location.
     When you just want to check whether a pattern exists, (e.g. after a refactor) use max_results=1 to save context.
+    - Make sure to use regex patterns correctly. WRONG: search("func("), malformed regex pattern. CORRECT: search("func\\(")
     """
     regex = re.compile(pattern)
     results = []

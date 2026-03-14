@@ -112,6 +112,7 @@ Be kinda like claude-code.
 - ~~Create and test WebSearch agent. Tldr; main-agent asks question to websearch agent, websearch agent figures it out.~~
 
 
+- ~~Allow copy-pasted text in input~~
 
 
 
@@ -123,7 +124,6 @@ Be kinda like claude-code.
 - Daily budget visible at top of selection-mode
 
 
-- Allow copy-pasted text in input
 
 
 - better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
