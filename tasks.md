@@ -115,19 +115,18 @@ Be kinda like claude-code.
 - ~~Allow copy-pasted text in input~~
 
 
+- ~~Daily budget visible at top of selection-mode~~
+
+
 
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
-- Daily budget visible at top of selection-mode
 
-
-
-
-- better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
 - Allow selection-mode to override panels
+- better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
 
 - `/help` command: Make help-command a ui-popup
 - `/cm` command: Make cm-command a ui-popup

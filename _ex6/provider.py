@@ -40,8 +40,98 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 
 
+def _parse_cc_tool_calls(text):
+    """Parse run_tools```...``` blocks from CC text output into tool_calls."""
+    import re
+    tool_calls = []
+    for i, match in enumerate(re.finditer(r'run_tools```\w*\n(.*?)```', text, re.DOTALL)):
+        code = match.group(1).strip()
+        if code:
+            tool_calls.append({"id": f"cc_{i}", "name": "run_tools", "args": {"code": code}})
+    return tool_calls
+
+
+def invoke_claude_code(ctx: ex6.Context):
+    """Invoke LLM via claude-code CLI (uses Claude subscription)."""
+    import subprocess, uuid
+
+    # Lazy init session
+    if "cc_session" not in ctx.data:
+        ctx.data["cc_session"] = str(uuid.uuid4())
+        ctx.data["cc_turn"] = 0
+
+    session = ctx.data["cc_session"]
+    model = ctx.model.removeprefix("cc/")
+    is_first = ctx.data["cc_turn"] == 0
+
+    if is_first:
+        # Gather system prompt from system messages
+        sys_parts = []
+        user_msg = ""
+        for m in ctx.messages:
+            content = m.get_msg(ctx)
+            if not isinstance(content, str):
+                content = json.dumps(content)
+            if m.role == "system":
+                sys_parts.append(content)
+            else:
+                user_msg = content
+        cmd = [
+            "claude", "-p",
+            "--session-id", session,
+            "--model", model,
+            "--tools", "",
+            "--system-prompt", "\n".join(sys_parts),
+            user_msg,
+        ]
+    else:
+        last = ctx.messages[-1]
+        content = last.get_msg(ctx)
+        if not isinstance(content, str):
+            content = json.dumps(content)
+        cmd = ["claude", "-p", "--resume", session, content]
+
+    ctx.data["cc_turn"] += 1
+    ex6.debug_print(f"[cc] turn={ctx.data['cc_turn']} model={model} first={is_first}")
+
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except Exception as e:
+        yield ex6.LLMResult(error=str(e))
+        return
+
+    # Stream stdout and buffer for tool parsing
+    full_text = ""
+    while True:
+        data = os.read(proc.stdout.fileno(), 4096)
+        if not data:
+            break
+        text = data.decode("utf-8", errors="replace")
+        full_text += text
+        yield ex6.ResponseChunk("text", text)
+
+    proc.wait()
+    if proc.returncode != 0:
+        err = proc.stderr.read().decode("utf-8", errors="replace")
+        ex6.debug_print(f"[cc] error: {err}")
+        yield ex6.LLMResult(error=f"claude-code: {err}")
+        return
+
+    # Parse tool calls from text output
+    tool_calls = _parse_cc_tool_calls(full_text)
+    for tc in tool_calls:
+        yield ex6.ResponseChunk("tool", json.dumps(tc))
+
+    finish = "tool_calls" if tool_calls else "stop"
+    yield ex6.LLMResult(0, 0, tool_calls, finish, cost=0)
+
+
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
+    if ctx.model.startswith("cc/"):
+        yield from invoke_claude_code(ctx)
+        return
+
     if ex6.is_over_budget():
         yield ex6.LLMResult(error=f"daily budget exceeded (${ex6.get_daily_cost():.2f}/${ex6.get_daily_limit():.2f})")
         return
