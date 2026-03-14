@@ -1106,10 +1106,11 @@ if __name__ == "__main__":
             if _fatal_error:
                 raise RuntimeError(f"FATAL: {_fatal_error}")
             key = term.inkey(timeout=0.011)
-            if key:
+            while key:
                 if _log_keys:
                     debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
                 keyls.append(key)
+                key = term.inkey(timeout=0)
 
             if buf.w != term.width or buf.h != term.height:
                 buf = ScreenBuffer(term.width, term.height)
