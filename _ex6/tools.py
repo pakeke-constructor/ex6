@@ -353,7 +353,7 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
             with open(f, "r", errors="ignore") as fh:
                 for i, line in enumerate(fh, 1):
                     if regex.search(line):
-                        prefix = f"{f}:{i}: " if line_numbers else ""
+                        prefix = f"{f}:{i}: "
                         results.append(f"{prefix}{line.rstrip()}")
                         if len(results) >= max_results:
                             return "\n".join(results) + f"\n... (capped at {max_results} results)"

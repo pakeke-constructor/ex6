@@ -138,14 +138,22 @@ Context("reader", messages=[
 
 coder = Context("coder", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search, websearch_agent]),
+    make_code_mode_system_prompt([
+        read_file, glob, search, read_headers, read_function,
+        write_file, edit_file, edit_file_lines,
+        explore_agent, web_search, websearch_agent
+    ]),
     ENV_PROMPT,
     CLAUDE_MD,
 ], model=SMART_MODEL)
 
 coder = Context("coder_cc", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, write_file, edit_file, explore_agent, web_search, websearch_agent]),
+    make_code_mode_system_prompt([
+        read_file, glob, search, read_headers, read_function,
+        write_file, edit_file, edit_file_lines,
+        explore_agent, web_search, websearch_agent
+    ]),
     ENV_PROMPT,
     CLAUDE_MD,
 ], model="cc/opus")
