@@ -1,52 +1,10 @@
 import json
-import threading
 import ex6
 import openai
 import os
-from datetime import date
-from typing import Optional
 from _ex6.models import M, ModelInfo
 
 
-# Daily budget tracking
-DAILY_LIMIT: float = 15.0  # default $usd/day
-################
-_daily_cost: Optional[float] = None  # None = not yet loaded from disk
-_last_reset = date.today()
-_cost_lock = threading.Lock()
-
-
-def set_daily_limit(limit: float):
-    global DAILY_LIMIT
-    DAILY_LIMIT = limit
-
-
-def is_over_budget() -> bool:
-    global _daily_cost, _last_reset
-    with _cost_lock:
-        today = date.today()
-        if _daily_cost is None:
-            try:
-                data = json.loads((ex6.get_folder() / "usage.json").read_text())
-                if data.get("date") == str(today):
-                    _daily_cost = data.get("cost", 0.0)
-            except: pass
-            if _daily_cost is None:
-                _daily_cost = 0.0
-        if today != _last_reset:
-            _daily_cost = 0.0
-            _last_reset = today
-        return _daily_cost >= DAILY_LIMIT
-
-
-def increment_cost(cost: float):
-    global _daily_cost
-    with _cost_lock:
-        _daily_cost += cost
-        try:
-            (ex6.get_folder() / "usage.json").write_text(
-                json.dumps({"date": str(date.today()), "cost": _daily_cost}))
-        except: pass
 
 
 _cached_contexts = {}  # id(ctx) -> ttl
@@ -84,8 +42,8 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
-    if is_over_budget():
-        yield ex6.LLMResult(error=f"daily budget exceeded (${_daily_cost:.2f}/${DAILY_LIMIT:.2f})")
+    if ex6.is_over_budget():
+        yield ex6.LLMResult(error=f"daily budget exceeded (${ex6.get_daily_cost():.2f}/${ex6.get_daily_limit():.2f})")
         return
 
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
@@ -204,7 +162,7 @@ def invoke_llm(ctx: ex6.Context):
         uncached_input = input_tokens - cached_tokens - cache_write_tokens
         cost = (uncached_input * info.input + cached_tokens * info.cache_read
                 + cache_write_tokens * info.cache_write + output_tokens * info.output) / 1_000_000
-    increment_cost(cost)
+    ex6.add_cost(cost)
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
     ex6.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} tools={len(tool_calls)}")
@@ -216,8 +174,7 @@ def invoke_llm(ctx: ex6.Context):
 def usage():
     """Print today's spending."""
     ex6.enter_scroll_mode()
-    is_over_budget()
-    print(f"Today: ${(_daily_cost or 0.0):.4f} / ${DAILY_LIMIT:.2f}")
+    print(f"Today: ${ex6.get_daily_cost():.4f} / ${ex6.get_daily_limit():.2f}")
 
 
 def _log_invoke(ctx, messages, result):

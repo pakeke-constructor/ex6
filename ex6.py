@@ -173,6 +173,53 @@ def get_folder() -> Path:
 
 
 
+# --- Daily budget ---
+_daily_limit: float = 15.0
+_daily_cost: float = 0.0
+_daily_cost_date: str = ""
+_cost_lock = threading.Lock()
+
+def set_daily_limit(limit: float):
+    global _daily_limit
+    _daily_limit = limit
+
+def get_daily_limit() -> float:
+    return _daily_limit
+
+def _ensure_cost_loaded():
+    """Load/reset daily cost from disk. Must be called under _cost_lock."""
+    global _daily_cost, _daily_cost_date
+    today = datetime.now().strftime("%Y-%m-%d")
+    if _daily_cost_date == today:
+        return
+    # new day or first load
+    _daily_cost = 0.0
+    _daily_cost_date = today
+    try:
+        data = json.loads((get_folder() / "usage.json").read_text())
+        if data.get("date") == today:
+            _daily_cost = data.get("cost", 0.0)
+    except: pass
+
+def get_daily_cost() -> float:
+    with _cost_lock:
+        _ensure_cost_loaded()
+        return _daily_cost
+
+def is_over_budget() -> bool:
+    return get_daily_cost() >= _daily_limit
+
+def add_cost(cost: float):
+    with _cost_lock:
+        global _daily_cost
+        _ensure_cost_loaded()
+        _daily_cost += cost
+        try:
+            (get_folder() / "usage.json").write_text(
+                json.dumps({"date": _daily_cost_date, "cost": _daily_cost}))
+        except: pass
+
+
 OVERRIDES = {}
 _OVERRIDDEN = set()
 
@@ -937,7 +984,11 @@ def render_selection_right(buf, r):
     ctx = state.current
     # header
     buf.puts(x + 2, y + 1, ctx.name, style='bold')
-    buf.puts(x + 2 + len(ctx.name) + 2, y + 1, ctx.model, style='dim')
+    model_x = x + 2 + len(ctx.name) + 2
+    buf.puts(model_x, y + 1, ctx.model, style='dim')
+    budget_str = f"${get_daily_cost():.2f}/${_daily_limit:.2f}"
+    budget_color = 'red' if is_over_budget() else 'green'
+    buf.puts(x + w - len(budget_str) - 2, y + 1, budget_str, txt_color=budget_color)
 
     # token bar
     bar_w = min(w - 4, 20)
