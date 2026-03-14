@@ -238,16 +238,97 @@ def make_code_mode_tool(tools: list):
     return run_tools
 
 
-def make_code_mode_system_prompt(tools: list) -> ex6.Message:
+RUN_TOOLS_NAME = "run_tools"
+
+COMMON_MISTAKES = """
+<common_mistakes>
+COMMON MISTAKES — do NOT do these:
+NEVER use `print()`, `open()`, `import`, or any Python builtin. They do not exist. Only the listed tool functions exist.
+
+run_tools```
+# BAD — since you didn't call `.print()` or `.status()`, result is silently discarded, you will see NOTHING:
+read_file("a.py")
+
+# BAD — print() does not exist:
+print(read_file("a.py").get())
+
+# BAD — importing doesn't work:
+import os
+os.listdir(".")
+```
+
+run_tools```
+# GOOD — .print() injects result into your context:
+read_file("a.py").print()
+
+# GOOD — .status() confirms success:
+edit_file("a.py", old, new).status()
+
+# GOOD — .get() passes data to another tool:
+data = read_file("a.py").get()
+search(data).print()
+</common_mistakes>
+```
+"""
+
+def make_code_mode_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex6.Message:
     """System prompt + run_tools tool for sandboxed code execution."""
-    names = ", ".join(fn.__name__ for fn in tools)
+    sorted_tools = sorted(tools, key=lambda f: f.__name__)
+    tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
+    common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
     return ex6.Message(role="system", overview="tools", content=f"""\
-# Tools
-Use the `run_tools` tool. The `code` param is sandboxed Python.
+<tools>
+Use the `{RUN_TOOLS_NAME}` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel.
-Available: {names}""", tools={"run_tools": run_tools})
+
+<how_to_read_results>
+ToolResults:
+Every tool call returns a ToolResult. You MUST call one of these to see output:
+- `.print()` — non-blocking. injects the FULL result into your context. Returns self (ToolResult object)
+- `.status()` — non-blocking. injects OK or ERROR into your context. Use for writes/actions you don't need to read. Returns self (ToolResult object)
+- `.get()` — blocking. returns the value silently. Use to pass data to another tool.
+- `.is_ok()` — blocking. returns the value silently. Use to BRANCH depending on whether another tool succeeded.
+
+IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.
+</how_to_read_results>
+
+
+<available_tools>
+{tool_docs}
+</available_tools>
+
+<tool_examples>
+{RUN_TOOLS_NAME}```
+# Read files — .print() to see contents
+read_file("main.py").print()
+read_file("utils.py").print()
+```
+
+{RUN_TOOLS_NAME}```
+# Write file — .status() to confirm success
+edit_file("src/main.lua",
+r'''function Player:update(dt)
+    self.x = self.x + 1
+end''',
+r'''function Player:update(dt)
+    self.x = self.x + self.speed * dt
+    self.y = self.y + self.vy * dt
+end'''
+).status()
+```
+
+{RUN_TOOLS_NAME}```
+# Chain: pass data from one tool to another
+x = read_file("schema.sql") # `x` is a ToolResult
+x.print()
+search(x.get()).print()
+</tool_examples>
+```
+{common_mistakes}
+</tools>
+""", tools={RUN_TOOLS_NAME: run_tools})
 
 
 # ==================== RENDERERS ====================
