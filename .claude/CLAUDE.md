@@ -30,7 +30,7 @@ Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add
 - _ex6/tools.py - contains all tool-definitions like read_file, edit_file, etc
 - _ex6/provider.py - openrouter provider, overrides invoke_llm
 - _ex6/code_mode.py - Custom tool-calling pipeline. Unlike typical LLM tool-formats, code-mode only exposes one `run_tools` tool to the agent, alongside a whitelist of python functions. The agent then calls `run_tools`, passing a block of python code that contains all the tool-calls they want to do. See code_mode.py for details.
-- _ex6/agents.py - agent definitions.
+- _ex6/agents/agents.py - agent definitions.
 - _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command
 
 

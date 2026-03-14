@@ -291,10 +291,15 @@ class Message:
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
+    _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
-        return c(ctx) if callable(c) else c
+        if callable(c):
+            if self._snapshot is None:
+                self._snapshot = c(ctx)
+            return self._snapshot
+        return c
 
 
 @dataclass
