@@ -406,7 +406,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     return content
 
 
-def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str:
+def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     """
     Read class/function signatures from a file (no bodies).
     Prefer line_numbers=True if you need to reference specific lines, or edit the file after.
@@ -450,7 +450,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = False) -> str
     return "\n".join(out) if out else "No classes/functions found."
 
 
-def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = False) -> str:
+def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True) -> str:
     """
     Read a function or class body by name from a file.
     - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
