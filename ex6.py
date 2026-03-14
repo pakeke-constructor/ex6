@@ -1049,40 +1049,50 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
         input_box(buf, inpt, input_r)
 
 
+_ex6_dir = os.path.dirname(os.path.abspath(__file__))
+
 def _load_plugins():
-    plugin_dir = "_ex6"
-    if not os.path.isdir(plugin_dir):
-        return
     import importlib.util
     import types
+
+    # Core plugins: next to ex6.py. Project plugins: in cwd.
+    core_dir = os.path.join(_ex6_dir, "_ex6")
+    project_dir = os.path.abspath("_ex6")
+    dirs = []
+    if os.path.isdir(core_dir): dirs.append(core_dir)
+    if os.path.isdir(project_dir) and project_dir != core_dir: dirs.append(project_dir)
+    if not dirs: return
+
     def _register_pkg(name, dir_path):
         if name not in sys.modules:
             pkg = types.ModuleType(name)
-            pkg.__path__ = [os.path.abspath(dir_path)]
+            pkg.__path__ = [dir_path]
             sys.modules[name] = pkg
+        else:
+            # Add path so both core and project subpackages resolve
+            existing = sys.modules[name]
+            if dir_path not in existing.__path__:
+                existing.__path__.append(dir_path)
 
-    _register_pkg("_ex6", plugin_dir)
-
-    for dirpath, dirnames, filenames in os.walk(plugin_dir):
-        # skip dirs starting with _ or .  (but not _ex6 root itself)
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith(("_", ".")))
-        # register subdirs as subpackages
-        rel = os.path.relpath(dirpath, plugin_dir).replace(os.sep, ".")
-        pkg_name = "_ex6" if rel == "." else f"_ex6.{rel}"
-        _register_pkg(pkg_name, dirpath)
-        # load .py files
-        for filename in sorted(filenames):
-            if not filename.endswith(".py") or filename.startswith("_"):
-                continue
-            mod_name = f"{pkg_name}.{filename[:-3]}"
-            if mod_name in sys.modules:
-                continue
-            path = os.path.join(dirpath, filename)
-            spec = importlib.util.spec_from_file_location(mod_name, path)
-            assert spec and spec.loader
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[mod_name] = module
-            spec.loader.exec_module(module)
+    for plugin_dir in dirs:
+        _register_pkg("_ex6", plugin_dir)
+        for dirpath, dirnames, filenames in os.walk(plugin_dir):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith(("_", ".")))
+            rel = os.path.relpath(dirpath, plugin_dir).replace(os.sep, ".")
+            pkg_name = "_ex6" if rel == "." else f"_ex6.{rel}"
+            _register_pkg(pkg_name, dirpath)
+            for filename in sorted(filenames):
+                if not filename.endswith(".py") or filename.startswith("_"):
+                    continue
+                mod_name = f"{pkg_name}.{filename[:-3]}"
+                if mod_name in sys.modules:
+                    continue
+                path = os.path.join(dirpath, filename)
+                spec = importlib.util.spec_from_file_location(mod_name, path)
+                assert spec and spec.loader
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[mod_name] = module
+                spec.loader.exec_module(module)
 
 
 
