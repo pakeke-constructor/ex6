@@ -145,8 +145,21 @@ def ctx():
         print(msg.get_msg(ctx))
         if msg.tool_calls:
             for tc in msg.tool_calls:
-                args = json.dumps(tc["args"], indent=2) if tc.get("args") else "{}"
-                print(f"  [tool_call] {tc['name']}({args})")
+                name = tc['name']
+                args = tc.get("args", {})
+                if not args:
+                    print(f"  <{name} />")
+                else:
+                    print(f"  <{name}>")
+                    for k, v in args.items():
+                        v_str = str(v)
+                        if '\n' in v_str:
+                            print(f"    {k} =")
+                            for line in v_str.split('\n'):
+                                print(f"      {line}")
+                        else:
+                            print(f"    {k} = {v_str}")
+                    print(f"  </{name}>")
         print()
 
 

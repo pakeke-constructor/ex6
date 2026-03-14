@@ -389,7 +389,6 @@ def _add_line_numbers(text: str, start: int = 1) -> str:
     return "\n".join(f"{i:>{w}}: {line}" for i, line in enumerate(lines, start))
 
 def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
-    time.sleep(5)
     """
     Read and return contents of a file at the given path.
     - Prefer line_numbers=False to avoid bloat. 
