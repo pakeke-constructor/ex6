@@ -174,7 +174,7 @@ def get_folder() -> Path:
 
 
 # --- Daily budget ---
-_daily_limit: float = 15.0
+_daily_limit: Optional[float] = 15.0
 _daily_cost: float = 0.0
 _daily_cost_date: str = ""
 _cost_lock = threading.Lock()
@@ -184,7 +184,7 @@ def set_daily_limit(limit: float):
     _daily_limit = limit
 
 def get_daily_limit() -> float:
-    return _daily_limit
+    return _daily_limit or 1000
 
 def _ensure_cost_loaded():
     """Load/reset daily cost from disk. Must be called under _cost_lock."""
@@ -207,7 +207,7 @@ def get_daily_cost() -> float:
         return _daily_cost
 
 def is_over_budget() -> bool:
-    return get_daily_cost() >= _daily_limit
+    return get_daily_cost() >= get_daily_limit()
 
 def add_cost(cost: float):
     with _cost_lock:
