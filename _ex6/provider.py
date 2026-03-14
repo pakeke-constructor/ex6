@@ -40,15 +40,42 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 
 
+CC_TOOL_PROTOCOL = """
+<tool_protocol>
+IMPORTANT — Tool-calling protocol:
+You do NOT have structured tool-calling. Instead, output tool calls as text using <run_tools> XML blocks.
+When you want to call tools, output a single <run_tools> block and STOP. Do NOT continue after it. Do NOT emit multiple <run_tools> blocks.
+Do NOT guess or assume tool results. You will receive actual results in your next message wrapped in <run_tools_result>...</run_tools_result>, then you can continue.
+
+Example flow:
+1. You output:
+<run_tools>
+read_file("main.py").print()
+edit_file("config.py", old, new).status()
+</run_tools>
+
+2. You receive:
+<run_tools_result>
+contents of main.py here...
+OK
+</run_tools_result>
+
+3. Now you continue with the actual data.
+</tool_protocol>
+""".strip()
+
+
 def _parse_cc_tool_calls(text):
-    """Parse run_tools```...``` blocks from CC text output into tool_calls."""
+    """Parse <run_tools>...</run_tools> blocks from CC text output into tool_calls."""
     import re
-    tool_calls = []
-    for i, match in enumerate(re.finditer(r'run_tools```\w*\n(.*?)```', text, re.DOTALL)):
+    # Greedy: grabs up to the LAST </run_tools> — safe because protocol says only one block per turn.
+    # This handles edge cases where tool args contain </run_tools> as a string literal.
+    match = re.search(r'<run_tools>\n?(.*)</run_tools>', text, re.DOTALL)
+    if match:
         code = match.group(1).strip()
         if code:
-            tool_calls.append({"id": f"cc_{i}", "name": "run_tools", "args": {"code": code}})
-    return tool_calls
+            return [{"id": "cc_0", "name": "run_tools", "args": {"code": code}}]
+    return []
 
 
 def invoke_claude_code(ctx: ex6.Context):
@@ -76,6 +103,7 @@ def invoke_claude_code(ctx: ex6.Context):
                 sys_parts.append(content)
             else:
                 user_msg = content
+        sys_parts.append(CC_TOOL_PROTOCOL)
         cmd = [
             "claude", "-p",
             "--session-id", session,
@@ -89,6 +117,9 @@ def invoke_claude_code(ctx: ex6.Context):
         content = last.get_msg(ctx)
         if not isinstance(content, str):
             content = json.dumps(content)
+        # Wrap tool results so LLM knows it's not a user message
+        if last.role == "tool":
+            content = f"<run_tools_result>\n{content}\n</run_tools_result>"
         cmd = ["claude", "-p", "--resume", session, content]
 
     ctx.data["cc_turn"] += 1
@@ -258,6 +289,23 @@ def invoke_llm(ctx: ex6.Context):
     ex6.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} tools={len(tool_calls)}")
     _log_invoke(ctx, messages, result)
     yield result
+
+
+@ex6.output_renderer
+def _cc_strip_tool_blocks(output: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.Context) -> None:
+    """Strip <run_tools>...</run_tools> blocks from CC output — code_mode already renders tools."""
+    i = 0
+    while i < len(output):
+        oi = output[i]
+        if not isinstance(oi, str) or '<run_tools>' not in oi:
+            i += 1
+            continue
+        j = i + 1
+        while j < len(output):
+            oj = output[j]
+            if isinstance(oj, str) and '</run_tools>' in oj: break
+            j += 1
+        del output[i:j+1]
 
 
 @ex6.command

@@ -912,7 +912,13 @@ def make_input(on_submit):
         if width < 1: return 1
         return len(_wrap(text, width)) if text else 1
 
+    def set_text(t):
+        nonlocal text, cursor
+        text = t
+        cursor = len(t)
+
     draw.get_height = get_height
+    draw.set_text = set_text
     return draw
 
 
@@ -1162,6 +1168,14 @@ if __name__ == "__main__":
             state.current.invoke(text)
     input_box = make_input(on_submit)
 
+    _sel_input_open = False
+    def sel_on_submit(text):
+        global _sel_input_open
+        _sel_input_open = False
+        if text.startswith("/"):
+            dispatch_command(text)
+    sel_input_box = make_input(sel_on_submit)
+
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
         while True:
             if _fatal_error:
@@ -1226,12 +1240,26 @@ if __name__ == "__main__":
                     state.current._stop_early = True
             elif state.mode == "selection":
                 if inpt.consume("KEY_ENTER"):
+                    _sel_input_open = False
+                    sel_input_box.set_text("")
                     state.mode = "work"
-                left, right = main_r.split_horizontal(1, 3)
-                render_selection_left(buf, inpt, left)
-                render_selection_right(buf, right)
-                buf.rect_line(input_r, txt_color='bright_red')
-                input_box(buf, inpt, input_r.shrink(1))
+                if not _sel_input_open and inpt.consume("/"):
+                    _sel_input_open = True
+                    sel_input_box.set_text("/")
+                if _sel_input_open and inpt.consume("KEY_ESCAPE"):
+                    _sel_input_open = False
+                    sel_input_box.set_text("")
+                if _sel_input_open:
+                    left, right = main_r.split_horizontal(1, 3)
+                    render_selection_left(buf, inpt, left)
+                    render_selection_right(buf, right)
+                    buf.rect_line(input_r, txt_color='bright_red')
+                    sel_input_box(buf, inpt, input_r.shrink(1))
+                else:
+                    full_r = Region(0, 0, term.width, term.height)
+                    left, right = full_r.split_horizontal(1, 3)
+                    render_selection_left(buf, inpt, left)
+                    render_selection_right(buf, right)
             else:
                 assert state.mode == "help"
                 # press h to toggle help.
