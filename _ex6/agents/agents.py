@@ -57,6 +57,7 @@ The ONLY acceptable text output is: a direct answer, a clarifying question, or a
 # SMART_MODEL = "openai/gpt-5.1-codex-mini"
 # SMART_MODEL = M.SONNET_46.id
 SMART_MODEL = M.OPUS_46.id
+ANALYTICAL_MODEL = M.GPT52_CODEX.id
 
 
 EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
@@ -122,7 +123,7 @@ ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 
 
-reader = Context("reader",model=SMART_MODEL, reasoning="medium", messages=[
+reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
     ENV_PROMPT,
@@ -145,16 +146,16 @@ if SMART_MODEL.startswith("anthropic/"):
     cache_manually(coder)
 
 
-coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
-    MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([
-        read_file, glob, search, read_headers, read_function,
-        write_file, edit_file, edit_file_lines,
-        explore_agent, web_search, websearch_agent
-    ]),
-    ENV_PROMPT,
-    CLAUDE_MD,
-])
+# coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
+#     MAIN_SYSTEM_PROMPT,
+#     make_code_mode_system_prompt([
+#         read_file, glob, search, read_headers, read_function,
+#         write_file, edit_file, edit_file_lines,
+#         explore_agent, web_search, websearch_agent
+#     ]),
+#     ENV_PROMPT,
+#     CLAUDE_MD,
+# ])
 
 
 
