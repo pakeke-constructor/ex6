@@ -67,18 +67,51 @@ Be extremely concise, grammatical correctness is not important.
 """
 
 
+
+def _text_panel(lines):
+    """Push a scrollable text panel. ESC to close."""
+    scroll = [0]
+    def draw(buf, inpt, r):
+        x, y, w, h = r
+        buf.fill(r, ' ')
+        buf.rect_line(r, txt_color='blue')
+        if inpt.consume('KEY_ESCAPE'):
+            ex6.pop_ui_panel()
+            return
+        if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
+        if inpt.consume('KEY_DOWN'): scroll[0] += 1
+        visible = h - 2
+        max_scroll = max(0, len(lines) - visible)
+        if scroll[0] > max_scroll: scroll[0] = max_scroll
+        for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
+            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color='white')
+    ex6.push_ui_panel(draw)
+
+
 @ex6.command
 def cm(msg: Optional[str]):
     """Generate a commit message from git diff and commit."""
+    output_lines = ["Generating commit message..."]
+
+    def draw(buf, inpt, r):
+        x, y, w, h = r
+        buf.fill(r, ' ')
+        buf.rect_line(r, txt_color='blue')
+        if inpt.consume('KEY_ESCAPE'):
+            ex6.pop_ui_panel()
+            return
+        visible = h - 2
+        start = max(0, len(output_lines) - visible)
+        for i, line in enumerate(output_lines[start:start + visible]):
+            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color='white')
+
+    ex6.push_ui_panel(draw)
+
     def run():
-        ex6.enter_scroll_mode()
-
-        # mark untracked files with intent-to-add so they show in diff
         subprocess.run(["git", "add", "."], capture_output=True)
-
         diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
-            print("No changes to commit.")
+            output_lines.append("No changes to commit.")
             return
 
         from _ex6.models import M
@@ -88,16 +121,16 @@ def cm(msg: Optional[str]):
         system = CM_SYSTEM_PROMPT
         user = f"Write a commit message for this diff:{hint}\n\n{diff[:8000]}"
 
-        print("Generating commit message...")
         commit_msg = _llm_one_shot(model, system, user)
-        print(f"Commit: {commit_msg}")
+        output_lines.append(f"Commit: {commit_msg}")
 
         subprocess.run(["git", "add", "."], capture_output=True)
         result = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
         if result.returncode == 0:
-            print("Committed.")
+            output_lines.append("Committed.")
         else:
-            print(f"git commit failed:\n{result.stderr}")
+            output_lines.append(f"git commit failed:")
+            output_lines.extend(result.stderr.split('\n'))
 
     threading.Thread(target=run, daemon=True).start()
 
@@ -105,29 +138,11 @@ def cm(msg: Optional[str]):
 
 @ex6.command
 def help():
-    ex6.enter_scroll_mode()
-    print("Commands:")
+    lines = ["Commands:"]
     for name, (fn, spec) in sorted(ex6._commands.items()):
         args = " ".join(f"<{a}>" for a, _ in spec)
         doc = (fn.__doc__ or "").strip()
         line = f"  /{name} {args}".rstrip()
-        print(f"{line}  {doc}" if doc else line)
-
-
-
-@ex6.command
-def show_ctx():
-    ex6.enter_scroll_mode()
-    print("="*30)
-    print("CONTEXT WINDOW")
-    print("="*30)
-    print("\n\n")
-    term = ex6.state.term
-    colors = {"system": term.blue, "user": term.green, "assistant": term.red, "tool": term.yellow}
-    ctx = ex6.state.current
-    for msg in ctx.messages:
-        content = msg.get_msg(ctx) if callable(msg.content) else msg.content
-        color = colors.get(msg.role, lambda x: x)
-        print(f"{color(f'[{msg.role}]')}\n{color(content)}\n")
-
+        lines.append(f"{line}  {doc}" if doc else line)
+    _text_panel(lines)
 

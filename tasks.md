@@ -156,8 +156,10 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 - Create a new agent `debugger`, that uses codex 5.3 Apparently codex is excellent at debugging.
 
 
+- Create a new agent `tester`, (codex 5.3) Codex excels at testing and solving issues.
+(Generates test-cases, finds edge-cases, runs in a loop; then feeds output to `main` agent)
 
-- Create a new agent `tester`, that uses codex 5.3. Codex will be great at testing stuff, and figuring out core issues.
+- (Also look at using `gemini-31-pro`, the benchmarks for it are honestly insane)
 
 
 

@@ -265,6 +265,15 @@ class AppState:
 
 state = AppState()
 
+_ui_panel_stack = []
+
+def push_ui_panel(draw_fn):
+    _ui_panel_stack.append(draw_fn)
+
+def pop_ui_panel():
+    if _ui_panel_stack:
+        return _ui_panel_stack.pop()
+
 def enter_scroll_mode():
     """Exit fullscreen for scroll mode. Caller prints, main loop handles re-entry."""
     if state.mode == "scroll": return
@@ -1284,7 +1293,10 @@ if __name__ == "__main__":
                 # displays all keybinds for selection-mode
             
             if state.mode != "scroll":
-                if state.current.ui_stack:
+                if _ui_panel_stack:
+                    r = Region(3, 2, buf.w - 6, buf.h - 4)
+                    _ui_panel_stack[-1](buf, inpt, r)
+                elif state.current.ui_stack:
                     r = Region(3, 2, buf.w - 6, buf.h - 4)
                     state.current.ui_stack[-1](buf, inpt, r)
                 buf.flush(term)
