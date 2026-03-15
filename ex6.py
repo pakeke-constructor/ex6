@@ -443,7 +443,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
 class Context:
     name: str
     model: str
-    reasoning: str  # "low", "medium", "high", or "none"
+    reasoning: Literal["low","medium","high","none"]  # "low", "medium", "high", or "none"
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     llm_is_running: bool = False
@@ -1238,6 +1238,9 @@ if __name__ == "__main__":
 
             term_r = Region(0,0, term.width, term.height)
 
+            if _ui_panel_stack and inpt.consume('KEY_ESCAPE'):
+                pop_ui_panel()
+
             if state.mode == "work":
                 # work mode: no boxes, divider, 2 lines bottom padding
                 if hasattr(input_box, 'get_height') and not state.current.is_running():
@@ -1267,9 +1270,7 @@ if __name__ == "__main__":
                 if inpt.consume('KEY_CTRL_X') and state.current.is_running():
                     state.current._stop_early = True
             elif state.mode == "selection":
-                if inpt.consume("KEY_ENTER"):
-                    _sel_input_open = False
-                    sel_input_box.set_text("")
+                if not _sel_input_open and inpt.consume("KEY_ENTER"):
                     state.mode = "work"
                 if not _sel_input_open and inpt.consume("/"):
                     _sel_input_open = True

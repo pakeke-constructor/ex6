@@ -124,7 +124,7 @@ WEBSEARCH_TOOLS_MSG = ex6.Message(role="system", overview="tools",
 def websearch_agent(ctx: ex6.Context, question: str) -> str:
     """Spawn a websearch subagent to research a question. Returns a concise answer.
     Use this when you need up-to-date information from the web."""
-    sub = ex6.Context("websearch", model=WEBSEARCH_MODEL, messages=[WEBSEARCH_SYSTEM_PROMPT, WEBSEARCH_TOOLS_MSG])
+    sub = ex6.Context("websearch", model=WEBSEARCH_MODEL, messages=[WEBSEARCH_SYSTEM_PROMPT, WEBSEARCH_TOOLS_MSG], reasoning="none")
     sub.parent = ctx.name
     sub.invoke(question)
     while sub.llm_is_running:

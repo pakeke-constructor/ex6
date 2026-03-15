@@ -313,9 +313,12 @@ def _cc_strip_tool_blocks(output: list[ex6.OutputLine], msg: ex6.Message, ctx: e
 
 @ex6.command
 def usage():
-    """Print today's spending."""
-    ex6.enter_scroll_mode()
-    print(f"Today: ${ex6.get_daily_cost():.4f} / ${ex6.get_daily_limit():.2f}")
+    """Show today's spending."""
+    from _ex6.commands import _text_panel
+    lines = [
+        f"Today: ${ex6.get_daily_cost():.4f} / ${ex6.get_daily_limit():.2f}",
+    ]
+    _text_panel(lines)
 
 
 def _log_invoke(ctx, messages, result):

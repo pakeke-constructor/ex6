@@ -117,6 +117,9 @@ Be kinda like claude-code.
 
 - ~~Daily budget visible at top of selection-mode~~
 
+- ~~`/help` command: Make help-command a ui-popup~~
+- ~~`/cm` command: Make cm-command a ui-popup~~
+
 
 
 
@@ -127,9 +130,6 @@ Be kinda like claude-code.
 
 - Allow selection-mode to override panels
 - better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
-
-- `/help` command: Make help-command a ui-popup
-- `/cm` command: Make cm-command a ui-popup
 
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking

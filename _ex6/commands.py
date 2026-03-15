@@ -35,7 +35,7 @@ def crash():
 
 def _llm_one_shot(model: str, system: str, user: str) -> str:
     """Synchronously run one LLM call. Returns assistant text."""
-    ctx = ex6.Context(name="__tmp_cm__", model=model)
+    ctx = ex6.Context(name="__tmp_cm__", model=model, reasoning="none")
     ctx.messages.append(ex6.Message(role="system", content=system))
     ctx.messages.append(ex6.Message(role="user", content=user))
     result_text = []
@@ -67,7 +67,6 @@ Be extremely concise, grammatical correctness is not important.
 """
 
 
-
 def _text_panel(lines):
     """Push a scrollable text panel. ESC to close."""
     scroll = [0]
@@ -75,9 +74,6 @@ def _text_panel(lines):
         x, y, w, h = r
         buf.fill(r, ' ')
         buf.rect_line(r, txt_color='blue')
-        if inpt.consume('KEY_ESCAPE'):
-            ex6.pop_ui_panel()
-            return
         if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
         if inpt.consume('KEY_DOWN'): scroll[0] += 1
         visible = h - 2
@@ -97,9 +93,6 @@ def cm(msg: Optional[str]):
         x, y, w, h = r
         buf.fill(r, ' ')
         buf.rect_line(r, txt_color='blue')
-        if inpt.consume('KEY_ESCAPE'):
-            ex6.pop_ui_panel()
-            return
         visible = h - 2
         start = max(0, len(output_lines) - visible)
         for i, line in enumerate(output_lines[start:start + visible]):

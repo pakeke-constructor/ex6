@@ -109,7 +109,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 def _env_content(ctx):
     cwd = os.getcwd()
     plat = platform.system()
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = datetime.datetime.now().strftime("%Y-%m-%d")
     try:
         branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL).strip()
     except Exception:
