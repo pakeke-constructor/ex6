@@ -121,15 +121,15 @@ Be kinda like claude-code.
 - ~~`/cm` command: Make cm-command a ui-popup~~
 
 
+- ~~Allow selection-mode to override panels~~
+- ~~better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode~~
+
+
 
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
-
-
-- Allow selection-mode to override panels
-- better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode
 
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
@@ -140,12 +140,7 @@ Be kinda like claude-code.
 - Allow agents to compress their own context-windows.
 
 
-- `escalate(reason: str, severity=1)`
-escalates an issue to the human operator, OR to the parent agent. 
-Situations where escalate is useful:
-- when there appears to be no simple solution to their task
-- when the agent thinks that the task was requested in error. E.g. task is to optimize by adding caching, but upon further discovery, it turns out caching will 
-- Use escalate when the agent is otherwise unable to complete the task
+- `escalate(reason: str, severity=1)`. escalates an issue to the human operator, OR to the parent agent.  Situations where escalate is useful: when there appears to be no simple solution to their task. when the agent thinks that the task was requested in error/more information has been discovered which makes the task malformed. - Agents should use escalate when the agent is otherwise unable to complete the task
 
 
 - system reminder infrastructure.

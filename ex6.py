@@ -304,9 +304,10 @@ class Message:
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
+        if self._snapshot:
+            return self._snapshot
         if callable(c):
-            if self._snapshot is None:
-                self._snapshot = c(ctx)
+            self._snapshot = c(ctx)
             return self._snapshot
         return c
 

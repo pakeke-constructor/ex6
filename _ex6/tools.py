@@ -512,6 +512,60 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
     return result[0] or ""
 
 
+
+class EscalationError(Exception):
+    def __init__(self, reason, severity=1):
+        self.reason = reason
+        self.severity = severity
+        super().__init__(reason)
+
+
+def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
+    """Escalates an issue to the human operator, or to the parent agent.
+    Use when: no simple solution exists, the task seems malformed, or you are unable to complete it.
+    - Example: prompt asks to improve 
+    severity: 1=informational, 2=blocking, 3=critical."""
+    if ctx.parent:
+        raise EscalationError(reason, severity)
+    result = [None]
+
+    def on_submit(text):
+        result[0] = text
+        ctx.ui_stack.pop()
+
+    input_draw = ex6.make_input(on_submit)
+    sev_labels = {1: "INFO", 2: "BLOCKING", 3: "CRITICAL"}
+    label = sev_labels.get(severity, f"SEV-{severity}")
+
+    def draw(buf: ex6.ScreenBuffer, inpt, r):
+        x, y, w, h = r
+        buf.puts(x, y, f"[{label}] ESCALATION", txt_color='red')
+        words = reason.split()
+        lines, line = [], ""
+        for word in words:
+            if line and len(line) + 1 + len(word) > w - 2:
+                lines.append(line)
+                line = word
+            else:
+                line = (line + " " + word).strip()
+        if line:
+            lines.append(line)
+        for i, l in enumerate(lines):
+            if y + 1 + i >= y + h - 2:
+                break
+            buf.puts(x, y + 1 + i, l, txt_color='yellow')
+        prompt_y = y + 1 + len(lines) + 1
+        buf.puts(x, prompt_y - 1, "Respond to agent:", txt_color='white')
+        input_draw(buf, inpt, (x + 2, prompt_y, w - 2, 1))
+
+    ctx.push_ui(draw)
+
+    while draw in ctx.ui_stack:
+        time.sleep(0.05)
+
+    return result[0] or ""
+
+
 def _make_diff(old: str, new: str) -> list:
     old_lines = old.splitlines()
     new_lines = new.splitlines()

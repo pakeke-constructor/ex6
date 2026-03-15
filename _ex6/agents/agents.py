@@ -3,7 +3,7 @@
 
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
-from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
+from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, CLAUDE_MD
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
 import ex6
@@ -125,7 +125,7 @@ ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
+    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent, escalate]),
     ENV_PROMPT,
     CLAUDE_MD,
 ])
@@ -137,7 +137,8 @@ coder = Context("coder", model=SMART_MODEL, reasoning="medium", messages=[
     make_code_mode_system_prompt([
         read_file, glob, search, read_headers, read_function,
         write_file, edit_file, edit_file_lines,
-        explore_agent, web_search, websearch_agent
+        explore_agent, web_search, websearch_agent,
+        escalate
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
