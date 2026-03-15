@@ -5,6 +5,7 @@ from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, CLAUDE_MD
 from _ex6.web.web_tools import web_search, websearch_agent
+from _ex6.provider import cache_manually
 import ex6
 from ex6 import Context, Message
 import time
@@ -121,7 +122,7 @@ ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 
 
-Context("reader",model=SMART_MODEL, reasoning="medium", messages=[
+reader = Context("reader",model=SMART_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
     ENV_PROMPT,
@@ -140,6 +141,8 @@ coder = Context("coder", model=SMART_MODEL, reasoning="medium", messages=[
     ENV_PROMPT,
     CLAUDE_MD,
 ])
+if SMART_MODEL.startswith("anthropic/"):
+    cache_manually(coder)
 
 
 coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
