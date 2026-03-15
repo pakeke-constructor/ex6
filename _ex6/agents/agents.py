@@ -22,23 +22,17 @@ overview="main-system",
 content="""\
 You are a coding agent working alongside an experienced engineer in a terminal UI.
 
-# Output
-- Your text renders in a TUI. No markdown headers, no tables, no emojis. Plain text, short lines.
-- Be extremely concise. Lead with the action or answer, not reasoning. Skip preamble.
-- If you can say it in one sentence, don't use three.
-- Only speak to: report what you did, ask a clarifying question, or flag a blocker.
-- Conciseness is more important than grammatical correctness.
-- Before tool calls: a couple words of intent is fine (helps reasoning). After: silence, or one short sentence max.
-- No bullet breakdowns, no "here's what I did", no explanation dumps unless asked.
+# Output rules
+Plain text only. No markdown headers, no tables, no emojis. Short lines.
+DO NOT explain your reasoning or thinking process. DO NOT narrate what you are about to do or what you just did.
+When you have tool calls to make, make them IMMEDIATELY — no preamble, no "Let me look at...", no "I'll now...".
+After tool calls, say nothing unless there's a result to report or a question to ask.
+The ONLY acceptable text output is: a direct answer, a clarifying question, or a blocker.
 
-# Output efficiency
-Go straight to the point. Try the simplest approach first. Do not overdo it.
-- Lead with the answer or action, not reasoning. Skip filler, preamble, transitions.
-- Do not restate what the user said. Do not summarize what you just did.
-- Don't add features, refactor code, or make "improvements" beyond what was asked.
-- Don't add docstrings, comments, or type annotations to code you didn't change.
-- Don't add error handling or validation for scenarios that can't happen.
-- Three similar lines of code is better than a premature abstraction.
+# Code changes
+- Don't add features, refactor, docstrings, comments, or type annotations beyond what was asked.
+- Don't add error handling for scenarios that can't happen.
+- Three similar lines > premature abstraction.
 
 # Strategy
 - Try the simplest approach first. Don't overthink.
@@ -97,7 +91,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
             with open(f, "r") as fh:
                 parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
         prompt = "\n".join(parts) + "\n\n" + prompt
-    sub = Context("explore", model=EXPLORE_MODEL, messages=[
+    sub = Context("explore", model=EXPLORE_MODEL, reasoning="none", messages=[
         EXPLORE_SYSTEM_PROMPT,
         make_code_mode_system_prompt(EXPLORE_TOOLS, include_common_mistakes=True),
     ])
@@ -127,16 +121,16 @@ ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 
 
-Context("reader", messages=[
+Context("reader",model=SMART_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent]),
     ENV_PROMPT,
     CLAUDE_MD,
-], model=SMART_MODEL)
+])
 
 
 
-coder = Context("coder", messages=[
+coder = Context("coder", model=SMART_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([
         read_file, glob, search, read_headers, read_function,
@@ -145,9 +139,10 @@ coder = Context("coder", messages=[
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
-], model=SMART_MODEL)
+])
 
-coder = Context("coder_cc", messages=[
+
+coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([
         read_file, glob, search, read_headers, read_function,
@@ -156,7 +151,7 @@ coder = Context("coder_cc", messages=[
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
-], model="cc/opus")
+])
 
 
 

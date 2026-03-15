@@ -443,6 +443,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
 class Context:
     name: str
     model: str
+    reasoning: str  # "low", "medium", "high", or "none"
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     llm_is_running: bool = False
