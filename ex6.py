@@ -1082,7 +1082,9 @@ def render_selection_right(buf, r):
             tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
         else:
             tokstr = "(func)"
-        buf.puts(x + 2, row, f"{label} {tokstr}", style='dim')
+        role_colors = {'system':'blue','user':'white','tool':'red','assistant':'green'}
+        buf.puts(x + 2, row, label, txt_color=role_colors.get(msg.role, 'white'))
+        buf.puts(x + 2 + len(label) + 1, row, tokstr, txt_color='bright_black')
         row += 1
     if not msgs:
         buf.puts(x + 2, row, "(no messages)", style='dim')
