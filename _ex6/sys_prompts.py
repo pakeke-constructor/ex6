@@ -145,6 +145,14 @@ on("click", button, function()
 end)
 ```
 Why: no config tables, no string lookups, no args gymnastics. The caller passes the behavior directly, which is a lot more flexible. The function IS the config.
+
+Other examples where this could be useful include fields on objects / entity definitions.
+```lua
+defineEntity(name {
+    getDamageMultiplier = func -- func returns 0 when entity is in "defensive mode".
+    -- Much simpler than writing a complex system to handle different "modes", and damage propagation.
+})
+```
 </example>
 
 </examples>
