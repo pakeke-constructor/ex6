@@ -493,6 +493,7 @@ class Context:
     _prev_height: int = 0 # how many lines were used in rendering last frame
     _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
     yolo: bool = False
+    _scroll_up: int = 0
 
     def token_count(self) -> int:
         if self.llm_result:
@@ -1143,7 +1144,12 @@ def render_work_mode(buf, inpt, r):
 
     # Draw (start 1 row below token bar)
     available = h - 1
-    scroll_offset = max(0, ctx._prev_height - available)
+
+    # Scroll input
+    if inpt.consume('KEY_PGUP'): ctx._scroll_up += available // 2
+    if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - available // 2)
+    if ctx.is_running(): ctx._scroll_up = 0
+    scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
     for role, lines in message_outputs:
         row += 1  # spacer between messages
@@ -1164,6 +1170,14 @@ def render_work_mode(buf, inpt, r):
             buf.fill_bg(x, row, w, drawn, (80, 0, 0))
             row += drawn
     ctx._prev_height = row - (y - scroll_offset)
+
+    # Scrollbar on right edge when scrolled up
+    if ctx._scroll_up > 0 and ctx._prev_height > available:
+        total = ctx._prev_height
+        bar_h = max(1, available * available // total)
+        bar_top = (y + 1) + (available - bar_h) * (total - available - ctx._scroll_up) // (total - available)
+        for sy in range(bar_top, bar_top + bar_h):
+            buf.put(x + w - 1, sy, '█', txt_color='bright_black')
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
