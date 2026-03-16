@@ -156,7 +156,7 @@ def make_ctx(name):
     """Create a context with realistic tool-call history pre-loaded."""
     ctx = ex6.Context(name=name, model=MODEL, reasoning="none")
     ctx.messages.append(ex6.Message(role="system", content=SYSTEM_PROMPT,
-                                     tools={"read_file": read_file, "edit_file": edit_file}))
+                                     tools=[read_file, edit_file]))
     cache_manually(ctx, ttl="1h")
 
     # User asks to read a file

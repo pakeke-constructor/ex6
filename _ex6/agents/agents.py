@@ -79,9 +79,10 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 - Concrete facts, relevant paths, function names, relationships.
 - Favour conciseness at all costs. Conciseness is much more important than grammatical correctness.
 - If the answer is 3 lines, write 3 lines. If it needs 30, write 30.
-""")
+""",
+tools = [read_file, glob, search, read_headers, read_function]
+)
 
-EXPLORE_TOOLS = [read_file, glob, search, read_headers, read_function]
 
 def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
     """Spawn a read-only subagent to explore the codebase. Returns its findings.
@@ -94,8 +95,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
                 parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
         prompt = "\n".join(parts) + "\n\n" + prompt
     sub = Context("explore", model=EXPLORE_MODEL, reasoning="none", messages=[
-        EXPLORE_SYSTEM_PROMPT,
-        make_code_mode_system_prompt(EXPLORE_TOOLS, include_common_mistakes=True),
+        EXPLORE_SYSTEM_PROMPT
     ])
     sub.parent = ctx.name
     sub.invoke(prompt)

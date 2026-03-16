@@ -13,12 +13,12 @@ def _build_tool_docs(ctx: ex6.Context) -> str:
         return "No tools available."
 
     lines = ["You have access to the following tools:", "<tools>"]
-    for name, fn in tools.items():
+    for fn in tools.values():
         sig = inspect.signature(fn)
         params = list(sig.parameters.values())[1:]  # skip ctx
         args = ", ".join(p.name for p in params)
         doc = (fn.__doc__ or "").split('\n')[0].strip()
-        lines.append(f"  {name}({args}) - {doc}")
+        lines.append(f"  {fn.__name__}({args}) - {doc}")
     lines.append("</tools>")
     lines.append("")
     lines.append("To call tools, output a ```tools block:")

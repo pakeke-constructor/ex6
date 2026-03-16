@@ -329,7 +329,7 @@ search(x.get()).print()
 ```
 {common_mistakes}
 </tools>
-""", tools={RUN_TOOLS_NAME: run_tools})
+""", tools=[run_tools])
 
 
 # ==================== RENDERERS ====================

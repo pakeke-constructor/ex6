@@ -119,7 +119,7 @@ Strategy:
 
 WEBSEARCH_TOOLS_MSG = ex6.Message(role="system", overview="tools",
     content="Use web_search to find pages, and web_scrape to read a page in full.",
-    tools={"web_search": web_search, "web_scrape": web_scrape})
+    tools=[web_search, web_scrape])
 
 def websearch_agent(ctx: ex6.Context, question: str) -> str:
     """Spawn a websearch subagent to research a question. Returns a concise answer.

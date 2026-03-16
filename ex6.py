@@ -295,12 +295,18 @@ def invoke_llm(ctx):
 class Message:
     role: Literal["system", "user", "assistant", "tool"]
     content: Union[str, Callable[['Context'], str]]
-    tools: dict[str, Callable] = field(default_factory=dict)
+    tools: list[Callable] = field(default_factory=list)
     chunks: Optional[list] = None  # ordered ResponseChunks (for assistant msgs)
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
+
+    def with_tools(self, tools: list[Callable]):
+        assert self.role == "system"
+        clone = copy.copy(self)
+        clone.tools = self.tools + tools
+        return clone
 
     def get_msg(self, ctx: 'Context'):
         c = self.content
@@ -509,7 +515,8 @@ class Context:
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
         for m in self.messages:
-            tools.update(m.tools)
+            for fn in m.tools:
+                tools[fn.__name__] = fn
         return tools
 
     def get_tool_schemas(self) -> list[dict]:
