@@ -616,6 +616,7 @@ class ScreenBuffer:
         self._prev_txt_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
         self._prev_bg_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
         self._invalidated = False
+        self._frame_count = 0
 
     def put(self, x, y, char, style=None, txt_color=None, bg_color=None):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -632,7 +633,6 @@ class ScreenBuffer:
     def invalidate(self):
         self._invalidated = True
 
-
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
         for row in self.styles: row[:] = [None] * self.w
@@ -644,7 +644,10 @@ class ScreenBuffer:
         skip_diff = self._invalidated
         self._invalidated = False
         pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
+        i = self._frame_count % self.h
         for y in range(self.h):
+            if i == y: skip_diff = True
+            else: skip_diff = self._invalidated
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
@@ -661,6 +664,7 @@ class ScreenBuffer:
                 styled = getattr(term, attr, None) if attr else None
                 ch = styled(c) if styled else c
                 out += styled_bg(ch) if styled_bg else ch
+        self._frame_count += 1
         if out:
             print(out, end='', flush=True)
         # swap: current becomes prev, prev becomes current (will be cleared next frame)
@@ -1048,9 +1052,13 @@ def render_selection_right(buf, r):
     for msg in msgs:
         if row >= y + h - 1: break
         label = msg.overview or msg.role
-        content = msg.content if isinstance(msg.content, str) else "<fn>"
-        toks = len(content) // 4
-        buf.puts(x + 2, row, f"{label} (~{toks//1000}k)", style='dim')
+        content = msg.content if isinstance(msg.content, str) else None
+        toks = content and len(content) // 4
+        if toks:
+            tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
+        else:
+            tokstr = "(func)"
+        buf.puts(x + 2, row, f"{label} {tokstr}", style='dim')
         row += 1
     if not msgs:
         buf.puts(x + 2, row, "(no messages)", style='dim')
@@ -1220,11 +1228,7 @@ if __name__ == "__main__":
     sel_input_box = make_input(sel_on_submit)
 
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
-        _frame = 0
         while True:
-            _frame += 1
-            if _frame % 300 == 0:
-                buf.invalidate() # invalidate every wee while to avoid nasty corruption
             if _fatal_error:
                 raise RuntimeError(f"FATAL: {_fatal_error}")
             key = term.inkey(timeout=0.011)
