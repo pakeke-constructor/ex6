@@ -28,25 +28,20 @@ function Obj:hit()
     self.flash_timer = 0.2
 end
 function Obj:update(dt)
-    self.flash_timer = math.max(0, self.flash_timer - dt)
+    -- decrement timer
 end
 function Obj:draw()
-    if self.flash_timer > 0 then
-        love.graphics.setColor(1,1,1)
-    end
+    -- check timer > 0, set color
 end
 ```
 
-GOOD — derive time elapsed from the moment it happened:
+GOOD — derive it from the moment it happened:
 ```lua
 function Obj:hit()
     self.hit_time = love.timer.getTime()
 end
 function Obj:draw()
-    local elapsed = love.timer.getTime() - (self.hit_time or 0)
-    if elapsed < 0.2 then
-        love.graphics.setColor(1,1,1)
-    end
+    -- check (now - hit_time) < 0.2, set color
 end
 ```
 Why: no update step, no timer state to manage, no desync bugs. One field instead of one field + update logic.
@@ -57,8 +52,6 @@ BAD — storing random visual offsets per-entity:
 ```lua
 function Entity:init()
     self.wobble_offset = math.random() * math.pi * 2
-    self.color_variation = math.random() * 0.2 - 0.1
-    self.size_jitter = math.random() * 0.1
 end
 ```
 
@@ -67,7 +60,6 @@ GOOD — derive from a deterministic hash of identity:
 function Entity:draw()
     local h = self.x * 287333 + self.y * 173291
     local wobble = (h % 1000) / 1000 * math.pi * 2
-    local color_var = (h % 500) / 500 * 0.2 - 0.1
 end
 ```
 Why: zero stored state, fully deterministic, survives serialization, no init required. Works for any entity that has a stable identity (position, id, index, etc).
@@ -110,13 +102,10 @@ function DamageSystem:new()
     return setmetatable({ queue = {} }, self)
 end
 function DamageSystem:enqueue(target, amount, type)
-    table.insert(self.queue, { target=target, amount=amount, type=type })
+    -- add to queue
 end
 function DamageSystem:process()
-    for _, dmg in ipairs(self.queue) do
-        dmg.target.hp = dmg.target.hp - dmg.amount
-    end
-    self.queue = {}
+    -- iterate queue, apply damage, clear
 end
 ```
 The model never asked "what does this actually need to do?" It pattern-matched on "damage" and built an enterprise damage pipeline.
@@ -139,25 +128,16 @@ end
 The difference is not intelligence — it's that the second model STOPPED and asked "what does this actually need?" before writing code. Always do this. Ask yourself what the MINIMAL requirements are. If the answer is 3 lines, write 3 lines. The urge to build infrastructure is almost always wrong.
 </example>
 
-<example name="pass-a-function-not-a-config">
+<example name="functions-as-data">
 BAD — building an object to describe behavior:
 ```lua
 local Tween = {}
 Tween.__index = Tween
 function Tween:new(target, field, start, finish, duration, easing)
-    return setmetatable({
-        target=target, field=field,
-        start=start, finish=finish,
-        duration=duration, elapsed=0,
-        easing=easing or "linear"
-    }, self)
+    -- store all params as state
 end
 function Tween:update(dt)
-    self.elapsed = math.min(self.elapsed + dt, self.duration)
-    local t = self.elapsed / self.duration
-    if self.easing == "quadOut" then t = 1-(1-t)^2
-    elseif self.easing == "quadIn" then t = t^2 end
-    self.target[self.field] = self.start + (self.finish - self.start) * t
+    -- increment elapsed, lookup easing string, interpolate field
 end
 ```
 
@@ -167,18 +147,12 @@ function tween(duration, fn)
     local start = love.timer.getTime()
     return function()
         local t = math.min((love.timer.getTime() - start) / duration, 1)
-        fn(t)
+        fn(t)       -- caller decides what happens
         return t >= 1
     end
 end
-
--- usage: caller decides what happens
-local tw = tween(0.3, function(t)
-    enemy.scale = 1 + t * 0.5
-    enemy.color[4] = 1 - t
-end)
 ```
-Why: no config tables, no easing string lookup, no field-name gymnastics. The caller passes the behavior directly. If they want quad easing, they just write `fn(t*t)`. The function IS the config.
+Why: no config tables, no easing string lookup, no field-name gymnastics. The caller passes the behavior directly, which is a lot more flexible. If they want quad easing, they just write `fn(t*t)`. The function IS the config.
 </example>
 
 </examples>
