@@ -888,7 +888,8 @@ class InputPass:
 
 @overridable
 def make_input(on_submit):
-    text, cursor = "", 0
+    text : str = ""
+    cursor: int = 0
 
     def prev_word(text, i):
         while i > 0 and not text[i-1].isalnum(): i -= 1
@@ -981,7 +982,11 @@ def make_input(on_submit):
         nonlocal text, cursor
         text = t
         cursor = len(t)
+    
+    def get_text():
+        return text.strip()
 
+    draw.get_text = get_text
     draw.get_height = get_height
     draw.set_text = set_text
     return draw
