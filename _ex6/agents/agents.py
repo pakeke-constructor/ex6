@@ -187,5 +187,4 @@ coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messa
 ex6.state.current = coder
 
 
-ex6.set_daily_limit(25)
 
