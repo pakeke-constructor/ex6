@@ -615,6 +615,7 @@ class ScreenBuffer:
         self._prev_styles: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
         self._prev_txt_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
         self._prev_bg_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
+        self._invalidated = False
 
     def put(self, x, y, char, style=None, txt_color=None, bg_color=None):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -629,11 +630,8 @@ class ScreenBuffer:
             self.put(x + i, y, c, style, txt_color, bg_color)
 
     def invalidate(self):
-        """Force full redraw on next flush."""
-        for row in self._prev_chars: row[:] = ['\x00'] * self.w
-        for row in self._prev_styles: row[:] = ['\x00'] * self.w
-        for row in self._prev_txt_colors: row[:] = ['\x00'] * self.w
-        for row in self._prev_bg_colors: row[:] = ['\x00'] * self.w
+        self._invalidated = True
+
 
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
@@ -643,12 +641,14 @@ class ScreenBuffer:
 
     def flush(self, term):
         out = ""
+        skip_diff = self._invalidated
+        self._invalidated = False
         pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
         for y in range(self.h):
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
-                if pc[y][x] == c and pf[y][x] == fg and ps[y][x] == s and pb[y][x] == bg:
+                if not skip_diff and pc[y][x] == c and pf[y][x] == fg and ps[y][x] == s and pb[y][x] == bg:
                     continue
                 out += term.move(y, x)
                 if fg and s: attr = f"{fg}_{s}"
