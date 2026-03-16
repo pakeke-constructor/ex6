@@ -127,26 +127,24 @@ The difference is not intelligence — it's that the second model STOPPED and as
 </example>
 
 <example name="functions-as-data">
-BAD — building a complex object to describe behavior:
+BAD — building a config object to describe behavior:
 ```lua
-t = Tween:new({
-    target = obj, 
-    field = "size",
-    start = 1, finish = 10,
-    duration = 0.3,
-    easing = ...
+handler = EventHandler:new({
+    event = "on_click",
+    target = button,
+    action = "toggle_visibility",
+    args = {panel},
 })
-
-t:update(dt)
+handler:register()
 ```
 
 GOOD — just pass a function:
 ```lua
-tween(0.3, function(t)
-    obj.size = helper.lerp(1, 10, t)
+on("click", button, function()
+    panel.visible = not panel.visible
 end)
 ```
-Why: no config tables, no easing string lookup, no field-name gymnastics. The caller passes the behavior directly, which is a lot more flexible. If they want quad easing, they just write `fn(t*t)`. The function IS the config.
+Why: no config tables, no string lookups, no args gymnastics. The caller passes the behavior directly, which is a lot more flexible. The function IS the config.
 </example>
 
 </examples>
