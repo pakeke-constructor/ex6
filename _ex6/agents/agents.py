@@ -142,7 +142,7 @@ reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
 
 
 
-coder = Context("coder_opus", model=SMART_MODEL, reasoning="medium", messages=[
+coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([
         read_file, glob, search, read_headers, read_function,
@@ -158,7 +158,7 @@ if SMART_MODEL.startswith("anthropic/"):
 
 
 
-coder = Context("coder_codex", model=SMART_MODEL, reasoning="medium", messages=[
+coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([
         read_file, glob, search, read_headers, read_function,

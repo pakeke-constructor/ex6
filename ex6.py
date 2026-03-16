@@ -21,6 +21,17 @@ def debug_print(*args, **kwargs):
     _debug_buffer.append(f"[{ts}] {msg}")
 
 
+_real_stdout = sys.stdout
+_real_stderr = sys.stderr
+
+class _StdoutSink:
+    """Captures stray writes to stdout/stderr and routes them to debug_print."""
+    def write(self, s):
+        s = s.strip()
+        if s: debug_print(f"[stdout] {s}")
+    def flush(self): pass
+    def isatty(self): return False
+
 _fatal_error = None
 
 import threading
@@ -279,7 +290,9 @@ def enter_scroll_mode():
     if state.mode == "scroll": return
     state._prev_mode = state.mode
     state.mode = "scroll"
-    print(state.term.exit_fullscreen, end='', flush=True)
+    sys.stdout, sys.stderr = _real_stdout, _real_stderr
+    _real_stdout.write(state.term.exit_fullscreen)
+    _real_stdout.flush()
 
 
 
@@ -616,7 +629,6 @@ class ScreenBuffer:
         self._prev_txt_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
         self._prev_bg_colors: List[List[Optional[str]]] = [['\x00'] * w for _ in range(h)]
         self._invalidated = False
-        self._frame_count = 0
 
     def put(self, x, y, char, style=None, txt_color=None, bg_color=None):
         if 0 <= x < self.w and 0 <= y < self.h:
@@ -644,10 +656,7 @@ class ScreenBuffer:
         skip_diff = self._invalidated
         self._invalidated = False
         pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
-        i = self._frame_count % self.h
         for y in range(self.h):
-            if i == y: skip_diff = True
-            else: skip_diff = self._invalidated
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
@@ -664,9 +673,9 @@ class ScreenBuffer:
                 styled = getattr(term, attr, None) if attr else None
                 ch = styled(c) if styled else c
                 out += styled_bg(ch) if styled_bg else ch
-        self._frame_count += 1
         if out:
-            print(out, end='', flush=True)
+            _real_stdout.write(out)
+            _real_stdout.flush()
         # swap: current becomes prev, prev becomes current (will be cleared next frame)
         self.chars, self._prev_chars = self._prev_chars, self.chars
         self.styles, self._prev_styles = self._prev_styles, self.styles
@@ -1231,8 +1240,11 @@ if __name__ == "__main__":
             dispatch_command(text)
     sel_input_box = make_input(sel_on_submit)
 
+    _sink = _StdoutSink()
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
         while True:
+            if state.mode != "scroll":
+                sys.stdout, sys.stderr = _sink, _sink
             if _fatal_error:
                 raise RuntimeError(f"FATAL: {_fatal_error}")
             key = term.inkey(timeout=0.011)
@@ -1285,7 +1297,9 @@ if __name__ == "__main__":
             if state.mode == "scroll":
                 if inpt._keys:  # any key exits scroll mode
                     state.mode = state._prev_mode
-                    print(term.enter_fullscreen, end='', flush=True)
+                    _real_stdout.write(term.enter_fullscreen)
+                    _real_stdout.flush()
+                    sys.stdout, sys.stderr = _sink, _sink
                     buf.invalidate()
             elif state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
