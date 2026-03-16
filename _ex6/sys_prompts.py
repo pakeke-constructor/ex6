@@ -90,40 +90,35 @@ Then implement each step. The shape is locked in before any real code is written
 </example>
 
 <example name="think-before-building">
-Task: "Add damage to entities"
+Task: "Smoothly animate a value from A to B, and support changing the target mid-animation"
 
-BAD — model jumps straight to implementation, builds a system:
+BAD — model builds an animation system:
 ```lua
-local DamageSystem = {}
-DamageSystem.__index = DamageSystem
-function DamageSystem:new()
-    return setmetatable({ queue = {} }, self)
+function anim_new(start, target, duration)
+    -- return {start, target, duration, elapsed}
 end
-function DamageSystem:enqueue(target, amount, type)
-    -- add to queue
+function anim_retarget(anim, new_target)
+    -- snapshot current value as new start, reset elapsed
 end
-function DamageSystem:process()
-    -- iterate queue, apply damage, clear
+function anim_update(anim, dt)
+    -- increment elapsed, clamp, interpolate start→target
 end
 ```
-The model never asked "what does this actually need to do?" It pattern-matched on "damage" and built an enterprise damage pipeline.
 
-GOOD — model thinks through what's actually needed FIRST:
+GOOD — model stops to think first:
 ```
-Okay, what does "add damage" actually require?
-- Something takes damage: target.hp = target.hp - amount
-- That's it. Is there batching? No. Is there damage types? Not asked for.
-- Is there anything else that needs to react to damage? Not mentioned.
-- Simplest thing: a function call.
+What does "smoothly animate toward a target" actually mean?
+- A value should move toward a goal over time.
+- If the goal changes, it should redirect smoothly.
+- WAIT — I'm framing this as an event (start→end).
+  But it's actually a continuous process: "chase the target."
+  Exponential approach does that in one line.
 ```
 Then implements:
 ```lua
-function damage(target, amount)
-    target.hp = target.hp - amount
-end
+e.x = e.x + (e.target_x - e.x) * 10 * dt
 ```
-
-The difference is not intelligence — it's that the second model STOPPED and asked "what does this actually need?" before writing code. Always do this. Ask yourself what the MINIMAL requirements are. If the answer is 3 lines, write 3 lines. The urge to build infrastructure is almost always wrong.
+Change `target_x` anytime. The value always chases smoothly. No start value, no elapsed time, no retarget logic. The reframe — from "animation event" to "chase target" — eliminated the entire system.
 </example>
 
 <example name="functions-as-data">
