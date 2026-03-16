@@ -620,6 +620,8 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
 def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None:
     """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason).
     render_extra: optional fn(buf, x, y, w, h) called below the chrome to render extra info."""
+    if ctx.yolo:
+        return None
     result = [False, None]  # [answered, denial_reason]
 
     def on_submit(text):

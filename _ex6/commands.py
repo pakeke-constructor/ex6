@@ -30,6 +30,13 @@ def fork(name: Optional[str]):
 
 
 @ex6.command
+def yolo():
+    ctx = ex6.state.current
+    if not ctx: return
+    ctx.yolo = not ctx.yolo
+
+
+@ex6.command
 def crash():
     raise RuntimeError("Crash!")
 

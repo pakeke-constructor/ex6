@@ -492,6 +492,7 @@ class Context:
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
     _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
+    yolo: bool = False
 
     def token_count(self) -> int:
         if self.llm_result:
