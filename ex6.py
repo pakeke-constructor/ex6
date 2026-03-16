@@ -1145,16 +1145,10 @@ def render_work_mode(buf, inpt, r):
     available = h - 1
     scroll_offset = max(0, ctx._prev_height - available)
     row = (y + 1) - scroll_offset
-    blank_rows = 0
     for role, lines in message_outputs:
-        blank_rows += 1  # spacer between messages
+        row += 1  # spacer between messages
         bg = 'bright_black' if role == 'user' else None
         for line in lines:
-            if line == '':
-                blank_rows += 1; continue
-            while blank_rows > 0 and blank_rows <= 2:
-                row += 1; blank_rows -= 1
-            blank_rows = 0
             if callable(line):
                 drawn = line(buf, x, row, w)
                 if bg: buf.fill_bg(x, row, w, drawn, bg)
