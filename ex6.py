@@ -201,6 +201,7 @@ def get_folder() -> Path:
 _daily_limit: Optional[float] = 15.0
 _daily_cost: float = 0.0
 _daily_cost_date: str = ""
+_usage_mtime: Optional[float] = None
 _cost_lock = threading.Lock()
 
 def set_daily_limit(limit: float):
@@ -212,18 +213,25 @@ def get_daily_limit() -> float:
 
 def _ensure_cost_loaded():
     """Load/reset daily cost from disk. Must be called under _cost_lock."""
-    global _daily_cost, _daily_cost_date
+    global _daily_cost, _daily_cost_date, _usage_mtime
     today = datetime.now().strftime("%Y-%m-%d")
-    if _daily_cost_date == today:
+    path = get_folder() / "usage.json"
+    try:
+        mtime = path.stat().st_mtime
+    except:
+        mtime = None
+    if _daily_cost_date == today and mtime == _usage_mtime:
         return
-    # new day or first load
+    # new day, first load, or file changed
     _daily_cost = 0.0
     _daily_cost_date = today
     try:
-        data = json.loads((get_folder() / "usage.json").read_text())
+        data = json.loads(path.read_text())
         if data.get("date") == today:
             _daily_cost = data.get("cost", 0.0)
     except: pass
+    _usage_mtime = mtime
+
 
 def get_daily_cost() -> float:
     with _cost_lock:
@@ -235,12 +243,15 @@ def is_over_budget() -> bool:
 
 def add_cost(cost: float):
     with _cost_lock:
-        global _daily_cost
+        global _daily_cost, _usage_mtime
         _ensure_cost_loaded()
         _daily_cost += cost
+        path = get_folder() / "usage.json"
+        tmp = path.with_suffix(".tmp")
         try:
-            (get_folder() / "usage.json").write_text(
-                json.dumps({"date": _daily_cost_date, "cost": _daily_cost}))
+            tmp.write_text(json.dumps({"date": _daily_cost_date, "cost": _daily_cost}))
+            os.replace(tmp, path)
+            _usage_mtime = path.stat().st_mtime
         except: pass
 
 
