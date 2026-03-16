@@ -689,7 +689,7 @@ class ScreenBuffer:
                 for x in range(self.w):
                     if pc[y][x] != self.chars[y][x] or pf[y][x] != self.txt_colors[y][x] or ps[y][x] != self.styles[y][x] or pb[y][x] != self.bg_colors[y][x]:
                         dirty += 1
-            if dirty > (self.w * self.h) * 0.2:  # if 20% of cells are dirty = do full rewrite.
+            if dirty > (self.w * self.h) * 0.8:  # if 8% of cells are dirty = do full rewrite.
                 skip_diff = True
 
         out = []
