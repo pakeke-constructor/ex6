@@ -1110,7 +1110,9 @@ def render_work_mode(buf, inpt, r):
         bg = 'bright_black' if role == 'user' else None
         for line in lines:
             if callable(line):
-                row += line(buf, x, row, w)
+                drawn = line(buf, x, row, w)
+                if bg: buf.fill_bg(x, row, w, drawn, bg)
+                row += drawn
             else:
                 drawn = buf.print_wrapped(line, x, row, w, txt_color='white', bg_color=bg)
                 if bg: buf.fill_bg(x, row, w, drawn, bg)
@@ -1158,6 +1160,7 @@ def _load_plugins():
     dirs = []
     if os.path.isdir(core_dir): dirs.append(core_dir)
     if os.path.isdir(project_dir) and project_dir != core_dir: dirs.append(project_dir)
+
     if not dirs: return
 
     def _register_pkg(name, dir_path):
@@ -1217,7 +1220,11 @@ if __name__ == "__main__":
     sel_input_box = make_input(sel_on_submit)
 
     with term.cbreak(), term.hidden_cursor(), term.fullscreen():
+        _frame = 0
         while True:
+            _frame += 1
+            if _frame % 300 == 0:
+                buf.invalidate() # invalidate every wee while to avoid nasty corruption
             if _fatal_error:
                 raise RuntimeError(f"FATAL: {_fatal_error}")
             key = term.inkey(timeout=0.011)
