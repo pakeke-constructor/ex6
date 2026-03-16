@@ -665,29 +665,60 @@ class ScreenBuffer:
         for row in self.bg_colors: row[:] = [None] * self.w
 
     def flush(self, term):
-        out = ""
         skip_diff = self._invalidated
         self._invalidated = False
-        pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
-        for y in range(self.h):
-            for x in range(self.w):
-                c = self.chars[y][x]
-                fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
-                if not skip_diff and pc[y][x] == c and pf[y][x] == fg and ps[y][x] == s and pb[y][x] == bg:
-                    continue
-                out += term.move(y, x)
-                if fg and s: attr = f"{fg}_{s}"
-                elif fg: attr = fg
-                elif s: attr = s
-                else: attr = None
-                if bg and isinstance(bg, tuple): styled_bg = term.on_color_rgb(*bg)
-                elif bg: attr = f"{attr}_on_{bg}" if attr else f"on_{bg}"; styled_bg = None
-                else: styled_bg = None
-                styled = getattr(term, attr, None) if attr else None
-                ch = styled(c) if styled else c
-                out += styled_bg(ch) if styled_bg else ch
+
+        def apply_style(fg, st, bg, s):
+            if fg and st: attr = f"{fg}_{st}"
+            elif fg: attr = fg
+            elif st: attr = st
+            else: attr = None
+            if bg and isinstance(bg, tuple): styled_bg = term.on_color_rgb(*bg)
+            elif bg: attr = f"{attr}_on_{bg}" if attr else f"on_{bg}"; styled_bg = None
+            else: styled_bg = None
+            styled = getattr(term, attr, None) if attr else None
+            if styled: s = styled(s)
+            if styled_bg: s = styled_bg(s)
+            return s
+
+        out = []
+        if skip_diff:
+            # skip path: rewrite everything; likely changing between modes.
+            for y in range(self.h):
+                out.append(term.move(y, 0))
+                cur_fg = None
+                cur_st = None
+                cur_bg = None
+                seg = []
+                for x in range(self.w):
+                    fg = self.txt_colors[y][x]
+                    st = self.styles[y][x]
+                    bg = self.bg_colors[y][x]
+                    if cur_fg is None:
+                        cur_fg = fg; cur_st = st; cur_bg = bg
+                    if fg != cur_fg or st != cur_st or bg != cur_bg:
+                        out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
+                        seg = []
+                        cur_fg = fg; cur_st = st; cur_bg = bg
+                    seg.append(self.chars[y][x])
+                if seg:
+                    out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
+        else:
+            # delta-efficient path: There likely havent been many changes
+            pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
+            for y in range(self.h):
+                for x in range(self.w):
+                    c = self.chars[y][x]
+                    fg = self.txt_colors[y][x]
+                    st = self.styles[y][x]
+                    bg = self.bg_colors[y][x]
+                    if pc[y][x] == c and pf[y][x] == fg and ps[y][x] == st and pb[y][x] == bg:
+                        continue
+                    out.append(term.move(y, x))
+                    out.append(apply_style(fg, st, bg, c))
+
         if out:
-            _real_stdout.write(out)
+            _real_stdout.write("".join(out))
             _real_stdout.flush()
         # swap: current becomes prev, prev becomes current (will be cleared next frame)
         self.chars, self._prev_chars = self._prev_chars, self.chars
@@ -1313,6 +1344,7 @@ if __name__ == "__main__":
                 state.current = next(iter(state.contexts.values()))
 
             term_r = Region(0,0, term.width, term.height)
+            prev_mode = state.mode
 
             if _ui_panel_stack and inpt.consume('KEY_ESCAPE'):
                 pop_ui_panel()
@@ -1380,5 +1412,7 @@ if __name__ == "__main__":
                 elif state.current.ui_stack:
                     r = Region(3, 2, buf.w - 6, buf.h - 4)
                     state.current.ui_stack[-1](buf, inpt, r)
+                if state.mode != prev_mode:
+                    buf.invalidate()
                 buf.flush(term)
 
