@@ -628,6 +628,13 @@ class ScreenBuffer:
         for i, c in enumerate(text):
             self.put(x + i, y, c, style, txt_color, bg_color)
 
+    def invalidate(self):
+        """Force full redraw on next flush."""
+        for row in self._prev_chars: row[:] = ['\x00'] * self.w
+        for row in self._prev_styles: row[:] = ['\x00'] * self.w
+        for row in self._prev_txt_colors: row[:] = ['\x00'] * self.w
+        for row in self._prev_bg_colors: row[:] = ['\x00'] * self.w
+
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
         for row in self.styles: row[:] = [None] * self.w
@@ -638,15 +645,12 @@ class ScreenBuffer:
         out = ""
         pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
         for y in range(self.h):
-            last_x = -1
             for x in range(self.w):
                 c = self.chars[y][x]
                 fg, s, bg = self.txt_colors[y][x], self.styles[y][x], self.bg_colors[y][x]
                 if pc[y][x] == c and pf[y][x] == fg and ps[y][x] == s and pb[y][x] == bg:
                     continue
-                if last_x != x:
-                    out += term.move(y, x)
-                last_x = x + 1
+                out += term.move(y, x)
                 if fg and s: attr = f"{fg}_{s}"
                 elif fg: attr = fg
                 elif s: attr = s
@@ -1267,6 +1271,7 @@ if __name__ == "__main__":
                 if inpt._keys:  # any key exits scroll mode
                     state.mode = state._prev_mode
                     print(term.enter_fullscreen, end='', flush=True)
+                    buf.invalidate()
             elif state.mode == "work":
                 render_work_mode(buf, inpt, main_r)
                 div_color = 'bright_yellow' if state.current.is_running() else 'bright_black'

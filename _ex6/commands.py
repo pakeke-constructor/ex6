@@ -2,6 +2,7 @@
 from typing import Optional
 import subprocess
 import threading
+import time
 import ex6
 
 
@@ -98,13 +99,21 @@ def cm(msg: Optional[str]):
         for i, line in enumerate(output_lines[start:start + visible]):
             buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color='white')
 
-    ex6.push_ui_panel(draw)
+    done_time = [None]
+
+    def draw_auto_close(buf, inpt, r):
+        draw(buf, inpt, r)
+        if done_time[0] is not None and time.time() - done_time[0] >= 0.5:
+            ex6.pop_ui_panel()
+
+    ex6.push_ui_panel(draw_auto_close)
 
     def run():
         subprocess.run(["git", "add", "."], capture_output=True)
         diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
             output_lines.append("No changes to commit.")
+            done_time[0] = time.time()
             return
 
         from _ex6.models import M
@@ -124,6 +133,7 @@ def cm(msg: Optional[str]):
         else:
             output_lines.append(f"git commit failed:")
             output_lines.extend(result.stderr.split('\n'))
+        done_time[0] = time.time()
 
     threading.Thread(target=run, daemon=True).start()
 
