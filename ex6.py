@@ -681,9 +681,20 @@ class ScreenBuffer:
             if styled_bg: s = styled_bg(s)
             return s
 
+        # count dirty cells to pick strategy
+        if not skip_diff:
+            pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
+            dirty = 0
+            for y in range(self.h):
+                for x in range(self.w):
+                    if pc[y][x] != self.chars[y][x] or pf[y][x] != self.txt_colors[y][x] or ps[y][x] != self.styles[y][x] or pb[y][x] != self.bg_colors[y][x]:
+                        dirty += 1
+            if dirty > (self.w * self.h) * 0.2:  # if 20% of cells are dirty = do full rewrite.
+                skip_diff = True
+
         out = []
         if skip_diff:
-            # skip path: rewrite everything; likely changing between modes.
+            # batch path: rewrite everything row-by-row with style segments
             for y in range(self.h):
                 out.append(term.move(y, 0))
                 cur_fg = None
@@ -704,7 +715,7 @@ class ScreenBuffer:
                 if seg:
                     out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
         else:
-            # delta-efficient path: There likely havent been many changes
+            # delta path: only write changed cells
             pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
             for y in range(self.h):
                 for x in range(self.w):
