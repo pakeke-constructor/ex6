@@ -234,7 +234,7 @@ def invoke_llm(ctx: ex6.Context):
     if ctx.model.startswith("anthropic/"):
         body = {"provider": {"order": ["Anthropic"], "allow_fallbacks": False}}
         if ctx.reasoning != "none":
-            body["reasoning"] = {"effort": ctx.reasoning, "exclude": True}
+            body["reasoning"] = {"effort": ctx.reasoning}
         extra["extra_body"] = body
 
     ex6.debug_print(f"[invoke] model={ctx.model} msgs={len(messages)}")
