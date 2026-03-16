@@ -1193,14 +1193,18 @@ def _load_plugins():
                 if not filename.endswith(".py") or filename.startswith("_"):
                     continue
                 mod_name = f"{pkg_name}.{filename[:-3]}"
-                if mod_name in sys.modules:
-                    continue
+                existing = sys.modules.get(mod_name)
+                if existing and getattr(existing, '__file__', None):
+                    continue  # skip real modules, but allow overriding package stubs (e.g. core dir/ vs project file.py)
                 path = os.path.join(dirpath, filename)
                 spec = importlib.util.spec_from_file_location(mod_name, path)
                 assert spec and spec.loader
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[mod_name] = module
-                spec.loader.exec_module(module)
+                try:
+                    spec.loader.exec_module(module)
+                except ImportError:
+                    del sys.modules[mod_name]
 
 
 
