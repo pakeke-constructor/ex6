@@ -886,23 +886,26 @@ class InputPass:
 
 
 
-@overridable
-def make_input(on_submit):
-    text : str = ""
-    cursor: int = 0
+class InputBox:
+    def __init__(self, on_submit):
+        self.on_submit = on_submit
+        self.text = ""
+        self.cursor = 0
 
-    def prev_word(text, i):
-        while i > 0 and not text[i-1].isalnum(): i -= 1
-        while i > 0 and text[i-1].isalnum(): i -= 1
+    def _prev_word(self, i):
+        t = self.text
+        while i > 0 and not t[i-1].isalnum(): i -= 1
+        while i > 0 and t[i-1].isalnum(): i -= 1
         return i
 
-    def next_word(text, i):
-        while i < len(text) and text[i].isalnum(): i += 1
-        while i < len(text) and not text[i].isalnum(): i += 1
+    def _next_word(self, i):
+        t = self.text
+        while i < len(t) and t[i].isalnum(): i += 1
+        while i < len(t) and not t[i].isalnum(): i += 1
         return i
 
+    @staticmethod
     def _wrap(s, w):
-        """Split by newlines, then hard-wrap each to width w."""
         lines = []
         for part in s.split('\n'):
             if not part:
@@ -914,55 +917,53 @@ def make_input(on_submit):
                 lines.append(part)
         return lines
 
-    def _cursor_visual(text, cursor, w):
-        """Convert cursor index to (visual_row, visual_col)."""
-        before = text[:cursor]
-        lines = _wrap(before, w)
+    def _cursor_visual(self, w):
+        lines = self._wrap(self.text[:self.cursor], w)
         if not lines: return 0, 0
         return len(lines) - 1, len(lines[-1])
 
-    def draw(buf: ScreenBuffer, inpt, r):
-        nonlocal text, cursor
+    def __call__(self, buf: ScreenBuffer, inpt, r):
+        self.draw(buf, inpt, r)
+
+    def draw(self, buf: ScreenBuffer, inpt, r):
         inner_w = r[2]
         if inner_w < 1: return
 
         typed = inpt.consume_text()
         if typed:
-            text = text[:cursor] + typed + text[cursor:]
-            cursor += len(typed)
-        # newline: shift+enter (KEY_ALT_ENTER on Windows), '\n', or Ctrl+J
+            self.text = self.text[:self.cursor] + typed + self.text[self.cursor:]
+            self.cursor += len(typed)
         for i, k in enumerate(inpt._keys):
             if k.name == 'KEY_ALT_ENTER' or str(k) == '\n':
-                text = text[:cursor] + '\n' + text[cursor:]
-                cursor += 1
+                self.text = self.text[:self.cursor] + '\n' + self.text[self.cursor:]
+                self.cursor += 1
                 inpt._keys.pop(i)
                 break
-        if inpt.consume('KEY_LEFT') and cursor > 0: cursor -= 1
-        if inpt.consume('KEY_RIGHT') and cursor < len(text): cursor += 1
-        if inpt.consume('KEY_BACKSPACE') and cursor > 0:
-            text = text[:cursor-1] + text[cursor:]
-            cursor -= 1
-        if inpt.consume('KEY_DELETE') and cursor < len(text):
-            text = text[:cursor] + text[cursor+1:]
-        if inpt.consume('KEY_CTRL_BACKSPACE') and cursor > 0:
-            new_cursor = prev_word(text, cursor)
-            text = text[:new_cursor] + text[cursor:]
-            cursor = new_cursor
-        if inpt.consume('KEY_CTRL_DELETE') and cursor < len(text):
-            text = text[:cursor] + text[next_word(text, cursor):]
-        if inpt.consume('KEY_CTRL_LEFT'): cursor = prev_word(text, cursor)
-        if inpt.consume('KEY_CTRL_RIGHT'): cursor = next_word(text, cursor)
-        if inpt.consume('KEY_HOME'): cursor = 0
-        if inpt.consume('KEY_END'): cursor = len(text)
-        if inpt.consume('KEY_ENTER') and text:
-            on_submit(text)
-            text, cursor = "", 0
+        if inpt.consume('KEY_LEFT') and self.cursor > 0: self.cursor -= 1
+        if inpt.consume('KEY_RIGHT') and self.cursor < len(self.text): self.cursor += 1
+        if inpt.consume('KEY_BACKSPACE') and self.cursor > 0:
+            self.text = self.text[:self.cursor-1] + self.text[self.cursor:]
+            self.cursor -= 1
+        if inpt.consume('KEY_DELETE') and self.cursor < len(self.text):
+            self.text = self.text[:self.cursor] + self.text[self.cursor+1:]
+        if inpt.consume('KEY_CTRL_BACKSPACE') and self.cursor > 0:
+            nc = self._prev_word(self.cursor)
+            self.text = self.text[:nc] + self.text[self.cursor:]
+            self.cursor = nc
+        if inpt.consume('KEY_CTRL_DELETE') and self.cursor < len(self.text):
+            self.text = self.text[:self.cursor] + self.text[self._next_word(self.cursor):]
+        if inpt.consume('KEY_CTRL_LEFT'): self.cursor = self._prev_word(self.cursor)
+        if inpt.consume('KEY_CTRL_RIGHT'): self.cursor = self._next_word(self.cursor)
+        if inpt.consume('KEY_HOME'): self.cursor = 0
+        if inpt.consume('KEY_END'): self.cursor = len(self.text)
+        if inpt.consume('KEY_ENTER') and self.text:
+            self.on_submit(self.text)
+            self.text, self.cursor = "", 0
             return
 
-        # render multiline with wrapping
         cursor_char = "█"
-        cy, cx = _cursor_visual(text, cursor, inner_w)
-        visual_lines = _wrap(text, inner_w)
+        cy, cx = self._cursor_visual(inner_w)
+        visual_lines = self._wrap(self.text, inner_w)
         if not visual_lines: visual_lines = ['']
 
         max_visible = r[3]
@@ -974,22 +975,21 @@ def make_input(on_submit):
             else:
                 buf.puts(r[0], r[1]+i, line, txt_color='white')
 
-    def get_height(width):
+    def get_height(self, width):
         if width < 1: return 1
-        return len(_wrap(text, width)) if text else 1
+        return len(self._wrap(self.text, width)) if self.text else 1
 
-    def set_text(t):
-        nonlocal text, cursor
-        text = t
-        cursor = len(t)
-    
-    def get_text():
-        return text.strip()
+    def set_text(self, t):
+        self.text = t
+        self.cursor = len(t)
 
-    draw.get_text = get_text
-    draw.get_height = get_height
-    draw.set_text = set_text
-    return draw
+    def get_text(self):
+        return self.text.strip()
+
+
+@overridable
+def make_input(on_submit):
+    return InputBox(on_submit)
 
 
 
@@ -1305,7 +1305,7 @@ if __name__ == "__main__":
 
             if state.mode == "work":
                 # work mode: no boxes, divider, 2 lines bottom padding
-                if hasattr(input_box, 'get_height') and not state.current.is_running():
+                if not state.current.is_running():
                     input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
                 else:
                     input_h = 1

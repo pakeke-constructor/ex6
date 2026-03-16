@@ -639,7 +639,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
         cy = y + 1
         buf.puts(cx, cy,   description, txt_color='cyan', bg_color=None)
         buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color=None)
-        if (not inpt.get_text()) and inpt.consume('KEY_ENTER'):
+        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
             result[0] = True
             ctx.ui_stack.pop()
             return
