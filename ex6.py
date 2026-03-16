@@ -1022,6 +1022,10 @@ def render_selection_left(buf, inpt, r):
         state.current = ctxs[idx - 1]
     if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
         state.current = ctxs[idx + 1]
+    if inpt.consume('k') and idx > 0:
+        state.current = ctxs[idx - 1]
+    if inpt.consume('j') and idx < len(ctxs) - 1:
+        state.current = ctxs[idx + 1]
 
     # draw list
     for i, ctx in enumerate(ctxs):
