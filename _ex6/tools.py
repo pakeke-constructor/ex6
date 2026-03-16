@@ -23,6 +23,7 @@ import importlib
 import tree_sitter
 import time
 import fnmatch
+import threading
 
 
 def _load_gitignore():
@@ -36,6 +37,16 @@ def _load_gitignore():
     return patterns
 
 _GITIGNORE_PATTERNS = _load_gitignore()
+
+_file_locks = {}
+_file_locks_lock = threading.Lock()
+
+def _get_file_lock(path):
+    key = os.path.normpath(os.path.abspath(path))
+    with _file_locks_lock:
+        if key not in _file_locks:
+            _file_locks[key] = threading.Lock()
+        return _file_locks[key]
 
 def _is_gitignored(path):
     rel = os.path.relpath(path).replace("\\", "/")
@@ -175,21 +186,22 @@ def _signature(node, source, mod_name):
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     """Write content to a file, creating it if needed. Existing files must be read first."""
-    if os.path.exists(file):
-        _check_read(ctx, file)
-        with open(file, "r") as f:
-            old = f.read()
-    else:
-        old = ""
-    diff = _make_diff(old, content)
-    denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
-    if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
-    d = os.path.dirname(file)
-    if d: os.makedirs(d, exist_ok=True)
-    with open(file, "w") as f:
-        f.write(content)
-    ctx.mark_file_read(file)
-    return f"Wrote {len(content)} chars to {file}"
+    with _get_file_lock(file):
+        if os.path.exists(file):
+            _check_read(ctx, file)
+            with open(file, "r") as f:
+                old = f.read()
+        else:
+            old = ""
+        diff = _make_diff(old, content)
+        denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
+        if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
+        d = os.path.dirname(file)
+        if d: os.makedirs(d, exist_ok=True)
+        with open(file, "w") as f:
+            f.write(content)
+        ctx.mark_file_read(file)
+        return f"Wrote {len(content)} chars to {file}"
 
 
 
@@ -219,57 +231,58 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     """
     _check_read(ctx, file)
 
-    with open(file, "r") as f:
-        content = f.read()
+    with _get_file_lock(file):
+        with open(file, "r") as f:
+            content = f.read()
 
-    def do_edit(original):
-        new_content = content.replace(original, replace, 1)
-        diff = _make_diff(original, replace)
-        denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
-        if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
-        with open(file, "w") as f:
-            f.write(new_content)
-        ctx.mark_file_read(file)
-        return f"Updated {file}"
+        def do_edit(original):
+            new_content = content.replace(original, replace, 1)
+            diff = _make_diff(original, replace)
+            denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
+            if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
+            with open(file, "w") as f:
+                f.write(new_content)
+            ctx.mark_file_read(file)
+            return f"Updated {file}"
 
-    # 1. exact match
-    if search in content:
-        if content.count(search) > 1:
-            raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
-        return do_edit(search)
-    search_lines = search.splitlines()
-    content_lines = content.splitlines()
-    n = len(search_lines)
+        # 1. exact match
+        if search in content:
+            if content.count(search) > 1:
+                raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
+            return do_edit(search)
+        search_lines = search.splitlines()
+        content_lines = content.splitlines()
+        n = len(search_lines)
 
-    # 2. whitespace-insensitive match
-    search_ws = [_ws_normalize(l) for l in search_lines]
-    ws_matches = []
-    for i in range(len(content_lines) - n + 1):
-        if [_ws_normalize(l) for l in content_lines[i:i + n]] == search_ws:
-            ws_matches.append(i)
-    if len(ws_matches) == 1:
-        original = "\n".join(content_lines[ws_matches[0]:ws_matches[0] + n])
-        return do_edit(original)
-    if len(ws_matches) > 1:
-        raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
+        # 2. whitespace-insensitive match
+        search_ws = [_ws_normalize(l) for l in search_lines]
+        ws_matches = []
+        for i in range(len(content_lines) - n + 1):
+            if [_ws_normalize(l) for l in content_lines[i:i + n]] == search_ws:
+                ws_matches.append(i)
+        if len(ws_matches) == 1:
+            original = "\n".join(content_lines[ws_matches[0]:ws_matches[0] + n])
+            return do_edit(original)
+        if len(ws_matches) > 1:
+            raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
 
-    # 3. fuzzy line-level match
-    THRESHOLD = 0.8
-    matches = []
-    for i in range(len(content_lines) - n + 1):
-        chunk = content_lines[i:i + n]
-        ratio = difflib.SequenceMatcher(None, search_lines, chunk).ratio()
-        if ratio >= THRESHOLD:
-            matches.append((ratio, i))
-    if len(matches) == 1:
-        ratio, start = matches[0]
-        original = "\n".join(content_lines[start:start + n])
-        return do_edit(original)
-    if len(matches) > 1:
-        raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
-    best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
-                for i in range(len(content_lines) - n + 1)), default=0)
-    raise ValueError(f"search string not found in {file} (best match: {best:.0%})")
+        # 3. fuzzy line-level match
+        THRESHOLD = 0.8
+        matches = []
+        for i in range(len(content_lines) - n + 1):
+            chunk = content_lines[i:i + n]
+            ratio = difflib.SequenceMatcher(None, search_lines, chunk).ratio()
+            if ratio >= THRESHOLD:
+                matches.append((ratio, i))
+        if len(matches) == 1:
+            ratio, start = matches[0]
+            original = "\n".join(content_lines[start:start + n])
+            return do_edit(original)
+        if len(matches) > 1:
+            raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
+        best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
+                    for i in range(len(content_lines) - n + 1)), default=0)
+        raise ValueError(f"search string not found in {file} (best match: {best:.0%})")
 
 
 
@@ -286,46 +299,48 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     Use this in conjunction with read_headers and/or read_function to replace/rewrite entire functions or classes.
     """
     _check_read(ctx, file)
-    with open(file, "r") as f:
-        lines = f.readlines()
 
-    # snapshot check
-    snapshot = ctx.get_line_snapshot(file)
-    def assert_line(L):
-        if L not in snapshot:
-            raise ValueError(f"Line {L} not in any snapshot for {file}, re-read the file first.")
-        expected = snapshot[L]
-        actual = lines[L - 1].rstrip('\n') if L <= len(lines) else ""
-        if expected != actual:
-            raise ValueError(f"Line {L} has shifted since last read, re-read the file.")
+    with _get_file_lock(file):
+        with open(file, "r") as f:
+            lines = f.readlines()
 
-    # assert that 
-    assert_line(start)
-    assert_line(end)
+        # snapshot check
+        snapshot = ctx.get_line_snapshot(file)
+        def assert_line(L):
+            if L not in snapshot:
+                raise ValueError(f"Line {L} not in any snapshot for {file}, re-read the file first.")
+            expected = snapshot[L]
+            actual = lines[L - 1].rstrip('\n') if L <= len(lines) else ""
+            if expected != actual:
+                raise ValueError(f"Line {L} has shifted since last read, re-read the file.")
 
-    if end == 0:
-        if start < 1 or start > len(lines) + 1:
-            raise ValueError(f"Invalid insert position {start} (file has {len(lines)} lines)")
-        new_lines = lines[:]
-        new_lines.insert(start - 1, content + '\n')
-    else:
-        if start < 1 or end > len(lines) or start > end:
-            raise ValueError(f"Invalid range {start}..{end} (file has {len(lines)} lines)")
-        new_lines = lines[:]
-        if content == "":
-            new_lines[start - 1:end] = []
+        # assert that 
+        assert_line(start)
+        assert_line(end)
+
+        if end == 0:
+            if start < 1 or start > len(lines) + 1:
+                raise ValueError(f"Invalid insert position {start} (file has {len(lines)} lines)")
+            new_lines = lines[:]
+            new_lines.insert(start - 1, content + '\n')
         else:
-            new_lines[start - 1:end] = [content + '\n']
+            if start < 1 or end > len(lines) or start > end:
+                raise ValueError(f"Invalid range {start}..{end} (file has {len(lines)} lines)")
+            new_lines = lines[:]
+            if content == "":
+                new_lines[start - 1:end] = []
+            else:
+                new_lines[start - 1:end] = [content + '\n']
 
-    old_text = "".join(lines)
-    new_text = "".join(new_lines)
-    diff = _make_diff(old_text, new_text)
-    denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
-    if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
-    with open(file, "w") as f:
-        f.writelines(new_lines)
-    ctx.mark_file_read(file, list(range(1, len(new_lines) + 1)))
-    return f"Edited {file}"
+        old_text = "".join(lines)
+        new_text = "".join(new_lines)
+        diff = _make_diff(old_text, new_text)
+        denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
+        if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
+        with open(file, "w") as f:
+            f.writelines(new_lines)
+        ctx.mark_file_read(file, list(range(1, len(new_lines) + 1)))
+        return f"Edited {file}"
 
 
 def glob(ctx: ex6.Context, pattern: str) -> str:
