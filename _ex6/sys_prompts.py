@@ -1,18 +1,16 @@
 
-
-
 SYSTEM_PROMPT_CODING_STYLE = r"""
 <coding_guidelines>
-Simplicity over ALL else.
-Less code is better. Shorter is better. Fewer files is better.
-Flat over nested. If you're 3 levels deep, refactor.
-Explicit over clever. No tricks, no one-liner heroics.
-Don't abstract until you have 3+ duplicates.
-Prefer pure functions over methods with side effects.
-Less statefulness is better. Short-lived state is best.
-Keep state as a single source of truth. Never derive state that can be computed.
-Avoid state entirely when possible; use immutable data.
-Delete dead code. Don't comment it out.
+- Simplicity over ALL else.
+- Less code is better. Shorter is better. Fewer files is better.
+- Flat over nested. If you're 3 levels deep, refactor.
+- Explicit over clever. No tricks, no one-liner heroics.
+- Don't abstract until you have 3+ duplicates.
+- Prefer pure functions over methods with side effects.
+- Less statefulness is better. Short-lived state is best.
+- Keep state as a single source of truth. Never derive state that can be computed.
+- Avoid state entirely when possible; use immutable data.
+- Delete dead code. Don't comment it out.
 
 IMPORTANT: Before implementing anything non-trivial, write pseudocode comments first. Plan the shape, THEN fill it in.
 
@@ -129,28 +127,24 @@ The difference is not intelligence — it's that the second model STOPPED and as
 </example>
 
 <example name="functions-as-data">
-BAD — building an object to describe behavior:
+BAD — building a complex object to describe behavior:
 ```lua
-local Tween = {}
-Tween.__index = Tween
-function Tween:new(target, field, start, finish, duration, easing)
-    -- store all params as state
-end
-function Tween:update(dt)
-    -- increment elapsed, lookup easing string, interpolate field
-end
+t = Tween:new({
+    target = obj, 
+    field = "size",
+    start = 1, finish = 10,
+    duration = 0.3,
+    easing = ...
+})
+
+t:update(dt)
 ```
 
 GOOD — just pass a function:
 ```lua
-function tween(duration, fn)
-    local start = love.timer.getTime()
-    return function()
-        local t = math.min((love.timer.getTime() - start) / duration, 1)
-        fn(t)       -- caller decides what happens
-        return t >= 1
-    end
-end
+tween(0.3, function(t)
+    obj.size = helper.lerp(1, 10, t)
+end)
 ```
 Why: no config tables, no easing string lookup, no field-name gymnastics. The caller passes the behavior directly, which is a lot more flexible. If they want quad easing, they just write `fn(t*t)`. The function IS the config.
 </example>
@@ -158,4 +152,6 @@ Why: no config tables, no easing string lookup, no field-name gymnastics. The ca
 </examples>
 </coding_guidelines>
 """
+
+
 
