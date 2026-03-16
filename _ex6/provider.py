@@ -213,10 +213,11 @@ def invoke_llm(ctx: ex6.Context):
                     break
             if tools:
                 tools[-1]["function"]["cache_control"] = cc
-        # Ephemeral breakpoint on second-to-last message (conversation prefix)
-        # Skip if it already has a cache_control (e.g. 1h from above)
+        # Ephemeral breakpoint on last message (cache entire conversation prefix)
+        # Using [-1] not [-2]: assistant+tool_calls msgs have empty content and
+        # Anthropic silently ignores cache_control on them, breaking caching.
         if len(messages) >= 2:
-            target = messages[-2]
+            target = messages[-1]
             content = target["content"]
             already_cached = (isinstance(content, list) and content
                               and "cache_control" in content[-1])

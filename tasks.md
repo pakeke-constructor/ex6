@@ -125,6 +125,10 @@ Be kinda like claude-code.
 - ~~better ui-panel overrides;  doesn't show context's ui_stack when not in work-mode~~
 
 
+- ~~`escalate(reason: str, severity=1)`. escalates an issue to the human operator, OR to the parent agent.  Situations where escalate is useful: when there appears to be no simple solution to their task. when the agent thinks that the task was requested in error/more information has been discovered which makes the task malformed. - Agents should use escalate when the agent is otherwise unable to complete the task~~
+
+
+- ~~FIX LLM CACHING.~~
 
 
 ## ^^^^ DONE TASKS ^^^^
@@ -139,8 +143,6 @@ Be kinda like claude-code.
 
 - Allow agents to compress their own context-windows.
 
-
-- `escalate(reason: str, severity=1)`. escalates an issue to the human operator, OR to the parent agent.  Situations where escalate is useful: when there appears to be no simple solution to their task. when the agent thinks that the task was requested in error/more information has been discovered which makes the task malformed. - Agents should use escalate when the agent is otherwise unable to complete the task
 
 
 - system reminder infrastructure.
@@ -169,12 +171,6 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 And ideas would be constantly iterated on / tuned.
 
 
-
-- Allow agents to "watch" and "lock" files:
-- Files that are locked can only be worked on by 1 agent at a time.
-- When a file is read, it is automatically `watched`. Then, whenever a `watched` file is read, agent can receive sys-reminder.
-- POTENTIAL ISSUE: Stale locks. What happens if an agent never unlocks a file? Does lock expire...?
-- SOLUTION: Agent is told what other agent holds the lock. It can then "fork" the agent and as it "hey, are you making any changes to `function_foo`?"
 
 
 - command auto-completion.
