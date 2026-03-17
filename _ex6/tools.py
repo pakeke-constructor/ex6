@@ -309,10 +309,12 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         # snapshot check
         snapshot = ctx.get_line_snapshot(file)
         def assert_line(L):
+            actual = lines[L - 1].rstrip('\n') if L <= len(lines) else ""
+            if actual == "":
+                return
             if L not in snapshot:
                 raise ValueError(f"Line {L} not in any snapshot for {file}, re-read the file first.")
             expected = snapshot[L]
-            actual = lines[L - 1].rstrip('\n') if L <= len(lines) else ""
             if expected != actual:
                 raise ValueError(f"Line {L} has shifted since last read, re-read the file.")
 
