@@ -24,6 +24,8 @@ import tree_sitter
 import time
 import fnmatch
 import threading
+import subprocess
+import sys
 
 
 def _load_gitignore():
@@ -667,4 +669,40 @@ def _get_claude_md_content(ctx):
     return "(no CLAUDE.md found)"
 
 CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content, overview="CLAUDE.md")
+
+
+
+_IS_WINDOWS = sys.platform == "win32"
+_bash_location = None
+
+def _get_bash():
+    global _bash_location
+    if _bash_location:
+        return _bash_location
+    if _IS_WINDOWS:
+        for p in [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]:
+            if os.path.isfile(p):
+                _bash_location = p
+                return _bash_location
+    else:
+        _bash_location = "bash"
+        return _bash_location
+    return None
+
+
+def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
+    """Run a bash/shell command and return its output (stdout + stderr combined).
+    Use for: running tests, checking git status, installing packages, etc.
+    timeout: max seconds to wait (default 30)."""
+    bp = _get_bash()
+    if not bp:
+        return "ERROR: bash not found (install Git for Windows)"
+    try:
+        result = subprocess.run([bp, "-c", command], capture_output=True, text=True, timeout=timeout)
+        out = result.stdout + result.stderr
+        if result.returncode != 0:
+            out = f"[exit code {result.returncode}]\n" + out
+        return out.strip() or "(no output)"
+    except subprocess.TimeoutExpired:
+        return f"ERROR: command timed out after {timeout}s"
 
