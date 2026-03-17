@@ -13,7 +13,7 @@ del _ex6_guard, _os
 
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
-from _ex6.tools import read_headers, read_function, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
+from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
 import ex6
@@ -86,7 +86,7 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 # Strategy
 - Start broad, go deep. Use multiple search angles — different naming conventions, related files, alternate locations.
 - Maximize parallel tool calls. Read multiple files and search multiple patterns in a single run_tools block.
-- Start with token efficient tools like `read_headers` / `search` / `glob`, then `read_function` for specifics, then `read_file` for going deep.
+- Start with token efficient tools like `read_headers` / `search` / `glob`, then `read_body` for specifics, then `read_file` for going deep.
 
 # Output
 - Bullet points over paragraphs. Code references (file:function_name) over prose.
@@ -94,7 +94,7 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 - Favour conciseness at all costs. Conciseness is much more important than grammatical correctness.
 - If the answer is 3 lines, write 3 lines. If it needs 30, write 30.
 """,
-tools = [read_file, glob, search, read_headers, read_function]
+tools = [read_file, glob, search, read_headers, read_body]
 )
 
 
@@ -139,7 +139,7 @@ ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_function, explore_agent, web_search, websearch_agent, escalate]),
+    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_body, explore_agent, web_search, websearch_agent, escalate]),
     ENV_PROMPT,
     CLAUDE_MD,
 ])
@@ -149,7 +149,7 @@ reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
 coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([
-        read_file, glob, search, read_headers, read_function,
+        read_file, glob, search, read_headers, read_body,
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
         escalate
@@ -165,7 +165,7 @@ if SMART_MODEL.startswith("anthropic/"):
 coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
     make_code_mode_system_prompt([
-        read_file, glob, search, read_headers, read_function,
+        read_file, glob, search, read_headers, read_body,
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
         escalate
@@ -177,7 +177,7 @@ coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messa
 # coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
 #     MAIN_SYSTEM_PROMPT,
 #     make_code_mode_system_prompt([
-#         read_file, glob, search, read_headers, read_function,
+#         read_file, glob, search, read_headers, read_body,
 #         write_file, edit_file, edit_file_lines,
 #         explore_agent, web_search, websearch_agent
 #     ]),

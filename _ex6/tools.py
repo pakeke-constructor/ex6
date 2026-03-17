@@ -129,6 +129,8 @@ def _parse_file(file):
 def _get_name(node):
     """Get the name of a definition node."""
     n = node.child_by_field_name('name')
+    if not n:
+        n = node.child_by_field_name('left')
     return n.text.decode() if n else None
 
 
@@ -298,7 +300,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     ALWAYS Prefer edit_file_lines for edits larger than 3 lines. but only when you know the lines. If you need to delete a lot of code; edit_file_lines is better because it avoids you rewriting the entire code.
 
     If you have not read the lines or headers, your edits will automatically be rejected.
-    Use this in conjunction with read_headers and/or read_function to replace/rewrite entire functions or classes.
+    Use this in conjunction with read_headers and/or read_body to replace/rewrite entire functions or classes.
     """
     _check_read(ctx, file)
 
@@ -469,18 +471,17 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     return "\n".join(out) if out else "No classes/functions found."
 
 
-def read_function(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True) -> str:
+def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True) -> str:
     """
     Read a function or class body by name from a file.
     - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
     - Use this tool when you only need bits of information, like details about a particular function
     """
     tree, source, mod_name = _parse_file(file)
-    def_types = DEFINITION_TYPES.get(mod_name, [])
 
     def find(node):
         for child in node.children:
-            if child.type in def_types and _get_name(child) == name:
+            if _get_name(child) == name:
                 start_line = source[:child.start_byte].count(b'\n') + 1
                 text = source[child.start_byte:child.end_byte].decode()
                 fn_lines = text.splitlines()
