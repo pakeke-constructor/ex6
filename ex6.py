@@ -1317,110 +1317,123 @@ if __name__ == "__main__":
     sel_input_box = make_input(sel_on_submit)
 
     _sink = _StdoutSink()
-    with term.cbreak(), term.hidden_cursor(), term.fullscreen():
-        while True:
-            if state.mode != "scroll":
-                sys.stdout, sys.stderr = _sink, _sink
-            if _fatal_error:
-                raise RuntimeError(f"FATAL: {_fatal_error}")
-            key = term.inkey(timeout=0.011)
-            while key:
-                if _log_keys:
-                    debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
-                keyls.append(key)
-                key = term.inkey(timeout=0)
-
-            if buf.w != term.width or buf.h != term.height:
-                buf = ScreenBuffer(term.width, term.height)
-
-            inpt = InputPass(keyls)
-            keyls = []
-
-            buf.clear()
-
-            # No contexts = show message and block everything
-            if not state.contexts:
-                msg = "You must create a plugin with Contexts for ex6 to work."
-                mx = (term.width - len(msg)) // 2
-                my = term.height // 2
-                buf.puts(mx, my, msg, txt_color='red')
-                buf.flush(term)
-                continue
-
-            # Ensure state.current always points to a valid context
-            if state.current not in state.contexts.values():
-                state.current = next(iter(state.contexts.values()))
-
-            term_r = Region(0,0, term.width, term.height)
-            prev_mode = state.mode
-
-            if _ui_panel_stack and inpt.consume('KEY_ESCAPE'):
-                pop_ui_panel()
-
-            if state.mode == "work":
-                # work mode: no boxes, divider, 2 lines bottom padding
-                if not state.current.is_running():
-                    input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
-                else:
-                    input_h = 1
-                divider_y = term.height - 4 - input_h - 1
-                input_r = Region(0, divider_y + 1, term.width, input_h)
-                main_r = Region(0, 0, term.width, divider_y)
-            else:
-                input_h = 3
-                input_r = Region(0, term.height - input_h, term.width, input_h)
-                main_r = Region(0, 0, term.width, term.height - input_h)
-
-            if state.mode == "scroll":
-                if inpt._keys:  # any key exits scroll mode
-                    state.mode = state._prev_mode
-                    _real_stdout.write(term.enter_fullscreen)
-                    _real_stdout.flush()
+    try:
+        with term.cbreak(), term.hidden_cursor(), term.fullscreen():
+            while True:
+                if state.mode != "scroll":
                     sys.stdout, sys.stderr = _sink, _sink
-                    buf.invalidate()
-            elif state.mode == "work":
-                render_work_mode(buf, inpt, main_r)
-                div_color = 'bright_yellow' if state.current.is_running() else 'bright_black'
-                buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
-                render_work_mode_input(buf, inpt, input_r, input_box)
-                buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
-                if inpt.consume('KEY_ESCAPE'):
-                    state.mode = "selection"
-                if inpt.consume('KEY_CTRL_X') and state.current.is_running():
-                    state.current._stop_early = True
-            elif state.mode == "selection":
-                if not _sel_input_open and inpt.consume("KEY_ENTER"):
-                    state.mode = "work"
-                if not _sel_input_open and inpt.consume("/"):
-                    _sel_input_open = True
-                    sel_input_box.set_text("/")
-                if _sel_input_open and inpt.consume("KEY_ESCAPE"):
-                    _sel_input_open = False
-                    sel_input_box.set_text("")
-                if _sel_input_open:
-                    left, right = main_r.split_horizontal(1, 3)
-                    render_selection_left(buf, inpt, left)
-                    render_selection_right(buf, right)
-                    buf.rect_line(input_r, txt_color='bright_red')
-                    sel_input_box(buf, inpt, input_r.shrink(1))
+                if _fatal_error:
+                    raise RuntimeError(f"FATAL: {_fatal_error}")
+                key = term.inkey(timeout=0.011)
+                while key:
+                    if _log_keys:
+                        debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
+                    keyls.append(key)
+                    key = term.inkey(timeout=0)
+
+                if buf.w != term.width or buf.h != term.height:
+                    buf = ScreenBuffer(term.width, term.height)
+
+                inpt = InputPass(keyls)
+                keyls = []
+
+                buf.clear()
+
+                # No contexts = show message and block everything
+                if not state.contexts:
+                    msg = "You must create a plugin with Contexts for ex6 to work."
+                    mx = (term.width - len(msg)) // 2
+                    my = term.height // 2
+                    buf.puts(mx, my, msg, txt_color='red')
+                    buf.flush(term)
+                    continue
+
+                # Ensure state.current always points to a valid context
+                if state.current not in state.contexts.values():
+                    state.current = next(iter(state.contexts.values()))
+
+                term_r = Region(0,0, term.width, term.height)
+                prev_mode = state.mode
+
+                if _ui_panel_stack and inpt.consume('KEY_ESCAPE'):
+                    pop_ui_panel()
+
+                if state.mode == "work":
+                    # work mode: no boxes, divider, 2 lines bottom padding
+                    if not state.current.is_running():
+                        input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
+                    else:
+                        input_h = 1
+                    divider_y = term.height - 4 - input_h - 1
+                    input_r = Region(0, divider_y + 1, term.width, input_h)
+                    main_r = Region(0, 0, term.width, divider_y)
                 else:
-                    full_r = Region(0, 0, term.width, term.height)
-                    left, right = full_r.split_horizontal(1, 3)
-                    render_selection_left(buf, inpt, left)
-                    render_selection_right(buf, right)
-            else:
-                assert state.mode == "help"
-                # press h to toggle help.
-                # displays all keybinds for selection-mode
-            
-            if state.mode != "scroll":
-                if _ui_panel_stack:
-                    r = Region(3, 2, buf.w - 6, buf.h - 4)
-                    _ui_panel_stack[-1](buf, inpt, r)
-                elif state.current.ui_stack:
-                    r = Region(3, 2, buf.w - 6, buf.h - 4)
-                    state.current.ui_stack[-1](buf, inpt, r)
-                if state.mode != prev_mode:
-                    buf.invalidate()
-                buf.flush(term)
+                    input_h = 3
+                    input_r = Region(0, term.height - input_h, term.width, input_h)
+                    main_r = Region(0, 0, term.width, term.height - input_h)
+
+                if state.mode == "scroll":
+                    if inpt._keys:  # any key exits scroll mode
+                        state.mode = state._prev_mode
+                        _real_stdout.write(term.enter_fullscreen)
+                        _real_stdout.flush()
+                        sys.stdout, sys.stderr = _sink, _sink
+                        buf.invalidate()
+                elif state.mode == "work":
+                    render_work_mode(buf, inpt, main_r)
+                    div_color = 'bright_yellow' if state.current.is_running() else 'bright_black'
+                    buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
+                    render_work_mode_input(buf, inpt, input_r, input_box)
+                    buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
+                    if inpt.consume('KEY_ESCAPE'):
+                        state.mode = "selection"
+                    if inpt.consume('KEY_CTRL_X') and state.current.is_running():
+                        state.current._stop_early = True
+                elif state.mode == "selection":
+                    if not _sel_input_open and inpt.consume("KEY_ENTER"):
+                        state.mode = "work"
+                    if not _sel_input_open and inpt.consume("/"):
+                        _sel_input_open = True
+                        sel_input_box.set_text("/")
+                    if _sel_input_open and inpt.consume("KEY_ESCAPE"):
+                        _sel_input_open = False
+                        sel_input_box.set_text("")
+                    if _sel_input_open:
+                        left, right = main_r.split_horizontal(1, 3)
+                        render_selection_left(buf, inpt, left)
+                        render_selection_right(buf, right)
+                        buf.rect_line(input_r, txt_color='bright_red')
+                        sel_input_box(buf, inpt, input_r.shrink(1))
+                    else:
+                        full_r = Region(0, 0, term.width, term.height)
+                        left, right = full_r.split_horizontal(1, 3)
+                        render_selection_left(buf, inpt, left)
+                        render_selection_right(buf, right)
+                else:
+                    assert state.mode == "help"
+                    # press h to toggle help.
+                    # displays all keybinds for selection-mode
+                
+                if state.mode != "scroll":
+                    if _ui_panel_stack:
+                        r = Region(3, 2, buf.w - 6, buf.h - 4)
+                        _ui_panel_stack[-1](buf, inpt, r)
+                    elif state.current.ui_stack:
+                        r = Region(3, 2, buf.w - 6, buf.h - 4)
+                        state.current.ui_stack[-1](buf, inpt, r)
+                    if state.mode != prev_mode:
+                        buf.invalidate()
+                    buf.flush(term)
+    except Exception:
+        import traceback
+        sys.stdout, sys.stderr = _real_stdout, _real_stderr
+        try:
+            _real_stdout.write(term.exit_fullscreen)
+            _real_stdout.flush()
+        except Exception:
+            pass
+        tb = traceback.format_exc()
+        debug_print(tb)
+        print(tb)
+        sys.exit(1)
 
