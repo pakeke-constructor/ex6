@@ -1,16 +1,4 @@
 
-
-
-import os as _os
-import ex6 as _ex6_guard
-
-# only load these agents when running from the ex6 project folder
-if _os.getcwd() != _os.path.dirname(_os.path.abspath(_ex6_guard.__file__)):
-    raise ImportError
-
-del _ex6_guard, _os
-
-
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD

@@ -1289,10 +1289,7 @@ def _load_plugins():
                 assert spec and spec.loader
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[mod_name] = module
-                try:
-                    spec.loader.exec_module(module)
-                except ImportError:
-                    del sys.modules[mod_name]
+                spec.loader.exec_module(module)
 
 
 
