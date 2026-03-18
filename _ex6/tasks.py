@@ -191,6 +191,17 @@ def task_add_log(ctx: ex6.Context, short_str: str, type: str = "PROGRESS") -> st
     return f"Logged to task '{tid}'."
 
 
+def task_close(ctx: ex6.Context, id: str = None) -> str:
+    """Close a task by deleting its file. Task files are version-controlled, so nothing is lost.
+    If id=None, closes the focused task."""
+    tid = _resolve_id(ctx, id)
+    path = _task_path(tid)
+    os.remove(path)
+    if ctx.data.get("tasks:id") == tid:
+        del ctx.data["tasks:id"]
+    return f"Closed task '{tid}' (file deleted)."
+
+
 QUERY_MODEL = "google/gemini-3.1-flash-lite-preview"
 
 QUERY_SYSTEM_PROMPT = ex6.Message(role="system", overview="task-log-query", content="""\

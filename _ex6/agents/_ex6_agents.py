@@ -2,7 +2,7 @@
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
-from _ex6.tasks import task_focus, task_create, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_query_logs, task_list
+from _ex6.tasks import task_focus, task_create, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_close, task_query_logs, task_list
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
 import ex6
@@ -192,7 +192,7 @@ planner = Context("planner", model=PLANNER_MODEL, reasoning="medium", messages=[
         read_file, glob, search, read_headers, read_body,
         explore_agent, web_search, websearch_agent,
         escalate,
-        task_create, task_focus, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_query_logs, task_list,
+        task_create, task_focus, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_close, task_query_logs, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
@@ -215,7 +215,7 @@ coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
         escalate,
-        task_focus, task_read, task_add_log, task_query_logs, task_list,
+        task_focus, task_read, task_add_log, task_close, task_query_logs, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
@@ -232,7 +232,7 @@ coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messa
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
         escalate,
-        task_focus, task_read, task_add_log, task_query_logs, task_list,
+        task_focus, task_read, task_add_log, task_close, task_query_logs, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
