@@ -1,11 +1,34 @@
 
-"""
+'''
 tasks.py: tools for LLMs to manage tasks.
 
-Each task is a .md file inside of `.tasks/`.
-Task spec is given by `TASKS/task_spec.md`.
+
+each task is a .md file inside of `.tasks/*`.
+Task spec is a given by `TASKS/task_spec.md`.
+
 Agents interact with these tasks via tools.
-"""
+
+tool functions we want:
+
+
+task_focus(id) # focuses on this task. stores in ctx.data["tasks:id"] = id
+task_create(description) # returns id (base32 id:  `dc5`)
+
+task_read(id = None) # if None, reads focused task
+task_write_plan(full_plan, id=None) # if id=None, writes focused task
+
+task_add_log(short_str, type="BLOCKER" or "PROGRESS" or "LEARNING" or "HUMAN")
+# logs to focused task. 
+# should be used to record progress, learnings, or blockers on tasks.
+# (Auxiliary agent should use this automatically maybe...?)
+# NOTE: ALL HUMAN INPUT SHOULD BE LOGGED AS A TASK
+
+task_query_logs(query, id=None)
+# if id=None, does focused task
+# spins up (cheap) subagent to query the logs. eg:
+# task_query_logs("have there ")
+
+'''
 
 import os
 import time
@@ -127,6 +150,32 @@ def task_add_log(ctx: ex6.Context, short_str: str, type: str = "PROGRESS") -> st
     new_content = content.replace("</log>", f"{entry}\n</log>")
     _write_task(tid, new_content)
     return f"Logged to task '{tid}'."
+
+
+QUERY_MODEL = "google/gemini-3.1-flash-lite-preview"
+
+QUERY_SYSTEM_PROMPT = ex6.Message(role="system", overview="task-log-query", content="""\
+You answer questions about a task's log. You receive the full task file and a question.
+Be EXTREMELY concise. Grammar doesn't matter. Just the facts.
+If the answer is one word, say one word. No fluff, no preamble, no hedging.
+""")
+
+
+def task_query_logs(ctx: ex6.Context, question: str, id: str = None) -> str:
+    """Ask a question about a task's logs. Spins up a cheap subagent to answer.
+    question: a natural-language question, e.g. "any blockers?" or "what was the last finding?"
+    If id=None, queries the focused task."""
+    tid = _resolve_id(ctx, id)
+    task_content = _read_task(tid)
+    sub = ex6.Context("task_query", model=QUERY_MODEL, messages=[QUERY_SYSTEM_PROMPT], reasoning="none")
+    sub.parent = ctx.name
+    prompt = f"<task>\n{task_content}\n</task>\n\nQuestion: {question}"
+    sub.invoke(prompt)
+    while sub.llm_is_running:
+        time.sleep(0.05)
+    result = sub.messages[-1].content if sub.messages else "No answer."
+    del ex6.state.contexts[sub.name]
+    return result
 
 
 def task_list(ctx: ex6.Context) -> str:
