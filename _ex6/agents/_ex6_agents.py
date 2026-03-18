@@ -135,8 +135,8 @@ You CANNOT write code. You can only read, explore, and research.
 
 <goal>
 Understand the request, explore the codebase, then create a task with a detailed plan and done-criteria.
-- The plan (task_write_plan) must be detailed enough for a separate coding agent to implement without ambiguity.
-- The criteria (task_write_done_criteria) must be clear and well-defined enough for a separate agent to discriminate whether the feature is done or not.
+The plan must be detailed enough for a separate coding agent to implement without ambiguity.
+The done_criteria must be verifiable enough for a separate agent to confirm the task is actually complete.
 </goal>
 
 <output_rules>
@@ -163,9 +163,25 @@ A good plan has:
 - Any edge cases or gotchas discovered during exploration
 </plan_format>
 
-<done_criteria_format>
-TODO.
-</done_criteria_format>
+<done_criteria_guide>
+After writing the plan, write done_criteria with task_write_done_criteria.
+This is NOT a restatement of the plan. It is a checklist a verifier agent uses to confirm the task is ACTUALLY DONE.
+
+Think about what tools a verifier has: it can read files, search code, run bash commands, glob.
+Write criteria that a verifier can CHECK using those tools. Be concrete:
+- BAD:  "the feature works correctly"
+- GOOD: "running `python -m pytest tests/test_foo.py` exits 0"
+- BAD:  "error handling is added"
+- GOOD: "search('except ValueError') matches in src/parser.py"
+- BAD:  "the UI looks right"
+- GOOD: "read_body('ui.py', 'render_panel') contains a call to draw_border()"
+
+Prioritize criteria that involve RUNNING the code over just reading it.
+A grep confirms code exists; a bash command confirms it actually works.
+If the project has tests, include running them. If it doesn't, include a bash command that exercises the new behavior and describe the expected output.
+
+Each criterion should be one line, verifiable with a single tool call.
+</done_criteria_guide>
 """
 )
 
