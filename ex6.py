@@ -924,10 +924,10 @@ class InputPass:
     def __init__(self, keys: list):
         self._keys = list(keys)
 
-    def consume(self, name: str) -> bool:
+    def consume(self, *names: str) -> bool:
         for i, k in enumerate(self._keys):
             key_name = self.KEY_ALIASES.get(str(k), k.name)
-            if key_name == name or k.name == name or str(k) == name:
+            if key_name in names or k.name in names or str(k) in names:
                 self._keys.pop(i)
                 return True
         return False
@@ -1087,9 +1087,9 @@ def render_selection_left(buf, inpt, r):
         state.current = ctxs[idx - 1]
     if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
         state.current = ctxs[idx + 1]
-    if inpt.consume('k') and idx > 0:
+    if inpt.consume('k', 'w') and idx > 0:
         state.current = ctxs[idx - 1]
-    if inpt.consume('j') and idx < len(ctxs) - 1:
+    if inpt.consume('j', 's') and idx < len(ctxs) - 1:
         state.current = ctxs[idx + 1]
 
     # draw list
