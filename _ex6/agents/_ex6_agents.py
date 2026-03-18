@@ -2,6 +2,7 @@
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
+from _ex6.tasks import task_focus, task_create, task_read, task_write_plan, task_add_log, task_list
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
 import ex6
@@ -140,7 +141,8 @@ coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
         read_file, glob, search, read_headers, read_body,
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
-        escalate
+        escalate,
+        task_focus, task_create, task_read, task_write_plan, task_add_log, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
@@ -156,7 +158,8 @@ coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messa
         read_file, glob, search, read_headers, read_body,
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
-        escalate
+        escalate,
+        task_focus, task_create, task_read, task_write_plan, task_add_log, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
