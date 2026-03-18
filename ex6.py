@@ -1193,13 +1193,6 @@ def render_work_mode(buf, inpt, r):
         for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
         message_outputs.append(('assistant', lines))
 
-    # Token bar at top, with ctx name + model on the left
-    label = f"{ctx.name}  {ctx.model or ''}"
-    label_w = len(label) + 2
-    bar_w = min(w - label_w - 20, 30)
-    buf.puts(x, y, label, txt_color='white')
-    render_context_window_bar(buf, ctx, x + label_w, y, bar_w)
-
     # Draw (start 1 row below token bar)
     available = h - 1
 
@@ -1236,6 +1229,13 @@ def render_work_mode(buf, inpt, r):
         bar_top = (y + 1) + (available - bar_h) * (total - available - ctx._scroll_up) // (total - available)
         for sy in range(bar_top, bar_top + bar_h):
             buf.put(x + w - 1, sy, '█', txt_color='bright_black')
+
+    # Token bar at top, with ctx name + model on the left
+    label = f"{ctx.name}  {ctx.model or ''}"
+    label_w = len(label) + 2
+    bar_w = min(w - label_w - 20, 30)
+    buf.puts(x, y, label, txt_color='white')
+    render_context_window_bar(buf, ctx, x + label_w, y, bar_w)
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
