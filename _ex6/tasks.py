@@ -141,9 +141,13 @@ def task_write_plan(ctx: ex6.Context, full_plan: str, id: str = None) -> str:
 
 
 def task_add_log(ctx: ex6.Context, short_str: str, type: str = "PROGRESS") -> str:
-    """Add a log entry to the focused task.
+    """Add a short log entry to the focused task. Keep entries terse — a few words, not sentences.
     type: BLOCKER, PROGRESS, LEARNING, or HUMAN.
-    Use to record progress, learnings, blockers, or human input."""
+    Examples:
+      task_add_log("edit_file approach fails, need write_file", "BLOCKER")
+      task_add_log("auth module uses JWT not sessions", "LEARNING")
+      task_add_log("refactored parse_config, tests pass", "PROGRESS")
+      task_add_log("user wants retry logic on 429s", "HUMAN")"""
     tid = _focused_id(ctx)
     content = _read_task(tid)
     entry = f"[{_now()}] [{type}] {short_str}"

@@ -147,31 +147,47 @@ def ctx():
     ctx = state.current
     if not ctx:
         print("No active context."); return
-    print("\n\n\n\n\n")
-    print(f"=== Context: {ctx.name} ({ctx.model}) ===\n")
+    print("\n".join(_build_ctx_dump_lines(ctx, leading_blanks=5)))
+
+
+def _build_ctx_dump_lines(ctx, leading_blanks=0):
+    lines = []
+    if leading_blanks:
+        lines.extend([""] * leading_blanks)
+    lines.append(f"=== Context: {ctx.name} ({ctx.model}) ===\n")
     for i, msg in enumerate(ctx.messages):
         label = msg.role
         if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
-        print(f"--- [{i}] {label} ---")
-        print(msg.get_msg(ctx))
+        lines.append(f"--- [{i}] {label} ---")
+        lines.append(str(msg.get_msg(ctx)))
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 name = tc['name']
                 args = tc.get("args", {})
                 if not args:
-                    print(f"  <{name} />")
+                    lines.append(f"  <{name} />")
                 else:
-                    print(f"  <{name}>")
+                    lines.append(f"  <{name}>")
                     for k, v in args.items():
                         v_str = str(v)
                         if '\n' in v_str:
-                            print(f"    {k} =")
+                            lines.append(f"    {k} =")
                             for line in v_str.split('\n'):
-                                print(f"      {line}")
+                                lines.append(f"      {line}")
                         else:
-                            print(f"    {k} = {v_str}")
-                    print(f"  </{name}>")
-        print()
+                            lines.append(f"    {k} = {v_str}")
+                    lines.append(f"  </{name}>")
+        lines.append("")
+    return lines
+
+
+@command
+def dmp():
+    ctx = state.current
+    if not ctx: return
+    lines = _build_ctx_dump_lines(ctx)
+    with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
 
 
 _log_keys = False
