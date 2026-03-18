@@ -76,13 +76,19 @@ def _now():
 TASK_TEMPLATE = """\
 # TASK: {description}
 
+{objective}
+---
+
 <plan>
 (no plan yet)
 </plan>
 
+<done_criteria>
+(none yet)
+</done_criteria>
 
 <log>
-[{ts}] [CREATED] {description}
+[{ts}] [CREATED] {first_line}
 </log>
 
 
@@ -102,8 +108,10 @@ def task_focus(ctx: ex6.Context, id: str) -> str:
     return f"Focused on task '{id}'."
 
 
-def task_create(ctx: ex6.Context, description: str) -> str:
-    """Create a new task. Returns the task id (short base32 like 'dc5')."""
+def task_create(ctx: ex6.Context, description: str, objective: str = "") -> str:
+    """Create a new task. Returns the task id (short base32 like 'dc5').
+    description: short title for the task.
+    objective: the broader goal and WHY this task matters. Human-editable."""
     _ensure_dir()
     for _ in range(20):
         tid = _base32_id()
@@ -112,7 +120,9 @@ def task_create(ctx: ex6.Context, description: str) -> str:
     else:
         raise ValueError("Could not generate unique task id")
     ts = _now()
-    content = TASK_TEMPLATE.format(description=description, ts=ts)
+    first_line = description.split('\n')[0]
+    obj = objective or "(no objective yet — edit this section to describe the goal and why)"
+    content = TASK_TEMPLATE.format(description=first_line, objective=obj, first_line=first_line, ts=ts)
     _write_task(tid, content)
     ctx.data["tasks:id"] = tid
     return f"Created task '{tid}'. Auto-focused."
@@ -121,7 +131,15 @@ def task_create(ctx: ex6.Context, description: str) -> str:
 def task_read(ctx: ex6.Context, id: str = None) -> str:
     """Read a task's full contents. If id=None, reads the focused task."""
     tid = _resolve_id(ctx, id)
-    return _read_task(tid)
+    content = _read_task(tid)
+    # Label the objective section between title and --- as "task context"
+    import re
+    content = re.sub(
+        r"(# TASK: .+\n)\n(.+?\n)---",
+        r"\1\n<task_context>\n\2</task_context>\n---",
+        content, count=1, flags=re.DOTALL
+    )
+    return content
 
 
 def task_write_plan(ctx: ex6.Context, full_plan: str, id: str = None) -> str:
@@ -138,6 +156,23 @@ def task_write_plan(ctx: ex6.Context, full_plan: str, id: str = None) -> str:
         raise ValueError(f"No <plan> section found in task '{tid}'")
     _write_task(tid, new_content)
     return f"Updated plan for task '{tid}'."
+
+
+def task_write_done_criteria(ctx: ex6.Context, criteria: str, id: str = None) -> str:
+    """Overwrite the <done_criteria> section of a task. If id=None, writes to focused task.
+    criteria: a short list of verifiable conditions that define when this task is complete."""
+    tid = _resolve_id(ctx, id)
+    content = _read_task(tid)
+    import re
+    new_content = re.sub(
+        r"<done_criteria>.*?</done_criteria>",
+        f"<done_criteria>\n{criteria}\n</done_criteria>",
+        content, count=1, flags=re.DOTALL
+    )
+    if new_content == content:
+        raise ValueError(f"No <done_criteria> section found in task '{tid}'")
+    _write_task(tid, new_content)
+    return f"Updated done_criteria for task '{tid}'."
 
 
 def task_add_log(ctx: ex6.Context, short_str: str, type: str = "PROGRESS") -> str:

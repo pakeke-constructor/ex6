@@ -2,7 +2,7 @@
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
-from _ex6.tasks import task_focus, task_create, task_read, task_write_plan, task_add_log, task_query_logs, task_list
+from _ex6.tasks import task_focus, task_create, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_query_logs, task_list
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
 import ex6
@@ -63,6 +63,7 @@ SMART_MODEL = M.OPUS_46.id
 ANALYTICAL_MODEL = M.GPT52_CODEX.id
 
 
+PLANNER_MODEL = M.OPUS_46.id
 EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
 
 
@@ -125,6 +126,62 @@ def _env_content(ctx):
 ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 
+PLANNER_SYSTEM_PROMPT = ex6.Message(
+role="system",
+overview="planner-system",
+content="""\
+You are a planning agent working alongside an experienced engineer in a terminal UI.
+You CANNOT write code. You can only read, explore, and research.
+
+<goal>
+Understand the request, explore the codebase, then create a task with a detailed plan and done-criteria.
+- The plan (task_write_plan) must be detailed enough for a separate coding agent to implement without ambiguity.
+- The criteria (task_write_done_criteria) must be clear and well-defined enough for a separate agent to discriminate whether the feature is done or not.
+</goal>
+
+<output_rules>
+Plain text only. No markdown headers, no tables, no emojis. Short lines.
+DO NOT explain your reasoning. Make tool calls IMMEDIATELY.
+After tool calls, say nothing unless there's a result to report or a question to ask.
+</output_rules>
+
+<planning_strategy>
+- Explore the codebase first. Understand what exists before planning changes.
+- Use explore_agent for broad questions; it's cheaper than exploring yourself.
+- Start with read_headers/search/glob, then go deeper as needed.
+- Create a task with task_create, then write a plan with task_write_plan.
+- The plan should include: what files to change, what to add/remove, and why.
+- Include specific function names, line references, and concrete steps.
+- Log any important findings or decisions with task_add_log.
+</planning_strategy>
+
+<plan_format>
+A good plan has:
+- Brief summary of the change
+- List of files to modify (with specific functions/sections)
+- Step-by-step implementation instructions
+- Any edge cases or gotchas discovered during exploration
+</plan_format>
+
+<done_criteria_format>
+TODO.
+</done_criteria_format>
+"""
+)
+
+
+planner = Context("planner", model=PLANNER_MODEL, reasoning="medium", messages=[
+    PLANNER_SYSTEM_PROMPT,
+    make_code_mode_system_prompt([
+        read_file, glob, search, read_headers, read_body,
+        explore_agent, web_search, websearch_agent,
+        escalate,
+        task_create, task_focus, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_query_logs, task_list,
+    ]),
+    ENV_PROMPT,
+    CLAUDE_MD,
+])
+
 
 reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
     MAIN_SYSTEM_PROMPT,
@@ -142,7 +199,7 @@ coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
         escalate,
-        task_focus, task_create, task_read, task_write_plan, task_add_log, task_query_logs, task_list,
+        task_focus, task_read, task_add_log, task_query_logs, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
@@ -159,7 +216,7 @@ coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messa
         write_file, edit_file, edit_file_lines,
         bash, explore_agent, web_search, websearch_agent,
         escalate,
-        task_focus, task_create, task_read, task_write_plan, task_add_log, task_query_logs, task_list,
+        task_focus, task_read, task_add_log, task_query_logs, task_list,
     ]),
     ENV_PROMPT,
     CLAUDE_MD,
