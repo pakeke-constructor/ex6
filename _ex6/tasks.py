@@ -100,7 +100,10 @@ created_at: {ts}
 
 
 def task_focus(ctx: ex6.Context, id: str) -> str:
-    """Focus on a task. Stores in ctx so subsequent task tools default to it."""
+    """
+    Focus on a task. Stores in ctx so subsequent task tools default to it.
+    (You should ALWAYS focus a task before working on it. This makes subsequent calls easier.)
+    """
     path = _task_path(id)
     if not os.path.isfile(path):
         raise ValueError(f"Task '{id}' not found at {path}")
@@ -135,7 +138,7 @@ def task_read(ctx: ex6.Context, id: str = None) -> str:
     # Label the objective section between title and --- as "task context"
     import re
     content = re.sub(
-        r"(# TASK: .+\n)\n(.+?\n)---",
+        r"(# TASK: .+\n)\n(.+?)---",
         r"\1\n<task_context>\n\2</task_context>\n---",
         content, count=1, flags=re.DOTALL
     )
