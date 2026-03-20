@@ -186,73 +186,81 @@ Each criterion should be one line, verifiable with a single tool call.
 )
 
 
-planner = Context("planner", model=PLANNER_MODEL, reasoning="medium", messages=[
-    PLANNER_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([
-        read_file, glob, search, read_headers, read_body,
-        explore_agent, web_search, websearch_agent,
-        escalate,
-        task_create, task_focus, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_close, task_query_logs, task_list,
-    ]),
-    ENV_PROMPT,
-    CLAUDE_MD,
-])
+
+def auto_setup():
+    planner = Context("planner", model=PLANNER_MODEL, reasoning="medium", messages=[
+        PLANNER_SYSTEM_PROMPT,
+        make_code_mode_system_prompt([
+            read_file, glob, search, read_headers, read_body,
+            explore_agent, web_search, websearch_agent,
+            escalate,
+            task_create, task_focus, task_read, task_write_plan, task_write_done_criteria, task_add_log, task_close, task_query_logs, task_list,
+        ]),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ])
+
+    reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
+        MAIN_SYSTEM_PROMPT,
+        make_code_mode_system_prompt([read_file, glob, search, read_headers, read_body, explore_agent, web_search, websearch_agent, escalate]),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ])
+
+    coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
+        MAIN_SYSTEM_PROMPT,
+        make_code_mode_system_prompt([
+            read_file, glob, search, read_headers, read_body,
+            write_file, edit_file, edit_file_lines,
+            bash, explore_agent, web_search, websearch_agent,
+            escalate,
+            task_focus, task_read, task_add_log, task_close, task_query_logs, task_list,
+        ]),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ])
+    if SMART_MODEL.startswith("anthropic/"):
+        cache_manually(coder)
+
+    coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messages=[
+        MAIN_SYSTEM_PROMPT,
+        make_code_mode_system_prompt([
+            read_file, glob, search, read_headers, read_body,
+            write_file, edit_file, edit_file_lines,
+            bash, explore_agent, web_search, websearch_agent,
+            escalate,
+            task_focus, task_read, task_add_log, task_close, task_query_logs, task_list,
+        ]),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ])
+
+    # coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
+    #     MAIN_SYSTEM_PROMPT,
+    #     make_code_mode_system_prompt([
+    #         read_file, glob, search, read_headers, read_body,
+    #         write_file, edit_file, edit_file_lines,
+    #         explore_agent, web_search, websearch_agent
+    #     ]),
+    #     ENV_PROMPT,
+    #     CLAUDE_MD,
+    # ])
+
+    ex6.state.current = coder
 
 
-reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
-    MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([read_file, glob, search, read_headers, read_body, explore_agent, web_search, websearch_agent, escalate]),
-    ENV_PROMPT,
-    CLAUDE_MD,
-])
 
 
+import os as _os
+import ex6 as _ex6_guard
 
-coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
-    MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([
-        read_file, glob, search, read_headers, read_body,
-        write_file, edit_file, edit_file_lines,
-        bash, explore_agent, web_search, websearch_agent,
-        escalate,
-        task_focus, task_read, task_add_log, task_close, task_query_logs, task_list,
-    ]),
-    ENV_PROMPT,
-    CLAUDE_MD,
-])
-if SMART_MODEL.startswith("anthropic/"):
-    cache_manually(coder)
+# only load these agents when running from the ex6 project folder
+if _os.getcwd() == _os.path.dirname(_os.path.abspath(_ex6_guard.__file__)):
+    auto_setup()
+
+del _ex6_guard, _os
 
 
-
-coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messages=[
-    MAIN_SYSTEM_PROMPT,
-    make_code_mode_system_prompt([
-        read_file, glob, search, read_headers, read_body,
-        write_file, edit_file, edit_file_lines,
-        bash, explore_agent, web_search, websearch_agent,
-        escalate,
-        task_focus, task_read, task_add_log, task_close, task_query_logs, task_list,
-    ]),
-    ENV_PROMPT,
-    CLAUDE_MD,
-])
-
-# coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
-#     MAIN_SYSTEM_PROMPT,
-#     make_code_mode_system_prompt([
-#         read_file, glob, search, read_headers, read_body,
-#         write_file, edit_file, edit_file_lines,
-#         explore_agent, web_search, websearch_agent
-#     ]),
-#     ENV_PROMPT,
-#     CLAUDE_MD,
-# ])
-
-
-
-
-ex6.state.current = coder
 
 
 
