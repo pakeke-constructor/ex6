@@ -478,10 +478,11 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     - Use this tool when you only need bits of information, like details about a particular function
     """
     tree, source, mod_name = _parse_file(file)
+    def_types = set(DEFINITION_TYPES.get(mod_name, []))
 
     def find(node):
         for child in node.children:
-            if _get_name(child) == name:
+            if child.type in def_types and _get_name(child) == name:
                 start_line = source[:child.start_byte].count(b'\n') + 1
                 text = source[child.start_byte:child.end_byte].decode()
                 fn_lines = text.splitlines()

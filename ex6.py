@@ -1141,9 +1141,9 @@ def render_selection_right(buf, r):
     for msg in msgs:
         if row >= y + h - 1: break
         label = msg.overview or msg.role
-        content = msg.content if isinstance(msg.content, str) else None
-        toks = content and len(content) // 4
-        if toks:
+        content = msg.content if isinstance(msg.content, str) else msg._snapshot
+        if content is not None:
+            toks = len(content) // 4
             tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
         else:
             tokstr = "(func)"
