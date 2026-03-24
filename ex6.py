@@ -510,6 +510,7 @@ class Context:
     _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
     yolo: bool = False
     _scroll_up: int = 0
+    _input_box: Optional['InputBox'] = None
 
     def token_count(self) -> int:
         if self.llm_result:
@@ -522,6 +523,8 @@ class Context:
 
     def __post_init__(self):
         state.contexts[self.name] = self
+        if self._input_box is None:
+            self._input_box = InputBox(lambda text: _ctx_input_submit(self, text))
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -619,6 +622,7 @@ class Context:
         cpy.data = copy.copy(self.data)
         cpy._tool_renderers = {}
         cpy.ui_stack = []
+        cpy._input_box = None
         cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.parent = self.name
         cpy.__post_init__()
@@ -627,6 +631,12 @@ class Context:
     def push_ui(self, draw_fn):
         self.ui_stack.append(draw_fn)
 
+
+def _ctx_input_submit(ctx, text):
+    if text.startswith("/"):
+        dispatch_command(text)
+    else:
+        ctx.invoke(text)
 
 
 
@@ -1317,12 +1327,7 @@ if __name__ == "__main__":
     buf = ScreenBuffer(term.width, term.height)
     keyls = []
 
-    def on_submit(text):
-        if text.startswith("/"):
-            dispatch_command(text)
-        else:
-            state.current.invoke(text)
-    input_box = make_input(on_submit)
+    input_box = None  # per-context; resolved each frame
 
     _sel_input_open = False
     def sel_on_submit(text):
@@ -1367,6 +1372,7 @@ if __name__ == "__main__":
                 # Ensure state.current always points to a valid context
                 if state.current not in state.contexts.values():
                     state.current = next(iter(state.contexts.values()))
+                input_box = state.current._input_box
 
                 term_r = Region(0,0, term.width, term.height)
                 prev_mode = state.mode
