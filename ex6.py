@@ -436,14 +436,39 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 
 
 
-def _default_tool_render(name, t):
-    SPIN = "/-\\|"
+SPIN = "/-\\|"
+
+def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None):
+    icon, color = {'running': (SPIN[int(time.time()*8)%4], 'yellow'), 'error': ('x', 'red')}.get(status, ('v', 'green'))
+    buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
+    col = x + 4
+    def _put(s, clr):
+        nonlocal col
+        for ch in s:
+            if col >= x + w: return
+            buf.put(col, y, ch, txt_color=clr)
+            col += 1
+    _put(name + '(', 'blue')
+    for i, a in enumerate(args):
+        if i: _put(', ', 'blue')
+        s = repr(a)
+        if len(s) > 40: s = s[:40] + '...'
+        _put(s, 'bright_black' if isinstance(a, str) else 'blue')
+    _put(')', 'blue')
+    if detail:
+        col += 1
+        buf.puts(col, y, detail.replace('\n', ' ')[:x + w - col], txt_color='bright_black')
+
+def _default_tool_render(name, args, t, result):
     def render(buf, x, y, w):
         if t.is_alive():
-            icon = SPIN[int(time.time()*8) % 4]
-            buf.puts(x, y, f"[{icon}] {name}"[:w], txt_color='yellow')
+            status = 'running'
+        elif result.get("error"):
+            status = 'error'
         else:
-            buf.puts(x, y, f"[v] {name}"[:w], txt_color='green')
+            status = 'ok'
+        detail = str(result["error"]) if result.get("error") else None
+        render_tool_line(buf, x, y, w, name, args, status, detail)
         return 1
     return render
 
@@ -461,7 +486,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     for tc in llm_result.tool_calls:
         fn = tools.get(tc["name"])
         if not fn: continue
-        result = {"id": tc["id"], "value": None}
+        result = {"id": tc["id"], "value": None, "error": None}
         results.append(result)
         def run_tool(fn=fn, tc=tc, result=result):
             try:
@@ -473,8 +498,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             except Exception as e:
                 debug_print(f"tool {tc['name']} failed: {e}")
                 result["value"] = f"ERROR: {e}"
+                result["error"] = e
         t = threading.Thread(target=run_tool)
-        ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], t))
+        ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], list(tc["args"].values()), t, result))
         t.start()
         threads.append(t)
 

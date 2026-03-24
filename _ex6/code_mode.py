@@ -166,7 +166,7 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list)
         t = threading.Thread(target=run)
         t.start()
         threads.append(t)
-        tool_infos.append((call_str, t, tr))
+        tool_infos.append((fn.__name__, list(args), t, tr))
         return tr
     return wrapper
 
@@ -199,11 +199,11 @@ def make_code_mode_tool(tools: list):
         if tool_call_id:
             def code_render(buf, x, y, w):
                 row = 0
-                for call_str, t, tr in tool_infos:
+                for name, args, t, tr in tool_infos:
                     alive = t.is_alive()
                     status = 'running' if alive else ('error' if tr._error else 'ok')
                     detail = None if alive else (str(tr._error) if tr._error else None)
-                    _tool_line(buf, x, y + row, w, call_str, status, detail)
+                    ex6.render_tool_line(buf, x, y + row, w, name, args, status, detail)
                     row += 1
                 return max(row, 1)
             ctx.set_tool_renderer(tool_call_id, code_render)
@@ -358,14 +358,5 @@ def extract_tags(lines, *tags):
             found.append((tag, header, '\n'.join(parts)))
             del lines[i:j+1]
     return found
-
-SPINNER = ['/', '-', '\\', '|']
-
-def _tool_line(buf, x, y, w, label, status='ok', detail=None):
-    icon, color = {'running': (SPINNER[int(time.time()*8)%4], 'yellow'), 'error': ('x', 'red')}.get(status, ('v', 'green'))
-    buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
-    buf.puts(x+4, y, label[:w-4], txt_color='blue')
-    if detail:
-        buf.puts(x+5+len(label), y, detail.replace('\n',' ')[:w-6-len(label)], txt_color='bright_black')
 
 
