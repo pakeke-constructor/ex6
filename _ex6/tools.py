@@ -560,11 +560,15 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        buf.puts(x, y, f"[{label}] ESCALATION", txt_color='red')
+        buf.fill(r, char=' ', bg_color=None)
+        buf.rect(r, txt_color='black')
+        cx = x + 3
+        cy = y + 1
+        buf.puts(cx, cy, f"[{label}] ESCALATION", txt_color='red', bg_color=None)
         words = reason.split()
         lines, line = [], ""
         for word in words:
-            if line and len(line) + 1 + len(word) > w - 2:
+            if line and len(line) + 1 + len(word) > w - 6:
                 lines.append(line)
                 line = word
             else:
@@ -572,12 +576,12 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
         if line:
             lines.append(line)
         for i, l in enumerate(lines):
-            if y + 1 + i >= y + h - 2:
+            if cy + 1 + i >= y + h - 2:
                 break
-            buf.puts(x, y + 1 + i, l, txt_color='yellow')
-        prompt_y = y + 1 + len(lines) + 1
-        buf.puts(x, prompt_y - 1, "Respond to agent:", txt_color='white')
-        input_draw(buf, inpt, (x + 2, prompt_y, w - 2, 1))
+            buf.puts(cx, cy + 1 + i, l, txt_color='yellow', bg_color=None)
+        prompt_y = cy + 1 + len(lines) + 1
+        buf.puts(cx, prompt_y - 1, "Respond to agent:", txt_color='white', bg_color=None)
+        input_draw(buf, inpt, (cx, prompt_y, w - 6, 1))
 
     ctx.push_ui(draw)
 
