@@ -519,7 +519,7 @@ class Context:
         return sum(len(m.content) // 3 for m in self.messages if isinstance(m.content, str))
 
     def is_token_count_estimate(self) -> bool:
-        "If no llmResult, then we are estimating the token-count via the //4 trick."
+        "If no llmResult, then we are estimating the token-count via the //3 trick."
         return not self.llm_result
 
     def __post_init__(self):
@@ -1174,7 +1174,7 @@ def render_selection_right(buf, r):
         label = msg.overview or msg.role
         content = msg.content if isinstance(msg.content, str) else msg._snapshot
         if content is not None:
-            toks = len(content) // 4
+            toks = len(content) // 3
             tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
         else:
             tokstr = "(func)"
