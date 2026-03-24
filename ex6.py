@@ -943,11 +943,16 @@ class InputPass:
         return False
 
     def consume_text(self) -> str:
+        n_printable = sum(1 for k in self._keys if not k.is_sequence and str(k).isprintable())
+        is_paste = n_printable > 1
         text = ""
         remaining = []
         for k in self._keys:
-            if not k.is_sequence and str(k).isprintable():
-                text += str(k)
+            s = str(k)
+            if not k.is_sequence and s.isprintable():
+                text += s
+            elif is_paste and (s == '\n' or k.name == 'KEY_ENTER'):
+                text += '\n'
             else:
                 remaining.append(k)
         self._keys[:] = remaining
