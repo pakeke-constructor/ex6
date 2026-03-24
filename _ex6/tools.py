@@ -71,6 +71,7 @@ def _check_read(ctx, path):
         raise ValueError(f"Must read file '{path}' before editing it.")
 
 
+
 LANG_MODULES = {
     '.py': 'tree_sitter_python', '.pyw': 'tree_sitter_python',
     '.js': 'tree_sitter_javascript', '.mjs': 'tree_sitter_javascript',
@@ -190,19 +191,20 @@ def _signature(node, source, mod_name):
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     """Write content to a file, creating it if needed. Existing files must be read first."""
-    with _get_file_lock(file):
-        if os.path.exists(file):
+    p = ctx.resolve(file)
+    with _get_file_lock(p):
+        if os.path.exists(p):
             _check_read(ctx, file)
-            with open(file, "r") as f:
+            with open(p, "r") as f:
                 old = f.read()
         else:
             old = ""
         diff = _make_diff(old, content)
         denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
-        d = os.path.dirname(file)
+        d = os.path.dirname(p)
         if d: os.makedirs(d, exist_ok=True)
-        with open(file, "w") as f:
+        with open(p, "w") as f:
             f.write(content)
         ctx.mark_file_read(file)
         return f"Wrote {len(content)} chars to {file}"
@@ -234,9 +236,10 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     r'''replace''')
     """
     _check_read(ctx, file)
+    p = ctx.resolve(file)
 
-    with _get_file_lock(file):
-        with open(file, "r") as f:
+    with _get_file_lock(p):
+        with open(p, "r") as f:
             content = f.read()
 
         def do_edit(original):
@@ -244,7 +247,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             diff = _make_diff(original, replace)
             denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
             if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
-            with open(file, "w") as f:
+            with open(p, "w") as f:
                 f.write(new_content)
             ctx.mark_file_read(file)
             return f"Updated {file}"
@@ -303,9 +306,10 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     Use this in conjunction with read_headers and/or read_body to replace/rewrite entire functions or classes.
     """
     _check_read(ctx, file)
+    p = ctx.resolve(file)
 
-    with _get_file_lock(file):
-        with open(file, "r") as f:
+    with _get_file_lock(p):
+        with open(p, "r") as f:
             lines = f.readlines()
 
         # snapshot check
@@ -343,7 +347,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         diff = _make_diff(old_text, new_text)
         denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
-        with open(file, "w") as f:
+        with open(p, "w") as f:
             f.writelines(new_lines)
         ctx.mark_file_read(file, list(range(1, len(new_lines) + 1)))
         return f"Edited {file}"
@@ -351,7 +355,8 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
 
 def glob(ctx: ex6.Context, pattern: str) -> str:
     """Find files matching a glob pattern (recursive). Returns newline-separated paths."""
-    matches = [m for m in _glob.glob(pattern, recursive=True) if not _is_gitignored(m)]
+    root = ctx.cwd or os.getcwd()
+    matches = [m for m in _glob.glob(pattern, recursive=True, root_dir=root) if not _is_gitignored(m)]
     return "\n".join(matches) if matches else "No matches."
 
 
@@ -366,12 +371,16 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     - Make sure to use regex patterns correctly. WRONG: search("func("), malformed regex pattern. CORRECT: search("func\\(")
     """
     regex = re.compile(pattern)
+    root = ctx.cwd or os.getcwd()
     results = []
-    for f in _glob.glob(match, recursive=True):
-        if not os.path.isfile(f) or _is_gitignored(f):
+    for f in _glob.glob(match, recursive=True, root_dir=root):
+        if _is_gitignored(f):
+            continue
+        fp = os.path.join(root, f)
+        if not os.path.isfile(fp):
             continue
         try:
-            with open(f, "r", errors="ignore") as fh:
+            with open(fp, "r", errors="ignore") as fh:
                 for i, line in enumerate(fh, 1):
                     if regex.search(line):
                         prefix = f"{f}:{i}: "
@@ -419,7 +428,8 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     """
     _check_gitignore(path)
-    with open(path, "r") as f:
+    p = ctx.resolve(path)
+    with open(p, "r") as f:
         content = f.read()
     ctx.mark_file_read(path, list(range(1, len(content.splitlines()) + 1)))
     if line_numbers:
@@ -436,7 +446,8 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
     """
     _check_gitignore(file)
-    tree, source, mod_name = _parse_file(file)
+    p = ctx.resolve(file)
+    tree, source, mod_name = _parse_file(p)
     if mod_name == 'tree_sitter_lua':
         result = _read_headers_lua(tree, source)
         n = len(source.decode().splitlines())
@@ -477,7 +488,8 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
     - Use this tool when you only need bits of information, like details about a particular function
     """
-    tree, source, mod_name = _parse_file(file)
+    p = ctx.resolve(file)
+    tree, source, mod_name = _parse_file(p)
     def_types = set(DEFINITION_TYPES.get(mod_name, []))
 
     def find(node):
@@ -670,9 +682,11 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
 
 
 def _get_claude_md_content(ctx):
+    root = ctx.cwd or os.getcwd()
     for p in ["CLAUDE.md", ".claude/CLAUDE.md"]:
-        if os.path.isfile(p):
-            with open(p, "r", encoding="utf-8") as f:
+        fp = os.path.join(root, p)
+        if os.path.isfile(fp):
+            with open(fp, "r", encoding="utf-8") as f:
                 return f.read()
     return "(no CLAUDE.md found)"
 
@@ -706,7 +720,7 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     if not bp:
         return "ERROR: bash not found (install Git for Windows)"
     try:
-        result = subprocess.run([bp, "-c", command], capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run([bp, "-c", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
         out = result.stdout + result.stderr
         if result.returncode != 0:
             out = f"[exit code {result.returncode}]\n" + out

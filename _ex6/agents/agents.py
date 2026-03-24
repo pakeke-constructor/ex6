@@ -95,10 +95,11 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
     if files:
         parts = []
         for f in files:
-            with open(f, "r") as fh:
+            fp = ctx.resolve(f)
+            with open(fp, "r") as fh:
                 parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
         prompt = "\n".join(parts) + "\n\n" + prompt
-    sub = Context("explore", model=EXPLORE_MODEL, reasoning="none", messages=[
+    sub = Context("explore", model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[
         EXPLORE_SYSTEM_PROMPT
     ])
     sub.parent = ctx.name
@@ -113,11 +114,11 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
 
 def _env_content(ctx):
-    cwd = os.getcwd()
+    cwd = ctx.cwd or os.getcwd()
     plat = platform.system()
     now = datetime.datetime.now().strftime("%Y-%m-%d")
     try:
-        branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL).strip()
+        branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL, cwd=cwd).strip()
     except Exception:
         branch = "unknown"
     return f"<environment>\n- cwd: {cwd}\n- platform: {plat}\n- date: {now}\n- git branch: {branch}\n</environment>"

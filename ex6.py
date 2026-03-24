@@ -508,6 +508,7 @@ class Context:
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
     _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
+    cwd: Optional[str] = None
     yolo: bool = False
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
@@ -515,7 +516,7 @@ class Context:
     def token_count(self) -> int:
         if self.llm_result:
             return self.llm_result.input_tokens + self.llm_result.output_tokens
-        return sum(len(m.content) // 4 for m in self.messages if isinstance(m.content, str))
+        return sum(len(m.content) // 3 for m in self.messages if isinstance(m.content, str))
 
     def is_token_count_estimate(self) -> bool:
         "If no llmResult, then we are estimating the token-count via the //4 trick."
@@ -531,8 +532,8 @@ class Context:
     def is_running(self): return self.llm_is_running
 
     def mark_file_read(self, path, read_line_numbers=None):
-        p = os.path.abspath(path)
-        with open(path, "rb") as f:
+        p = self.resolve(path)
+        with open(p, "rb") as f:
             data = f.read()
         self._read_hashes[p] = hashlib.md5(data).hexdigest()
         if read_line_numbers is not None:
@@ -542,13 +543,20 @@ class Context:
             self._line_snapshots[p].update({n: lines[n-1] for n in read_line_numbers})
 
     def get_line_snapshot(self, path):
-        return self._line_snapshots.get(os.path.abspath(path), {})
+        return self._line_snapshots.get(self.resolve(path), {})
+
+    def resolve(self, path: str) -> str:
+        """Resolve a path relative to this context's cwd."""
+        if os.path.isabs(path):
+            return os.path.normpath(path)
+        base = self.cwd or os.getcwd()
+        return os.path.normpath(os.path.join(base, path))
 
     def has_read_file(self, path):
-        p = os.path.abspath(path)
+        p = self.resolve(path)
         if p not in self._read_hashes:
             return False
-        with open(path, "rb") as f:
+        with open(p, "rb") as f:
             return self._read_hashes[p] == hashlib.md5(f.read()).hexdigest()
 
     def get_read_files(self):

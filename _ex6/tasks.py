@@ -38,15 +38,19 @@ import ex6
 
 TASKS_DIR = ".tasks"
 
-def _ensure_dir():
-    os.makedirs(TASKS_DIR, exist_ok=True)
+def _tasks_dir(ctx):
+    root = ctx.cwd or os.getcwd()
+    return os.path.join(root, TASKS_DIR)
+
+def _ensure_dir(ctx):
+    os.makedirs(_tasks_dir(ctx), exist_ok=True)
 
 def _base32_id():
     chars = "abcdefghijklmnopqrstuvwxyz234567"
     return "".join(random.choice(chars) for _ in range(3))
 
-def _task_path(task_id):
-    return os.path.join(TASKS_DIR, f"{task_id}.md")
+def _task_path(ctx, task_id):
+    return os.path.join(_tasks_dir(ctx), f"{task_id}.md")
 
 def _focused_id(ctx):
     tid = ctx.data.get("tasks:id")
@@ -57,16 +61,16 @@ def _focused_id(ctx):
 def _resolve_id(ctx, task_id):
     return task_id if task_id else _focused_id(ctx)
 
-def _read_task(task_id):
-    path = _task_path(task_id)
+def _read_task(ctx, task_id):
+    path = _task_path(ctx, task_id)
     if not os.path.isfile(path):
         raise ValueError(f"Task '{task_id}' not found at {path}")
     with open(path, "r") as f:
         return f.read()
 
-def _write_task(task_id, content):
-    _ensure_dir()
-    with open(_task_path(task_id), "w") as f:
+def _write_task(ctx, task_id, content):
+    _ensure_dir(ctx)
+    with open(_task_path(ctx, task_id), "w") as f:
         f.write(content)
 
 def _now():
@@ -104,7 +108,7 @@ def task_focus(ctx: ex6.Context, id: str) -> str:
     Focus on a task. Stores in ctx so subsequent task tools default to it.
     (You should ALWAYS focus a task before working on it. This makes subsequent calls easier.)
     """
-    path = _task_path(id)
+    path = _task_path(ctx, id)
     if not os.path.isfile(path):
         raise ValueError(f"Task '{id}' not found at {path}")
     ctx.data["tasks:id"] = id
@@ -115,10 +119,10 @@ def task_create(ctx: ex6.Context, description: str, objective: str = "") -> str:
     """Create a new task. Returns the task id (short base32 like 'dc5').
     description: short title for the task.
     objective: the broader goal and WHY this task matters. Human-editable."""
-    _ensure_dir()
+    _ensure_dir(ctx)
     for _ in range(20):
         tid = _base32_id()
-        if not os.path.isfile(_task_path(tid)):
+        if not os.path.isfile(_task_path(ctx, tid)):
             break
     else:
         raise ValueError("Could not generate unique task id")
@@ -126,7 +130,7 @@ def task_create(ctx: ex6.Context, description: str, objective: str = "") -> str:
     first_line = description.split('\n')[0]
     obj = objective or "(no objective yet — edit this section to describe the goal and why)"
     content = TASK_TEMPLATE.format(description=first_line, objective=obj, first_line=first_line, ts=ts)
-    _write_task(tid, content)
+    _write_task(ctx, tid, content)
     ctx.data["tasks:id"] = tid
     return f"Created task '{tid}'. Auto-focused."
 
@@ -134,7 +138,7 @@ def task_create(ctx: ex6.Context, description: str, objective: str = "") -> str:
 def task_read(ctx: ex6.Context, id: str = None) -> str:
     """Read a task's full contents. If id=None, reads the focused task."""
     tid = _resolve_id(ctx, id)
-    content = _read_task(tid)
+    content = _read_task(ctx, tid)
     # Label the objective section between title and --- as "task context"
     import re
     content = re.sub(
@@ -148,7 +152,7 @@ def task_read(ctx: ex6.Context, id: str = None) -> str:
 def task_write_plan(ctx: ex6.Context, full_plan: str, id: str = None) -> str:
     """Overwrite the <plan> section of a task. If id=None, writes to focused task."""
     tid = _resolve_id(ctx, id)
-    content = _read_task(tid)
+    content = _read_task(ctx, tid)
     import re
     new_content = re.sub(
         r"<plan>.*?</plan>",
@@ -157,7 +161,7 @@ def task_write_plan(ctx: ex6.Context, full_plan: str, id: str = None) -> str:
     )
     if new_content == content:
         raise ValueError(f"No <plan> section found in task '{tid}'")
-    _write_task(tid, new_content)
+    _write_task(ctx, tid, new_content)
     return f"Updated plan for task '{tid}'."
 
 
@@ -165,7 +169,7 @@ def task_write_done_criteria(ctx: ex6.Context, criteria: str, id: str = None) ->
     """Overwrite the <done_criteria> section of a task. If id=None, writes to focused task.
     criteria: a short list of verifiable conditions that define when this task is complete."""
     tid = _resolve_id(ctx, id)
-    content = _read_task(tid)
+    content = _read_task(ctx, tid)
     import re
     new_content = re.sub(
         r"<done_criteria>.*?</done_criteria>",
@@ -174,7 +178,7 @@ def task_write_done_criteria(ctx: ex6.Context, criteria: str, id: str = None) ->
     )
     if new_content == content:
         raise ValueError(f"No <done_criteria> section found in task '{tid}'")
-    _write_task(tid, new_content)
+    _write_task(ctx, tid, new_content)
     return f"Updated done_criteria for task '{tid}'."
 
 
@@ -187,10 +191,10 @@ def task_add_log(ctx: ex6.Context, short_str: str, type: str = "PROGRESS") -> st
       task_add_log("refactored parse_config, tests pass", "PROGRESS")
       task_add_log("user wants retry logic on 429s", "HUMAN")"""
     tid = _focused_id(ctx)
-    content = _read_task(tid)
+    content = _read_task(ctx, tid)
     entry = f"[{_now()}] [{type}] {short_str}"
     new_content = content.replace("</log>", f"{entry}\n</log>")
-    _write_task(tid, new_content)
+    _write_task(ctx, tid, new_content)
     return f"Logged to task '{tid}'."
 
 
@@ -198,7 +202,7 @@ def task_close(ctx: ex6.Context, id: str = None) -> str:
     """Close a task by deleting its file. Task files are version-controlled, so nothing is lost.
     If id=None, closes the focused task."""
     tid = _resolve_id(ctx, id)
-    path = _task_path(tid)
+    path = _task_path(ctx, tid)
     os.remove(path)
     if ctx.data.get("tasks:id") == tid:
         del ctx.data["tasks:id"]
@@ -219,7 +223,7 @@ def task_query_logs(ctx: ex6.Context, question: str, id: str = None) -> str:
     question: a natural-language question, e.g. "any blockers?" or "what was the last finding?"
     If id=None, queries the focused task."""
     tid = _resolve_id(ctx, id)
-    task_content = _read_task(tid)
+    task_content = _read_task(ctx, tid)
     sub = ex6.Context("task_query", model=QUERY_MODEL, messages=[QUERY_SYSTEM_PROMPT], reasoning="none")
     sub.parent = ctx.name
     prompt = f"<task>\n{task_content}\n</task>\n\nQuestion: {question}"
@@ -233,16 +237,17 @@ def task_query_logs(ctx: ex6.Context, question: str, id: str = None) -> str:
 
 def task_list(ctx: ex6.Context) -> str:
     """List all tasks with their id, status, and title."""
-    _ensure_dir()
+    _ensure_dir(ctx)
     import re
-    files = sorted(f for f in os.listdir(TASKS_DIR) if f.endswith(".md"))
+    td = _tasks_dir(ctx)
+    files = sorted(f for f in os.listdir(td) if f.endswith(".md"))
     if not files:
         return "No tasks."
     lines = []
     focused = ctx.data.get("tasks:id")
     for f in files:
         tid = f.removesuffix(".md")
-        with open(os.path.join(TASKS_DIR, f)) as fh:
+        with open(os.path.join(td, f)) as fh:
             text = fh.read()
         title_m = re.search(r"^# TASK: (.+)$", text, re.MULTILINE)
         title = title_m.group(1) if title_m else "?"
