@@ -950,6 +950,13 @@ class InputPass:
                 return True
         return False
 
+    def peek(self, *names: str) -> bool:
+        for k in self._keys:
+            key_name = self.KEY_ALIASES.get(str(k), k.name)
+            if key_name in names or k.name in names or str(k) in names:
+                return True
+        return False
+
     def consume_text(self) -> str:
         n_printable = sum(1 for k in self._keys if not k.is_sequence and str(k).isprintable())
         is_paste = n_printable > 1
@@ -1098,7 +1105,7 @@ def render_selection_mode_context_name(buf, ctx, x, y):
 
 
 @overridable
-def render_selection_left(buf, inpt, r):
+def render_selection_left(buf, inpt, r, allow_nav=True):
     x, y, w, h = r
     buf.rect_line(r, txt_color='blue')
 
@@ -1106,14 +1113,15 @@ def render_selection_left(buf, inpt, r):
     idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
 
     # navigation
-    if inpt.consume('KEY_UP') and idx > 0:
-        state.current = ctxs[idx - 1]
-    if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
-        state.current = ctxs[idx + 1]
-    if inpt.consume('k', 'w') and idx > 0:
-        state.current = ctxs[idx - 1]
-    if inpt.consume('j', 's') and idx < len(ctxs) - 1:
-        state.current = ctxs[idx + 1]
+    if allow_nav:
+        if inpt.consume('KEY_UP') and idx > 0:
+            state.current = ctxs[idx - 1]
+        if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
+            state.current = ctxs[idx + 1]
+        if inpt.consume('k', 'w') and idx > 0:
+            state.current = ctxs[idx - 1]
+        if inpt.consume('j', 's') and idx < len(ctxs) - 1:
+            state.current = ctxs[idx + 1]
 
     # draw list
     for i, ctx in enumerate(ctxs):
@@ -1435,7 +1443,7 @@ if __name__ == "__main__":
                         sel_input_box.set_text("")
                     if _sel_input_open:
                         left, right = main_r.split_horizontal(1, 3)
-                        render_selection_left(buf, inpt, left)
+                        render_selection_left(buf, inpt, left, allow_nav=False)
                         render_selection_right(buf, right)
                         buf.rect_line(input_r, txt_color='bright_red')
                         sel_input_box(buf, inpt, input_r.shrink(1))
