@@ -149,12 +149,11 @@ def exec_sandboxed(code: str, env: dict):
     """Execute code in RestrictedPython sandbox."""
     sandbox_globals = {"__builtins__": SAFE_BUILTINS.copy()}
     sandbox_globals["__import__"] = _no_import
-    _safe_modules = set(SAFE_MODULES.values())
     _safe_module_names = {"re", "json", "math", "time", "posixpath", "ntpath", "genericpath", "os.path"}
     def _getattr_(obj, name):
         if isinstance(obj, ToolResult) and name in ("get", "print", "status", "is_ok"):
             return getattr(obj, name)
-        if isinstance(obj, types.SimpleNamespace) or obj in _safe_modules:
+        if isinstance(obj, types.SimpleNamespace) or obj in SAFE_MODULES.values():
             return getattr(obj, name)
         obj_mod = getattr(type(obj), "__module__", None)
         if obj_mod in _safe_module_names:
