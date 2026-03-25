@@ -159,14 +159,10 @@ def _signature_python(node, source):
 
 def _signature_lua(node, source):
     sig = source[node.start_byte:node.end_byte].decode().split('\n')[0]
-    annotations = []
-    sib = node.prev_sibling
-    while sib and sib.type == 'comment' and sib.text.decode().startswith('---'):
-        annotations.append(sib.text.decode())
-        sib = sib.prev_sibling
-    if annotations:
-        annotations.reverse()
-        return '\n'.join(annotations) + '\n' + sig
+    sb, _ = _node_range_lua(node, source)
+    if sb < node.start_byte:
+        annotations = source[sb:node.start_byte].decode().rstrip('\n')
+        return annotations + '\n' + sig
     return sig
 
 
@@ -182,6 +178,26 @@ _SIGNATURE_FNS = {
     'tree_sitter_lua': _signature_lua,
     'tree_sitter_kotlin': _signature_kotlin,
 }
+
+
+def _node_range_lua(node, source):
+    """Return (start_byte, end_byte) including preceding ---@ annotations."""
+    start_byte = node.start_byte
+    sib = node.prev_sibling
+    while sib and sib.type == 'comment' and sib.text.decode().startswith('---'):
+        start_byte = sib.start_byte
+        sib = sib.prev_sibling
+    return start_byte, node.end_byte
+
+def _node_range_default(node, source):
+    return node.start_byte, node.end_byte
+
+_NODE_RANGE_FNS = {
+    'tree_sitter_lua': _node_range_lua,
+}
+
+def _node_range(node, source, mod_name):
+    return _NODE_RANGE_FNS.get(mod_name, _node_range_default)(node, source)
 
 
 def _signature(node, source, mod_name):
@@ -394,23 +410,34 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
 
 
 
-def _read_headers_lua(tree, source):
+def _read_headers_lua(tree, source, line_numbers=False):
     def_types = DEFINITION_TYPES['tree_sitter_lua']
     out = []
+    sig_line_nos = []
 
     def collect(node):
         for child in node.children:
             if child.type in def_types:
                 if out:
                     out.append("")
-                out.append(_signature_lua(child, source))
+                sb, _ = _node_range_lua(child, source)
+                line_no = source[:sb].count(b'\n') + 1
+                sig_line_nos.append(line_no)
+                sig = _signature_lua(child, source)
+                if line_numbers:
+                    sig_lines = sig.split('\n')
+                    for i, sl in enumerate(sig_lines):
+                        out.append(f"{line_no + i}: {sl}")
+                else:
+                    out.append(sig)
                 if child.type not in ('variable_declaration', 'assignment_statement'):
                     collect(child)
             else:
                 collect(child)
 
     collect(tree.root_node)
-    return "\n".join(out) if out else "No classes/functions found."
+    text = "\n".join(out) if out else "No classes/functions found."
+    return text, sig_line_nos
 
 
 
@@ -449,11 +476,8 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     p = ctx.resolve(file)
     tree, source, mod_name = _parse_file(p)
     if mod_name == 'tree_sitter_lua':
-        result = _read_headers_lua(tree, source)
-        n = len(source.decode().splitlines())
-        ctx.mark_file_read(file, list(range(1, n + 1)))
-        if line_numbers:
-            return _add_line_numbers(result)
+        result, sig_line_nos = _read_headers_lua(tree, source, line_numbers)
+        ctx.mark_file_read(file, sig_line_nos)
         return result
     def_types = DEFINITION_TYPES.get(mod_name, [])
     out = []
@@ -495,18 +519,20 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     def find(node):
         for child in node.children:
             if child.type in def_types and _get_name(child) == name:
-                start_line = source[:child.start_byte].count(b'\n') + 1
-                text = source[child.start_byte:child.end_byte].decode()
-                fn_lines = text.splitlines()
-                end_line = start_line + len(fn_lines) - 1
-                read_line_numbers = list(range(start_line, end_line + 1))
-                ctx.mark_file_read(file, read_line_numbers)
+                sb, eb = _node_range(child, source, mod_name)
+                start_line = source[:sb].count(b'\n') + 1
+                end_line = source[:eb].count(b'\n') + 1
+                text = source[sb:eb].decode()
                 if line_numbers:
                     all_lines = source.decode().splitlines()
                     s = max(start_line - 1, 1)
                     e = min(end_line + 1, len(all_lines))
+                    read_line_numbers = list(range(s, e + 1))
+                    ctx.mark_file_read(file, read_line_numbers)
                     chunk = "\n".join(all_lines[s-1:e])
                     return _add_line_numbers(chunk, s)
+                read_line_numbers = list(range(start_line, end_line + 1))
+                ctx.mark_file_read(file, read_line_numbers)
                 return text
             result = find(child)
             if result:
