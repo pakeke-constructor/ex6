@@ -150,6 +150,27 @@ def exec_sandboxed(code: str, env: dict):
     exec(result.code, sandbox_globals)
 
 
+def _validate_tool_args(fn, args, kwargs):
+    """Validate arg types against function annotations. Raises TypeError on mismatch."""
+    sig = inspect.signature(fn)
+    params = [(n, p) for n, p in sig.parameters.items() if n != 'ctx']
+    # bind args to param names
+    bound = {}
+    for i, (name, p) in enumerate(params):
+        if i < len(args):
+            bound[name] = args[i]
+        elif name in kwargs:
+            bound[name] = kwargs[name]
+    for name, val in bound.items():
+        p = sig.parameters[name]
+        if p.annotation is inspect.Parameter.empty:
+            continue
+        if not isinstance(val, p.annotation):
+            raise TypeError(
+                f"{fn.__name__}() param '{name}' expected {p.annotation.__name__}, got {type(val).__name__}: {val!r}"
+            )
+
+
 def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list):
     """Wrap tool to run in thread. Returns ToolResult with .get()/.print()/.status()."""
     def wrapper(*args, **kwargs):
@@ -158,6 +179,12 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list)
             return s if len(s) <= maxlen else s[:maxlen] + '...'
         call_str = f'{fn.__name__}({", ".join(_short(a) for a in args)})'
         tr = ToolResult(call_str, results)
+        try:
+            _validate_tool_args(fn, args, kwargs)
+        except TypeError as e:
+            tr._set_error(e)
+            tool_infos.append((fn.__name__, list(args), None, tr))
+            return tr
         def run():
             try: tr._set(fn(ctx, *args, **kwargs))
             except Exception as e:
@@ -196,11 +223,15 @@ def make_code_mode_tool(tools: list):
         results, threads, tool_infos = [], [], []
         env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads, tool_infos) for fn in tools}
 
+        exec_error = None
         if tool_call_id:
             def code_render(buf, x, y, w):
                 row = 0
+                if exec_error:
+                    ex6.render_tool_line(buf, x, y + row, w, "run_tools", [], 'error', str(exec_error))
+                    row += 1
                 for name, args, t, tr in tool_infos:
-                    alive = t.is_alive()
+                    alive = t is not None and t.is_alive()
                     status = 'running' if alive else ('error' if tr._error else 'ok')
                     detail = None if alive else (str(tr._error) if tr._error else None)
                     ex6.render_tool_line(buf, x, y + row, w, name, args, status, detail)
@@ -210,6 +241,7 @@ def make_code_mode_tool(tools: list):
         try:
             exec_sandboxed(code, env)
         except Exception as e:
+            exec_error = e
             for t in threads: t.join()
             raise ValueError(f"exec failed: {e}")
         for t in threads: t.join()
