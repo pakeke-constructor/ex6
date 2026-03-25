@@ -80,8 +80,12 @@ This is by design; the LLM decides what's worth seeing.
 
 import inspect
 import json
+import math
+import os.path
+import re
 import threading
 import time
+import types
 import ex6
 from RestrictedPython import compile_restricted_exec
 
@@ -96,6 +100,14 @@ SAFE_BUILTINS = {
     "min": min, "max": max, "sum": sum, "all": all, "any": any,
     "str": str, "repr": repr, "format": format,
     "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
+}
+
+SAFE_MODULES = {
+    "re": re,
+    "json": json,
+    "math": math,
+    "time": time,
+    "os": types.SimpleNamespace(path=os.path),
 }
 
 class ToolResult:
@@ -137,11 +149,19 @@ def exec_sandboxed(code: str, env: dict):
     """Execute code in RestrictedPython sandbox."""
     sandbox_globals = {"__builtins__": SAFE_BUILTINS.copy()}
     sandbox_globals["__import__"] = _no_import
+    _safe_modules = set(SAFE_MODULES.values())
+    _safe_module_names = {"re", "json", "math", "time", "posixpath", "ntpath", "genericpath", "os.path"}
     def _getattr_(obj, name):
         if isinstance(obj, ToolResult) and name in ("get", "print", "status", "is_ok"):
             return getattr(obj, name)
+        if isinstance(obj, types.SimpleNamespace) or obj in _safe_modules:
+            return getattr(obj, name)
+        obj_mod = getattr(type(obj), "__module__", None)
+        if obj_mod in _safe_module_names:
+            return getattr(obj, name)
         raise AttributeError(f"no attribute {name}")
     sandbox_globals["_getattr_"] = _getattr_
+    sandbox_globals.update(SAFE_MODULES)
     sandbox_globals.update(env)
 
     result = compile_restricted_exec(code, '<tools>')
@@ -284,7 +304,7 @@ read_file("a.py")
 # BAD — print() does not exist:
 print(read_file("a.py").get())
 
-# BAD — importing doesn't work:
+# BAD — importing doesn't work (modules like re, json, math, time, os.path are pre-loaded):
 import os
 os.listdir(".")
 ```
@@ -314,6 +334,13 @@ def make_code_mode_system_prompt(tools: list, include_common_mistakes: bool = Fa
 Use the `{RUN_TOOLS_NAME}` tool. The `code` param is sandboxed Python.
 IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
 Combine multiple calls in a single run_tools block — they execute in parallel.
+
+These modules are pre-loaded and available directly (no import needed):
+- `re` — regex: re.search(), re.findall(), re.sub(), etc.
+- `json` — json.loads(), json.dumps()
+- `math` — math.ceil(), math.floor(), math.log(), etc.
+- `time` — time.sleep(), time.time()
+- `os.path` — os.path.join(), os.path.basename(), os.path.dirname(), etc.
 
 <tool_results>
 Every tool call returns a ToolResult, which is a future containing the task's output and status.
