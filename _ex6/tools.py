@@ -712,6 +712,9 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
     ctx.push_ui(draw)
 
     while draw in ctx.ui_stack:
+        if ctx.stop_early:
+            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+            return "stopped"
         time.sleep(0.05)
 
     return result[1]

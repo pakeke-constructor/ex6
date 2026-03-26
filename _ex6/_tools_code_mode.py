@@ -78,7 +78,10 @@ def call_tools(ctx: ex6.Context, llmres: ex6.LLMResult) -> bool:
         t.start()
         threads.append(t)
 
-    for t in threads: t.join()
+    for t in threads:
+        while t.is_alive():
+            if ctx.stop_early: return False
+            t.join(timeout=0.1)
 
     if results:
         parts = [f"<tool_result {cs}>\n{r['value']}\n</tool_result>" for cs, r in results]

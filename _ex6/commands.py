@@ -33,7 +33,7 @@ def fork(name: Optional[str]):
 def stop():
     ctx = ex6.state.current
     if ctx and ctx.is_running():
-        ctx._stop_early = True
+        ctx.stop_early = True
 
 
 @ex6.command

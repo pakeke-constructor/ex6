@@ -505,7 +505,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
         threads.append(t)
 
     for t in threads:
-        t.join()
+        while t.is_alive():
+            if ctx.stop_early: return False
+            t.join(timeout=0.1)
     for r in results:
         ctx.messages.append(Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
     return True
@@ -527,7 +529,7 @@ class Context:
     ui_stack: list = field(default_factory=list)
     _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
-    _stop_early: bool = False
+    stop_early: bool = False
     parent: Optional[str] = None # name of parent context (for subagents)
     data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
@@ -605,14 +607,14 @@ class Context:
         llm_fn = llm_fn or invoke_llm
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
-        self._stop_early = False
+        self.stop_early = False
 
         def do_llm():
             self.last_invoke_time_start = time.time()
             self.llm_current_output = []
             self.llm_result = None
             for item in llm_fn(self):
-                if self._stop_early: return
+                if self.stop_early: return
                 if isinstance(item, ResponseChunk):
                     self.llm_current_output.append(item)
                 elif isinstance(item, LLMResult):
@@ -623,7 +625,7 @@ class Context:
 
         def run():
             should_loop = True
-            while should_loop and not self._stop_early:
+            while should_loop and not self.stop_early:
                 do_llm()
                 if not self.llm_result: break
                 self.llm_suspended = True
@@ -1460,7 +1462,7 @@ if __name__ == "__main__":
                     if inpt.consume('KEY_ESCAPE'):
                         state.mode = "selection"
                     if inpt.consume('KEY_CTRL_X') and state.current.is_running():
-                        state.current._stop_early = True
+                        state.current.stop_early = True
                 elif state.mode == "selection":
                     if not _sel_input_open and inpt.consume("KEY_ENTER"):
                         state.mode = "work"
