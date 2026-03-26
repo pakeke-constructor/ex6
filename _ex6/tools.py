@@ -453,7 +453,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: tu
     - Prefer line_numbers=False to avoid bloat. 
     - Use line_numbers=True if you are doing deep work with this file.
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
-    - lines=(start,end) to read a subset (1-indexed, inclusive). Implies line_numbers=True.
+    - lines=(start,end) to read a subset (1-indexed, inclusive). (Forces line_numbers=True)
     """
     _check_gitignore(path)
     p = ctx.resolve(path)
