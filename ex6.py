@@ -657,6 +657,7 @@ class Context:
         cpy._tool_renderers = {}
         cpy.ui_stack = []
         cpy._input_box = None
+        cpy.llm_is_running = False
         cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.parent = self.name
         cpy.__post_init__()
