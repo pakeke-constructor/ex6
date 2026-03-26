@@ -1,5 +1,24 @@
 
 '''
+
+
+<SIMPLIFY>
+PLAN TO SIMPLIFY THIS FILE:
+
+There are WAYYY too many tools here. it's weird and over-abstracted.
+
+Replace tasks with a simple plan API. Keep it simple:
+- plan_write()
+- plan_read()
+- plan_add_log()
+- plan_done()
+
+And likewise, python code should be able to glue/inject plans into agents.
+eg: (create a fresh context, inject plan, tell agent to implement)
+eg 2: a /go command that clears the current context, injects the plan, and goes.
+
+</SIMPLIFY>
+
 tasks.py: tools for LLMs to manage tasks.
 
 

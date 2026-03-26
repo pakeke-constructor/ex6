@@ -1298,7 +1298,7 @@ def render_work_mode(buf, inpt, r):
 def render_work_mode_input(buf, inpt, input_r, input_box):
     ctx = state.current
     if ctx.is_running():
-        input_box(buf, inpt, input_r, txt_color="red")
+        input_box(buf, inpt, input_r, txt_color="blue")
         spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         chunks = ctx.llm_current_output
