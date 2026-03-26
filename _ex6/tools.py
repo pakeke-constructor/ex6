@@ -447,18 +447,25 @@ def _add_line_numbers(text: str, start: int = 1) -> str:
     w = len(str(start + len(lines) - 1))
     return "\n".join(f"{i:>{w}}: {line}" for i, line in enumerate(lines, start))
 
-def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False) -> str:
+def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: tuple = None) -> str:
     """
     Read and return contents of a file at the given path.
     - Prefer line_numbers=False to avoid bloat. 
     - Use line_numbers=True if you are doing deep work with this file.
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
+    - lines=(start,end) to read a subset (1-indexed, inclusive). Implies line_numbers=True.
     """
     _check_gitignore(path)
     p = ctx.resolve(path)
     with open(p, "r") as f:
-        content = f.read()
-    ctx.mark_file_read(path, list(range(1, len(content.splitlines()) + 1)))
+        all_lines = f.readlines()
+    if lines:
+        start, end = lines
+        selected = all_lines[start-1:end]
+        ctx.mark_file_read(path, list(range(start, end + 1)))
+        return _add_line_numbers("".join(selected), start=start)
+    content = "".join(all_lines)
+    ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
     if line_numbers:
         return _add_line_numbers(content)
     return content
