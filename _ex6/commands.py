@@ -30,6 +30,13 @@ def fork(name: Optional[str]):
 
 
 @ex6.command
+def stop():
+    ctx = ex6.state.current
+    if ctx and ctx.is_running():
+        ctx._stop_early = True
+
+
+@ex6.command
 def yolo():
     ctx = ex6.state.current
     if not ctx: return

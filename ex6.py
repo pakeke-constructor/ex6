@@ -669,7 +669,7 @@ class Context:
 def _ctx_input_submit(ctx, text):
     if text.startswith("/"):
         dispatch_command(text)
-    else:
+    elif not ctx.is_running():
         ctx.invoke(text)
 
 
@@ -1037,10 +1037,10 @@ class InputBox:
         if not lines: return 0, 0
         return len(lines) - 1, len(lines[-1])
 
-    def __call__(self, buf: ScreenBuffer, inpt, r):
-        self.draw(buf, inpt, r)
+    def __call__(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
+        self.draw(buf, inpt, r, txt_color=txt_color)
 
-    def draw(self, buf: ScreenBuffer, inpt, r):
+    def draw(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
         inner_w = r[2]
         if inner_w < 1: return
 
@@ -1086,9 +1086,9 @@ class InputBox:
         for i, line in enumerate(visual_lines[scroll:scroll + max_visible]):
             vi = i + scroll
             if vi == cy:
-                buf.puts(r[0], r[1]+i, line[:cx] + cursor_char + line[cx:], txt_color='white')
+                buf.puts(r[0], r[1]+i, line[:cx] + cursor_char + line[cx:], txt_color=txt_color)
             else:
-                buf.puts(r[0], r[1]+i, line, txt_color='white')
+                buf.puts(r[0], r[1]+i, line, txt_color=txt_color)
 
     def get_height(self, width):
         if width < 1: return 1
@@ -1298,21 +1298,24 @@ def render_work_mode(buf, inpt, r):
 def render_work_mode_input(buf, inpt, input_r, input_box):
     ctx = state.current
     if ctx.is_running():
+        input_box(buf, inpt, input_r, txt_color="red")
         spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         chunks = ctx.llm_current_output
-        x = input_r[0]
         y = input_r[1]
-        buf.puts(x, y, spin, txt_color='bright_yellow'); x += 4
         if chunks:
             toks = sum(c.tokens for c in chunks)
             last_type = chunks[-1].type
             label = "thinking..." if last_type == "cot" else "outputting..."
-            buf.puts(x, y, label, txt_color='blue'); x += len(label)
-            buf.puts(x, y, f" ({toks} toks, {elapsed}) ", txt_color='bright_black')
+            stats = f" ({toks} toks, {elapsed}) "
         else:
-            buf.puts(x, y, "invoking...", txt_color='blue'); x += 11
-            buf.puts(x, y, f" ({elapsed}) ", txt_color='bright_black')
+            label = "invoking..."
+            stats = f" ({elapsed}) "
+        total_w = 4 + len(label) + len(stats)
+        x = input_r[0] + input_r[2] - total_w
+        buf.puts(x, y, spin, txt_color='bright_yellow'); x += 4
+        buf.puts(x, y, label, txt_color='blue'); x += len(label)
+        buf.puts(x, y, stats, txt_color='bright_black')
     else:
         input_box(buf, inpt, input_r)
 
@@ -1429,10 +1432,7 @@ if __name__ == "__main__":
 
                 if state.mode == "work":
                     # work mode: no boxes, divider, 2 lines bottom padding
-                    if not state.current.is_running():
-                        input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
-                    else:
-                        input_h = 1
+                    input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
                     divider_y = term.height - 4 - input_h - 1
                     input_r = Region(0, divider_y + 1, term.width, input_h)
                     main_r = Region(0, 0, term.width, divider_y)
@@ -1452,7 +1452,9 @@ if __name__ == "__main__":
                     render_work_mode(buf, inpt, main_r)
                     div_color = 'bright_yellow' if state.current.is_running() else 'bright_black'
                     buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
-                    render_work_mode_input(buf, inpt, input_r, input_box)
+                    if not state.current.ui_stack:
+                        # only render work-mode input when we dont have blocking panels
+                        render_work_mode_input(buf, inpt, input_r, input_box)
                     buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
                     if inpt.consume('KEY_ESCAPE'):
                         state.mode = "selection"
