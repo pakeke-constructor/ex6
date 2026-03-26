@@ -516,33 +516,44 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     tree, source, mod_name = _parse_file(p)
     def_types = set(DEFINITION_TYPES.get(mod_name, []))
 
-    def find(node):
+    def find(node, target):
         for child in node.children:
-            if child.type in def_types and _get_name(child) == name:
-                sb, eb = _node_range(child, source, mod_name)
-                start_line = source[:sb].count(b'\n') + 1
-                end_line = source[:eb].count(b'\n') + 1
-                text = source[sb:eb].decode()
-                if line_numbers:
-                    all_lines = source.decode().splitlines()
-                    s = max(start_line - 1, 1)
-                    e = min(end_line + 1, len(all_lines))
-                    read_line_numbers = list(range(s, e + 1))
-                    ctx.mark_file_read(file, read_line_numbers)
-                    chunk = "\n".join(all_lines[s-1:e])
-                    return _add_line_numbers(chunk, s)
-                read_line_numbers = list(range(start_line, end_line + 1))
-                ctx.mark_file_read(file, read_line_numbers)
-                return text
-            result = find(child)
+            if child.type in def_types and _get_name(child) == target:
+                return child
+            result = find(child, target)
             if result:
                 return result
         return None
 
-    result = find(tree.root_node)
-    if not result:
+    # exact match on full name (handles Lua's "module.func" style)
+    hit = find(tree.root_node, name)
+
+    # dotted nested lookup (handles Python's Class.method style)
+    if not hit and '.' in name:
+        parts = name.split('.')
+        node = tree.root_node
+        for part in parts:
+            node = find(node, part)
+            if not node:
+                break
+        hit = node
+
+    if not hit:
         raise ValueError(f"'{name}' not found in {file}")
-    return result
+
+    sb, eb = _node_range(hit, source, mod_name)
+    start_line = source[:sb].count(b'\n') + 1
+    end_line = source[:eb].count(b'\n') + 1
+    text = source[sb:eb].decode()
+    if line_numbers:
+        all_lines = source.decode().splitlines()
+        s = max(start_line - 1, 1)
+        e = min(end_line + 1, len(all_lines))
+        ctx.mark_file_read(file, list(range(s, e + 1)))
+        chunk = "\n".join(all_lines[s-1:e])
+        return _add_line_numbers(chunk, s)
+    ctx.mark_file_read(file, list(range(start_line, end_line + 1)))
+    return text
 
 
 
