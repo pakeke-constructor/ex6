@@ -260,41 +260,45 @@ def invoke_llm(ctx: ex6.Context):
     tool_calls_acc = {}
     chunk_count = 0
 
-    for chunk in response:
-        chunk_count += 1
-        delta = chunk.choices[0].delta if chunk.choices else None
+    try:
+        for chunk in response:
+            chunk_count += 1
+            delta = chunk.choices[0].delta if chunk.choices else None
 
-        if delta and delta.content:
-            yield ex6.ResponseChunk("text", delta.content)
+            if delta and delta.content:
+                yield ex6.ResponseChunk("text", delta.content)
 
-        # CoT (OpenRouter reasoning field)
-        reasoning = getattr(delta, 'reasoning', None) if delta else None
-        if reasoning:
-            yield ex6.ResponseChunk("cot", reasoning, len(reasoning))
+            # CoT (OpenRouter reasoning field)
+            reasoning = getattr(delta, 'reasoning', None) if delta else None
+            if reasoning:
+                yield ex6.ResponseChunk("cot", reasoning, len(reasoning))
 
-        if delta and delta.tool_calls:
-            for tc in delta.tool_calls:
-                idx = tc.index
-                if idx not in tool_calls_acc:
-                    tool_calls_acc[idx] = {"id": tc.id, "name": "", "args": ""}
-                if tc.function:
-                    if tc.function.name:
-                        tool_calls_acc[idx]["name"] = tc.function.name
-                    if tc.function.arguments:
-                        tool_calls_acc[idx]["args"] += tc.function.arguments
+            if delta and delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_acc:
+                        tool_calls_acc[idx] = {"id": tc.id, "name": "", "args": ""}
+                    if tc.function:
+                        if tc.function.name:
+                            tool_calls_acc[idx]["name"] = tc.function.name
+                        if tc.function.arguments:
+                            tool_calls_acc[idx]["args"] += tc.function.arguments
 
-        if chunk.choices and chunk.choices[0].finish_reason:
-            finish_reason = chunk.choices[0].finish_reason
+            if chunk.choices and chunk.choices[0].finish_reason:
+                finish_reason = chunk.choices[0].finish_reason
 
-        if hasattr(chunk, 'usage') and chunk.usage:
-            input_tokens = chunk.usage.prompt_tokens or 0
-            output_tokens = chunk.usage.completion_tokens or 0
-            details = getattr(chunk.usage, 'prompt_tokens_details', None)
-            if details:
-                cached_tokens = getattr(details, 'cached_tokens', 0) or 0
-                cache_write_tokens = getattr(details, 'cache_write_tokens', 0) or 0
-            provider_cost = getattr(chunk.usage, 'cost', None)
-
+            if hasattr(chunk, 'usage') and chunk.usage:
+                input_tokens = chunk.usage.prompt_tokens or 0
+                output_tokens = chunk.usage.completion_tokens or 0
+                details = getattr(chunk.usage, 'prompt_tokens_details', None)
+                if details:
+                    cached_tokens = getattr(details, 'cached_tokens', 0) or 0
+                    cache_write_tokens = getattr(details, 'cache_write_tokens', 0) or 0
+                provider_cost = getattr(chunk.usage, 'cost', None)
+    except Exception as e:
+        ex6.debug_print(f"[invoke] stream exception: {e}")
+        yield ex6.LLMResult(error=str(e))
+        return
     ex6.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
 
     tool_calls = []
