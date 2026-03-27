@@ -579,7 +579,8 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        buf.puts(x, y, f"? {question}", txt_color='yellow')
+        th = ex6.state.theme
+        buf.puts(x, y, f"? {question}", txt_color=th.warning)
         input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
 
     ctx.push_ui(draw)
@@ -617,11 +618,12 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
+        th = ex6.state.theme
         buf.fill(r, char=' ', bg_color=None)
-        buf.rect(r, txt_color='black')
+        buf.rect(r, txt_color=th.muted)
         cx = x + 3
         cy = y + 1
-        buf.puts(cx, cy, f"[{label}] ESCALATION", txt_color='red', bg_color=None)
+        buf.puts(cx, cy, f"[{label}] ESCALATION", txt_color=th.error, bg_color=None)
         words = reason.split()
         lines, line = [], ""
         for word in words:
@@ -635,9 +637,9 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
         for i, l in enumerate(lines):
             if cy + 1 + i >= y + h - 2:
                 break
-            buf.puts(cx, cy + 1 + i, l, txt_color='yellow', bg_color=None)
+            buf.puts(cx, cy + 1 + i, l, txt_color=th.warning, bg_color=None)
         prompt_y = cy + 1 + len(lines) + 1
-        buf.puts(cx, prompt_y - 1, "Respond to agent:", txt_color='white', bg_color=None)
+        buf.puts(cx, prompt_y - 1, "Respond to agent:", txt_color=th.text, bg_color=None)
         input_draw(buf, inpt, (cx, prompt_y, w - 6, 1))
 
     ctx.push_ui(draw)
@@ -657,7 +659,6 @@ def _make_diff(old: str, new: str) -> list:
     return [l.replace('\n', ' ').replace('\r', '') for l in lines]
 
 
-
 def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     """Render diff lines into a region, with optional syntax highlighting."""
     from _ex6.z_highlight_codeblock import render_highlighted_line
@@ -672,15 +673,15 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     visible = diff_lines[:max_lines - 1] if truncated else diff_lines
     for i, line in enumerate(visible):
         if line.startswith('@@'):
-            buf.puts(x, y + i, line[:w], txt_color='cyan'); continue
-        bg = (18, 60, 18) if line.startswith('+') else (60, 18, 18) if line.startswith('-') else None
+            buf.puts(x, y + i, line[:w], txt_color=ex6.state.theme.accent_alt); continue
+        bg = ex6.state.theme.diff_add_bg if line.startswith('+') else ex6.state.theme.diff_del_bg if line.startswith('-') else None
         if lexer:
             render_highlighted_line(buf, x, y + i, w, line, lexer, bg_color=bg)
         else:
-            buf.puts(x, y + i, line[:w], txt_color='white', bg_color=bg); continue
+            buf.puts(x, y + i, line[:w], txt_color=ex6.state.theme.text, bg_color=bg); continue
     if truncated:
         remainder = len(diff_lines) - len(visible)
-        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color='bright_black')
+        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color=ex6.state.theme.muted)
     return len(visible) + (1 if truncated else 0)
 
 
@@ -700,12 +701,13 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
+        th = ex6.state.theme
         buf.fill(r, char=' ', bg_color=None)
-        buf.rect(r, txt_color='black')
+        buf.rect(r, txt_color=th.muted)
         cx = x + 3
         cy = y + 1
-        buf.puts(cx, cy,   description, txt_color='cyan', bg_color=None)
-        buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color='white', bg_color=None)
+        buf.puts(cx, cy,   description, txt_color=th.accent_alt, bg_color=None)
+        buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color=th.text, bg_color=None)
         if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
             result[0] = True
             ctx.ui_stack.pop()

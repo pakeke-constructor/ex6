@@ -15,13 +15,13 @@ import re
 
 # Patterns: (regex, color, style)
 PATTERNS = [
-    (r'^(#{1,6}\s.*)$', 'yellow', 'bold'),       # headers
-    (r'(\*\*[^*]+\*\*)', 'bright_white', 'bold'),# **bold**
-    (r'(\*[^*]+\*)', 'magenta', None),           # *italic*
-    (r'(`[^`]+`)', 'green', None),               # `code`
-    (r'^(\s*[-*]\s)', 'cyan', None),             # bullet points
-    (r'^(\s*\d+\.\s)', 'cyan', None),            # numbered lists
-    (r'(\[[^\]]+\]\([^)]+\))', 'blue', None),    # [links](url)
+    (r'^(#{1,6}\s.*)$', ex6.state.theme.warning, 'bold'),       # headers
+    (r'(\*\*[^*]+\*\*)', ex6.state.theme.md_bold, 'bold'),# **bold**
+    (r'(\*[^*]+\*)', ex6.state.theme.md_italic, None),           # *italic*
+    (r'(`[^`]+`)', ex6.state.theme.md_code, None),               # `code`
+    (r'^(\s*[-*]\s)', ex6.state.theme.md_bullet, None),             # bullet points
+    (r'^(\s*\d+\.\s)', ex6.state.theme.md_bullet, None),            # numbered lists
+    (r'(\[[^\]]+\]\([^)]+\))', ex6.state.theme.md_link, None),    # [links](url)
 ]
 
 
@@ -35,7 +35,7 @@ def make_md_renderer(line: str) -> ex6.RenderFn:
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         wr = buf.writer(x, y, w)
         for i, ch in enumerate(line):
-            color, style = 'white', None
+            color, style = ex6.state.theme.text, None
             for start, end, c, s in spans:
                 if start <= i < end:
                     color, style = c, s

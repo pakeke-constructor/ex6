@@ -22,29 +22,30 @@ def compress_system_prompt(lines: list, msg: ex6.Message, ctx: ex6.Context) -> N
     expanded = [False]
 
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
+        th = ex6.state.theme
         if expanded[0]:
             row = 0
             for line in full_text.split("\n"):
-                drawn = buf.print_wrapped(line, x, y + row, w, txt_color='bright_black')
+                drawn = buf.print_wrapped(line, x, y + row, w, txt_color=th.muted)
                 row += drawn
             # collapse footer
             wr = buf.writer(x, y + row, w)
-            wr.put('[', txt_color='white')
-            for c in 'system': wr.put(c, txt_color='red')
-            wr.put(':', txt_color='white')
-            for c in ' click to collapse': wr.put(c, txt_color='bright_black')
-            wr.put(']', txt_color='white')
+            wr.put('[', txt_color=th.text)
+            for c in 'system': wr.put(c, txt_color=th.error)
+            wr.put(':', txt_color=th.text)
+            for c in ' click to collapse': wr.put(c, txt_color=th.muted)
+            wr.put(']', txt_color=th.text)
             return row + wr.lines
         else:
             wr = buf.writer(x, y, w)
-            wr.put('[', txt_color='white')
-            for c in 'system': wr.put(c, txt_color='red')
-            wr.put(' ', txt_color='white')
-            for c in f'~{char_count}c, {line_count}L': wr.put(c, txt_color='blue')
-            wr.put(':', txt_color='white')
-            wr.put(' ', txt_color='white')
-            for c in preview: wr.put(c, txt_color='bright_black')
-            wr.put(']', txt_color='white')
+            wr.put('[', txt_color=th.text)
+            for c in 'system': wr.put(c, txt_color=th.error)
+            wr.put(' ', txt_color=th.text)
+            for c in f'~{char_count}c, {line_count}L': wr.put(c, txt_color=th.accent)
+            wr.put(':', txt_color=th.text)
+            wr.put(' ', txt_color=th.text)
+            for c in preview: wr.put(c, txt_color=th.muted)
+            wr.put(']', txt_color=th.text)
             return wr.lines
 
     lines[:] = [render]

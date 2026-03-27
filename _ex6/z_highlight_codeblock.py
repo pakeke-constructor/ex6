@@ -4,24 +4,24 @@ from pygments.token import Token
 
 # Map token types to blessed colors
 TOKEN_COLORS = {
-    Token.Keyword: 'magenta',
-    Token.Keyword.Constant: 'magenta',
-    Token.Name.Function: 'cyan',
-    Token.Name.Class: 'cyan',
-    Token.Name.Builtin: 'cyan',
-    Token.String: 'green',
-    Token.Literal.String: 'green',
-    Token.Number: 'yellow',
-    Token.Comment: 'bright_black',
-    Token.Operator: 'red',
-    Token.Punctuation: 'white',
+    Token.Keyword: ex6.state.theme.md_italic,
+    Token.Keyword.Constant: ex6.state.theme.md_italic,
+    Token.Name.Function: ex6.state.theme.accent_alt,
+    Token.Name.Class: ex6.state.theme.accent_alt,
+    Token.Name.Builtin: ex6.state.theme.accent_alt,
+    Token.String: ex6.state.theme.md_code,
+    Token.Literal.String: ex6.state.theme.md_code,
+    Token.Number: ex6.state.theme.warning,
+    Token.Comment: ex6.state.theme.muted,
+    Token.Operator: ex6.state.theme.error,
+    Token.Punctuation: ex6.state.theme.text,
 }
 
 def get_color(ttype) -> str:
     while ttype:
         if ttype in TOKEN_COLORS: return TOKEN_COLORS[ttype]
         ttype = ttype.parent
-    return 'white'
+    return ex6.state.theme.text
 
 
 def render_highlighted_line(buf, x, y, w, text, lexer, bg_color=None):

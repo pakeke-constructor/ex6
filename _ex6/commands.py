@@ -87,16 +87,16 @@ def _text_panel(lines):
     scroll = [0]
     def draw(buf, inpt, r):
         x, y, w, h = r
+        th = ex6.state.theme
         buf.fill(r, ' ')
-        buf.rect_line(r, txt_color='blue')
+        buf.rect_line(r, txt_color=th.accent)
         if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
         if inpt.consume('KEY_DOWN'): scroll[0] += 1
         visible = h - 2
         max_scroll = max(0, len(lines) - visible)
         if scroll[0] > max_scroll: scroll[0] = max_scroll
         for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
-            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color='white')
-    ex6.push_ui_panel(draw)
+            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
 
 
 
@@ -124,13 +124,13 @@ def cm(msg: Optional[str]):
 
     def draw(buf, inpt, r):
         x, y, w, h = r
+        th = ex6.state.theme
         buf.fill(r, ' ')
-        buf.rect_line(r, txt_color='blue')
+        buf.rect_line(r, txt_color=th.accent)
         visible = h - 2
         start = max(0, len(output_lines) - visible)
         for i, line in enumerate(output_lines[start:start + visible]):
-            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color='white')
-
+            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
     done_time = [None]
 
     def draw_auto_close(buf, inpt, r):

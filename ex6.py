@@ -293,13 +293,36 @@ def override(fn):
 
 
 @dataclass
+class Theme:
+    name: str = "default"
+    text: str = "white"
+    muted: str = "bright_black"
+    accent: str = "blue"
+    accent_alt: str = "cyan"
+    success: str = "green"
+    warning: str = "yellow"
+    error: str = "red"
+    running: str = "bright_blue"
+    invoking: str = "bright_yellow"
+    selection: str = "red"
+    error_bg: tuple = (80, 0, 0)
+    diff_add_bg: tuple = (18, 60, 18)
+    diff_del_bg: tuple = (60, 18, 18)
+    md_bullet: str = "cyan"
+    md_code: str = "green"
+    md_link: str = "blue"
+    md_italic: str = "magenta"
+    md_bold: str = "bright_white"
+
+
+@dataclass
 class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
     current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
     mode: Literal["selection", "work", "help", "scroll"] = "selection"
     _prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"  # for restoring after scroll
     term: 'Terminal' = None  # set in main
-
+    theme: Theme = field(default_factory=Theme)
 
 state = AppState()
 
@@ -439,7 +462,8 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 SPIN = "/-\\|"
 
 def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None):
-    icon, color = {'running': (SPIN[int(time.time()*8)%4], 'yellow'), 'error': ('x', 'red')}.get(status, ('v', 'green'))
+    th = state.theme
+    icon, color = {'running': (SPIN[int(time.time()*8)%4], th.warning), 'error': ('x', th.error)}.get(status, ('v', th.success))
     buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
     col = x + 4
     def _put(s, clr):
@@ -448,16 +472,17 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None):
             if col >= x + w: return
             buf.put(col, y, ch, txt_color=clr)
             col += 1
-    _put(name + '(', 'blue')
+    _put(name + '(', th.accent)
     for i, a in enumerate(args):
-        if i: _put(', ', 'blue')
+        if i: _put(', ', th.accent)
         s = repr(a)
         if len(s) > 40: s = s[:40] + '...'
-        _put(s, 'bright_black' if isinstance(a, str) else 'blue')
-    _put(')', 'blue')
+        _put(s, th.muted if isinstance(a, str) else th.accent)
+    _put(')', th.accent)
     if detail:
         col += 1
-        buf.puts(col, y, detail.replace('\n', ' ')[:x + w - col], txt_color='bright_black')
+        buf.puts(col, y, detail.replace('\n', ' ')[:x + w - col], txt_color=th.muted)
+
 
 def _default_tool_render(name, args, t, result):
     def render(buf, x, y, w):
@@ -467,7 +492,7 @@ def _default_tool_render(name, args, t, result):
             status = 'error'
         else:
             status = 'ok'
-        detail = str(result["error"]) if result.get("error") else None
+        detail = result.get("error") or result.get("value")
         render_tool_line(buf, x, y, w, name, args, status, detail)
         return 1
     return render
@@ -1116,27 +1141,28 @@ def make_input(on_submit):
 
 @overridable
 def render_selection_mode_context_name(buf, ctx, x, y):
+    th = state.theme
     selected = ctx is state.current
     approx = "~" if ctx.is_token_count_estimate() else ""
     toks = f" ({approx}{ctx.token_count()//1000}k)"
     spin = "/—\\|"[int(time.time() * 12) % 4]
     suffix = f" {spin}" if ctx.is_running() else ""
 
-    if ctx.is_running(): name_color = 'bright_blue'
-    elif ctx.llm_suspended: name_color = 'green'
-    else: name_color = 'white'
+    if ctx.is_running(): name_color = th.running
+    elif ctx.llm_suspended: name_color = th.success
+    else: name_color = th.text
 
     buf.puts(x, y, ctx.name, txt_color=name_color, style='bold' if selected else None)
     x += len(ctx.name)
-    buf.puts(x, y, toks, txt_color='bright_black')
+    buf.puts(x, y, toks, txt_color=th.muted)
     x += len(toks)
-    buf.puts(x, y, suffix, txt_color='yellow')
-
+    buf.puts(x, y, suffix, txt_color=th.warning)
 
 @overridable
 def render_selection_left(buf, inpt, r, allow_nav=True):
     x, y, w, h = r
-    buf.rect_line(r, txt_color='blue')
+    th = state.theme
+    buf.rect_line(r, txt_color=th.accent)
 
     ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
     idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
@@ -1158,27 +1184,28 @@ def render_selection_left(buf, inpt, r, allow_nav=True):
         selected = (ctx is state.current)
         prefix = ">> " if selected else "   "
         row = y + 1 + i
-        buf.puts(x + 1, row, prefix, txt_color='red' if selected else None)
+        buf.puts(x + 1, row, prefix, txt_color=th.selection if selected else None)
         render_selection_mode_context_name(buf, ctx, x + 1 + len(prefix), row)
-
 
 @overridable
 def render_context_window_bar(buf, ctx, x, y, bar_w):
+    th = state.theme
     ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
     filled = int(ratio * (bar_w - 2))
     empty = (bar_w - 2) - filled
     approx = "~" if ctx.is_token_count_estimate() else ""
     tok_str = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
-    buf.puts(x, y, "[", txt_color='bright_black')
-    buf.puts(x + 1, y, "█" * filled, txt_color='cyan')
-    buf.puts(x + 1 + filled, y, "-" * empty, txt_color='bright_black')
-    buf.puts(x + bar_w - 1, y, "]", txt_color='bright_black')
-    buf.puts(x + bar_w + 1, y, tok_str, txt_color='cyan')
+    buf.puts(x, y, "[", txt_color=th.muted)
+    buf.puts(x + 1, y, "█" * filled, txt_color=th.accent_alt)
+    buf.puts(x + 1 + filled, y, "-" * empty, txt_color=th.muted)
+    buf.puts(x + bar_w - 1, y, "]", txt_color=th.muted)
+    buf.puts(x + bar_w + 1, y, tok_str, txt_color=th.accent_alt)
 
 @overridable
 def render_selection_right(buf, r):
     x, y, w, h = r
-    buf.rect_line(r, txt_color='blue')
+    th = state.theme
+    buf.rect_line(r, txt_color=th.accent)
 
     ctx = state.current
     # header
@@ -1186,7 +1213,7 @@ def render_selection_right(buf, r):
     model_x = x + 2 + len(ctx.name) + 2
     buf.puts(model_x, y + 1, ctx.model, style='dim')
     budget_str = f"${get_daily_cost():.2f}/${_daily_limit:.2f}"
-    budget_color = 'red' if is_over_budget() else 'green'
+    budget_color = th.error if is_over_budget() else th.success
     buf.puts(x + w - len(budget_str) - 2, y + 1, budget_str, txt_color=budget_color)
 
     # token bar
@@ -1195,7 +1222,7 @@ def render_selection_right(buf, r):
 
 
     # messages
-    buf.hline((x + 1, y + 3, w - 2, 1), txt_color='blue')
+    buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
     row = y + 4
     msgs = ctx.messages or []
     for msg in msgs:
@@ -1207,13 +1234,12 @@ def render_selection_right(buf, r):
             tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
         else:
             tokstr = "(func)"
-        role_colors = {'system':'blue','user':'white','tool':'red','assistant':'green'}
-        buf.puts(x + 2, row, label, txt_color=role_colors.get(msg.role, 'white'))
-        buf.puts(x + 2 + len(label) + 1, row, tokstr, txt_color='bright_black')
+        role_colors = {'system':th.accent,'user':th.text,'tool':th.error,'assistant':th.success}
+        buf.puts(x + 2, row, label, txt_color=role_colors.get(msg.role, th.text))
+        buf.puts(x + 2 + len(label) + 1, row, tokstr, txt_color=th.muted)
         row += 1
     if not msgs:
         buf.puts(x + 2, row, "(no messages)", style='dim')
-
 
 
 
@@ -1223,16 +1249,14 @@ def _render_chunks(chunks):
     for c in chunks:
         if c.type == "text":
             parts.append(c.content)
-        elif c.type == "cot":
-            continue
-        elif c.type == "tool":
-            continue
     return "".join(parts)
+
 
 @overridable
 def render_work_mode(buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
+    th = state.theme
 
     # Build per-message output: list of (role, lines)
     message_outputs = []
@@ -1264,21 +1288,21 @@ def render_work_mode(buf, inpt, r):
     row = (y + 1) - scroll_offset
     for role, lines in message_outputs:
         row += 1  # spacer between messages
-        bg = 'bright_black' if role == 'user' else None
+        bg = th.muted if role == 'user' else None
         for line in lines:
             if callable(line):
                 drawn = line(buf, x, row, w)
                 if bg: buf.fill_bg(x, row, w, drawn, bg)
                 row += drawn
             else:
-                drawn = buf.print_wrapped(line, x, row, w, txt_color='white', bg_color=bg)
+                drawn = buf.print_wrapped(line, x, row, w, txt_color=th.text, bg_color=bg)
                 if bg: buf.fill_bg(x, row, w, drawn, bg)
                 row += drawn
     if ctx.llm_result and ctx.llm_result.error:
         row += 1
         for line in ctx.llm_result.error.split('\n'):
-            drawn = buf.print_wrapped(line, x, row, w, txt_color='white', bg_color=(80, 0, 0))
-            buf.fill_bg(x, row, w, drawn, (80, 0, 0))
+            drawn = buf.print_wrapped(line, x, row, w, txt_color=th.text, bg_color=th.error_bg)
+            buf.fill_bg(x, row, w, drawn, th.error_bg)
             row += drawn
     ctx._prev_height = row - (y - scroll_offset)
 
@@ -1288,20 +1312,22 @@ def render_work_mode(buf, inpt, r):
         bar_h = max(1, available * available // total)
         bar_top = (y + 1) + (available - bar_h) * (total - available - ctx._scroll_up) // (total - available)
         for sy in range(bar_top, bar_top + bar_h):
-            buf.put(x + w - 1, sy, '█', txt_color='bright_black')
+            buf.put(x + w - 1, sy, '█', txt_color=th.muted)
 
     # Token bar at top, with ctx name + model on the left
     label = f"{ctx.name}  {ctx.model or ''}"
     label_w = len(label) + 2
     bar_w = min(w - label_w - 20, 30)
-    buf.puts(x, y, label, txt_color='white')
+    buf.puts(x, y, label, txt_color=th.text)
     render_context_window_bar(buf, ctx, x + label_w, y, bar_w)
+
 
 @overridable
 def render_work_mode_input(buf, inpt, input_r, input_box):
     ctx = state.current
+    th = state.theme
     if ctx.is_running():
-        input_box(buf, inpt, input_r, txt_color="blue")
+        input_box(buf, inpt, input_r, txt_color=th.accent)
         spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         chunks = ctx.llm_current_output
@@ -1316,9 +1342,9 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
             stats = f" ({elapsed}) "
         total_w = 4 + len(label) + len(stats)
         x = input_r[0] + input_r[2] - total_w
-        buf.puts(x, y, spin, txt_color='bright_yellow'); x += 4
-        buf.puts(x, y, label, txt_color='blue'); x += len(label)
-        buf.puts(x, y, stats, txt_color='bright_black')
+        buf.puts(x, y, spin, txt_color=th.invoking); x += 4
+        buf.puts(x, y, label, txt_color=th.accent); x += len(label)
+        buf.puts(x, y, stats, txt_color=th.muted)
     else:
         input_box(buf, inpt, input_r)
 
@@ -1415,10 +1441,11 @@ if __name__ == "__main__":
 
                 # No contexts = show message and block everything
                 if not state.contexts:
+                    th = state.theme
                     msg = "You must create a plugin with Contexts for ex6 to work."
                     mx = (term.width - len(msg)) // 2
                     my = term.height // 2
-                    buf.puts(mx, my, msg, txt_color='red')
+                    buf.puts(mx, my, msg, txt_color=th.error)
                     buf.flush(term)
                     continue
 
@@ -1452,8 +1479,9 @@ if __name__ == "__main__":
                         sys.stdout, sys.stderr = _sink, _sink
                         buf.invalidate()
                 elif state.mode == "work":
+                    th = state.theme
                     render_work_mode(buf, inpt, main_r)
-                    div_color = 'bright_yellow' if state.current.is_running() else 'bright_black'
+                    div_color = th.invoking if state.current.is_running() else th.muted
                     buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
                     if not state.current.ui_stack:
                         # only render work-mode input when we dont have blocking panels
@@ -1464,6 +1492,7 @@ if __name__ == "__main__":
                     if inpt.consume('KEY_CTRL_X') and state.current.is_running():
                         state.current.stop_early = True
                 elif state.mode == "selection":
+                    th = state.theme
                     if not _sel_input_open and inpt.consume("KEY_ENTER"):
                         state.mode = "work"
                     if not _sel_input_open and inpt.consume("/"):
@@ -1476,7 +1505,7 @@ if __name__ == "__main__":
                         left, right = main_r.split_horizontal(1, 3)
                         render_selection_left(buf, inpt, left, allow_nav=False)
                         render_selection_right(buf, right)
-                        buf.rect_line(input_r, txt_color='bright_red')
+                        buf.rect_line(input_r, txt_color=th.error)
                         sel_input_box(buf, inpt, input_r.shrink(1))
                     else:
                         full_r = Region(0, 0, term.width, term.height)
