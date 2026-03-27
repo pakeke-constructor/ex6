@@ -461,6 +461,7 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: tu
         all_lines = f.readlines()
     if lines:
         start, end = lines
+        end = min(end, len(all_lines)) # end-line can't go beyond file
         selected = all_lines[start-1:end]
         ctx.mark_file_read(path, list(range(start, end + 1)))
         return _add_line_numbers("".join(selected), start=start)
