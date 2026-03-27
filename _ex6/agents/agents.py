@@ -64,7 +64,7 @@ ANALYTICAL_MODEL = M.GPT52_CODEX.id
 
 
 PLANNER_MODEL = M.OPUS_46.id
-EXPLORE_MODEL = M.GEMINI31_FLASH_LITE.id
+EXPLORE_MODEL = M.GEMINI3_FLASH.id
 
 
 EXPLORE_SYSTEM_PROMPT = Message(role="system", overview="explore-system", content="""\
