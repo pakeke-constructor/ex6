@@ -523,7 +523,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             except Exception as e:
                 debug_print(f"tool {tc['name']} failed: {e}")
                 result["value"] = f"ERROR: {e}"
-                result["error"] = e
+                result["error"] = str(e)
         t = threading.Thread(target=run_tool)
         ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], list(tc["args"].values()), t, result))
         t.start()
