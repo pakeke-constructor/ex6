@@ -481,7 +481,7 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None):
     _put(')', th.accent)
     if detail:
         col += 1
-        buf.puts(col, y, detail.replace('\n', ' ')[:x + w - col], txt_color=th.muted)
+        buf.print_contained(str(detail), (col, y, x + w - col, 1), txt_color=th.muted, wrap=False, newlines=False)
 
 
 def _default_tool_render(name, args, t, result):
