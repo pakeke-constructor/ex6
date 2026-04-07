@@ -889,7 +889,7 @@ class ScreenBuffer:
         for i in range(h):
             if 0 <= y+i < self.h:
                 for c in range(w):
-                    if self.bg_colors[y+i][x+c] is None:
+                    if 0 <= x+c < self.w and self.bg_colors[y+i][x+c] is None:
                         self.bg_colors[y+i][x+c] = color
 
     def writer(self, x, y, w):
