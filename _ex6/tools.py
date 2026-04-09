@@ -159,6 +159,8 @@ def _signature_python(node, source):
 
 def _signature_lua(node, source):
     sig = source[node.start_byte:node.end_byte].decode().split('\n')[0]
+    if node.type != 'function_declaration' and node.end_point[0] > node.start_point[0]:
+        sig = sig.rstrip() + ' ...'
     sb, _ = _node_range_lua(node, source)
     if sb < node.start_byte:
         annotations = source[sb:node.start_byte].decode().rstrip('\n')
@@ -415,27 +417,22 @@ def _read_headers_lua(tree, source, line_numbers=False):
     out = []
     sig_line_nos = []
 
-    def collect(node):
-        for child in node.children:
-            if child.type in def_types:
-                if out:
-                    out.append("")
-                sb, _ = _node_range_lua(child, source)
-                line_no = source[:sb].count(b'\n') + 1
-                sig_line_nos.append(line_no)
-                sig = _signature_lua(child, source)
-                if line_numbers:
-                    sig_lines = sig.split('\n')
-                    for i, sl in enumerate(sig_lines):
-                        out.append(f"{line_no + i}: {sl}")
-                else:
-                    out.append(sig)
-                if child.type not in ('variable_declaration', 'assignment_statement'):
-                    collect(child)
-            else:
-                collect(child)
+    for child in tree.root_node.children:
+        if child.type not in def_types:
+            continue
+        if out:
+            out.append("")
+        sb, _ = _node_range_lua(child, source)
+        line_no = source[:sb].count(b'\n') + 1
+        sig_line_nos.append(line_no)
+        sig = _signature_lua(child, source)
+        if line_numbers:
+            sig_lines = sig.split('\n')
+            for i, sl in enumerate(sig_lines):
+                out.append(f"{line_no + i}: {sl}")
+        else:
+            out.append(sig)
 
-    collect(tree.root_node)
     text = "\n".join(out) if out else "No classes/functions found."
     return text, sig_line_nos
 
