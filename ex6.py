@@ -275,6 +275,7 @@ def get_token_estimate(s: str) -> int:
     return len(s) // 3
 
 
+MAX_TOOL_OUTPUT_CHARACTERS = 150000
 OVERRIDES = {}
 _OVERRIDDEN = set()
 
@@ -538,7 +539,11 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             if ctx.stop_early: return False
             t.join(timeout=0.1)
     for r in results:
-        ctx.messages.append(Message(role="tool", content=str(r["value"] or ""), tool_call_id=r["id"]))
+        val = str(r["value"] or "")
+        if len(val) > MAX_TOOL_OUTPUT_CHARACTERS:
+            val = f"ERROR: Tool output too large ({len(val)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS})."
+            r["error"] = val
+        ctx.messages.append(Message(role="tool", content=val, tool_call_id=r["id"]))
     return True
 
 
