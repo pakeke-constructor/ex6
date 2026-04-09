@@ -271,6 +271,10 @@ def add_cost(cost: float):
         except: pass
 
 
+def get_token_estimate(s: str) -> int:
+    return len(s) // 3
+
+
 OVERRIDES = {}
 _OVERRIDDEN = set()
 
@@ -569,7 +573,7 @@ class Context:
     def token_count(self) -> int:
         if self.llm_result:
             return self.llm_result.input_tokens + self.llm_result.output_tokens
-        return sum(len(m.content) // 3 for m in self.messages if isinstance(m.content, str))
+        return sum(get_token_estimate(m.content) for m in self.messages if isinstance(m.content, str))
 
     def is_token_count_estimate(self) -> bool:
         "If no llmResult, then we are estimating the token-count via the //3 trick."
@@ -1230,7 +1234,7 @@ def render_selection_right(buf, r):
         label = msg.overview or msg.role
         content = msg.content if isinstance(msg.content, str) else msg._snapshot
         if content is not None:
-            toks = len(content) // 3
+            toks = get_token_estimate(content)
             tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
         else:
             tokstr = "(func)"
