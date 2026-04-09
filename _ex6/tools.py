@@ -466,6 +466,8 @@ def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: tu
         ctx.mark_file_read(path, list(range(start, end + 1)))
         return _add_line_numbers("".join(selected), start=start)
     content = "".join(all_lines)
+    if ex6.get_token_estimate(content) > 50000:
+        raise ValueError("File is too big!")
     ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
     if line_numbers:
         return _add_line_numbers(content)
