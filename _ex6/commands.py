@@ -97,6 +97,7 @@ def _text_panel(lines):
         if scroll[0] > max_scroll: scroll[0] = max_scroll
         for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
             buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
+    ex6.push_ui_panel(draw)
 
 
 

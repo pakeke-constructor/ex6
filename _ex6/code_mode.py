@@ -383,8 +383,8 @@ end'''
 x = read_file("schema.sql") # `x` is a ToolResult
 x.print()
 search(x.get()).print()
-</tool_examples>
 ```
+</tool_examples>
 {common_mistakes}
 </tools>
 """, tools=[run_tools])
