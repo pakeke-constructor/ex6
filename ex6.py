@@ -1295,10 +1295,10 @@ def render_work_mode(buf, inpt, r):
     if ctx.is_running(): ctx._scroll_up = 0
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
+    prev_role = None
     for role, lines, has_tool_calls in message_outputs:
-        # Spacer before user msgs and final assistant answers only
-        wants_spacer = (role == 'user') or (role == 'assistant' and not has_tool_calls and lines != [''])
-        if wants_spacer: row += 1
+        if role == 'user' or prev_role == 'user': row += 1
+        prev_role = role
         bg = th.muted if role == 'user' else None
         for line in lines:
             if line == '' and has_tool_calls: continue  # skip empty content in tool-call msgs
