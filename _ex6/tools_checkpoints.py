@@ -47,10 +47,9 @@ Everything between checkpoint and condense is deleted.
 '''
 
 def checkpoint(ctx: ex6.Context, objective: str) -> str:
-    """Set a checkpoint at the current point in conversation.
-    Used with condense() to collapse exploration back to this point.
-    Only one checkpoint active at a time (new overwrites old).
-    Use a checkpoint when starting a new task / when embarking in 'new' direction."""
+    """Set a checkpoint. Used with condense() to collapse exploration back to this point.
+    Only one active at a time (new overwrites old).
+    Call before exploring/reading files you won't need long-term."""
     ctx.data["_checkpoint"] = {
         "index": len(ctx.messages),
         "objective": objective,
@@ -60,9 +59,21 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
 
 
 def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> str:
-    """Collapse context back to the last checkpoint.
-    findings: your summary of what you learned since the checkpoint.
-    keep: list of ToolResult objects from this run_tools block whose values to preserve."""
+    """Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
+    findings: summary of what you learned. This is your ONLY memory — be thorough.
+    keep: ToolResult objects from THIS run_tools block to preserve in context. Choose wisely:
+      - read_file for critical files you'll edit soon
+      - read_headers for files you need the structure of
+      - read_body for specific functions you'll reference or modify
+
+    Example:
+      a = read_file("src/auth.py")           # full file — will edit this
+      b = read_headers("src/models.py")       # just need the API surface
+      c = read_body("src/db.py", "get_conn")  # one function I need
+      condense(
+          findings="auth.py needs a token check in login(). models.py has User on line 40. get_conn returns a pooled connection.",
+          keep=[a, b, c]
+      ).status()"""
     cp = ctx.data.get("_checkpoint")
     if not cp:
         raise ValueError("No checkpoint set")
