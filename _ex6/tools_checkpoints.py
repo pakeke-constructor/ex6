@@ -1,53 +1,82 @@
 
+import ex6
 
 '''
 
-Checkpoint tools.
+# Checkpoint / Condense
 
-PURPOSE:
-Essentially give agents a way to "clean" their context windows up to a certain checkpoint.
-eg:
+## What
+Give agents a way to collapse their context window back to a checkpoint.
+Lazy alternative to subagents — agent doesn't need to predict task size upfront.
 
+## Flow
+```
 user: Implement auth for StudentService
 
-assistant: Sure:
-tools: checkpoint(
-    objective = "exploring codebase, finding auth for studentService",
-)
+assistant: Sure.
+tools: checkpoint("exploring auth")
 
-tools: read_file(...)
-tools: search(...)
-tools: read_file(...)
-tools: read_file(...)
+tools: read_file(...)    # 
+tools: search(...)       #  these all get removed by condense
+tools: read_file(...)    #
 
-assistant: A good solution is ..... foobar ...
+assistant: I found that AuthService does xyz...
 
-tools: condense(
-    findings = "AuthService does xyz, ... You can't do foobar because qux, `barfoo` is the best solution.",
-    tools = r"""
-    # stuff that the condenser wants to inject into the condensed output:
-    read_file("a.py")
-    read_headers("b.py")
-    read_body("c.py", "get_user_id")
-    say("a.py")
-    """
-)
+tools:
+  a = read_file("a.py")
+  b = read_headers("b.py")
+  c = read_body("c.py", "get_user_id")
+  condense(
+      findings="AuthService does xyz. barfoo is the best approach.",
+      keep=[a, b, c]
+  ).status()
+```
 
+After condense, the context becomes:
+```
+[system messages...]
+[user: Implement auth for StudentService]
+[tool: checkpoint summary — objective + findings + kept tool results]
+```
 
-
-ADVANTAGE OVER SUBAGENTS/FORKING:
-Agents don't know how "big" a task is until they actually start working on it.
-Forking is pre-emptive. "I predict this task is big; so i fork."
-Checkpoints are lazy: "If this task gets too big, I'll collapse back to checkpoint"
-
+Everything between checkpoint and condense is deleted.
 
 '''
 
 
-def checkpoint(objective: str):
-    pass
+def checkpoint(ctx: ex6.Context, objective: str) -> str:
+    """Set a checkpoint at the current point in conversation.
+    Used with condense() to collapse exploration back to this point.
+    Only one checkpoint active at a time (new overwrites old)."""
+    ctx.data["_checkpoint"] = {
+        "index": len(ctx.messages),
+        "objective": objective,
+    }
+    return f"Checkpoint set: {objective}"
 
 
-def condense(objective: str):
-    pass
+def condense(ctx: ex6.Context, findings: str, keep: list = None) -> str:
+    """Collapse context back to the last checkpoint.
+    findings: your summary of what you learned since the checkpoint.
+    keep: list of ToolResult objects from this run_tools block whose values to preserve."""
+    cp = ctx.data.get("_checkpoint")
+    if not cp:
+        raise ValueError("No checkpoint set")
 
+    parts = [f"## Checkpoint: {cp['objective']}", "", "## Findings", findings]
+    if keep:
+        parts.append("")
+        parts.append("## Kept Context")
+        for tr in keep:
+            parts.append(f"\n### {tr._call_str}")
+            tr._event.wait()
+            if tr._error:
+                parts.append(f"ERROR: {tr._error}")
+            else:
+                parts.append(str(tr.value))
+
+    ctx.messages = ctx.messages[:cp["index"]]
+    ctx.messages.append(ex6.Message(role="assistant", content="\n".join(parts),
+                                    overview="condensed checkpoint"))
+    del ctx.data["_checkpoint"]
+    return "Context condensed."
