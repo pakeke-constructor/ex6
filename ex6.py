@@ -1267,10 +1267,10 @@ def render_work_mode(buf, inpt, r):
     ctx = state.current
     th = state.theme
 
-    # Build per-message output: list of (role, lines)
+    # Build per-message output: list of (role, lines, has_tool_calls)
     message_outputs = []
     for msg in ctx.messages:
-        if msg.role == "tool" and msg.tool_call_id in ctx._tool_renderers:
+        if msg.role == "tool":
             continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         lines = c.split('\n')
@@ -1279,12 +1279,12 @@ def render_work_mode(buf, inpt, r):
             for tc in msg.tool_calls:
                 rfn = ctx._tool_renderers.get(tc["id"])
                 if rfn: lines.append(rfn)
-        message_outputs.append((msg.role, lines))
+        message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
     if ctx.is_running() and not ctx.llm_suspended:
         streaming_msg = Message(role="assistant", content="")
         lines = (_render_chunks(ctx.llm_current_output) + "█").split('\n')
         for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
-        message_outputs.append(('assistant', lines))
+        message_outputs.append(('assistant', lines, False))
 
     # Draw (start 1 row below token bar)
     available = h - 1
@@ -1295,18 +1295,19 @@ def render_work_mode(buf, inpt, r):
     if ctx.is_running(): ctx._scroll_up = 0
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
-    for role, lines in message_outputs:
-        row += 1  # spacer between messages
+    for role, lines, has_tool_calls in message_outputs:
+        # Spacer before user msgs and final assistant answers only
+        wants_spacer = (role == 'user') or (role == 'assistant' and not has_tool_calls and lines != [''])
+        if wants_spacer: row += 1
         bg = th.muted if role == 'user' else None
         for line in lines:
+            if line == '' and has_tool_calls: continue  # skip empty content in tool-call msgs
             if callable(line):
                 drawn = line(buf, x, row, w)
-                if bg: buf.fill_bg(x, row, w, drawn, bg)
-                row += drawn
             else:
                 drawn = buf.print_wrapped(line, x, row, w, txt_color=th.text, bg_color=bg)
-                if bg: buf.fill_bg(x, row, w, drawn, bg)
-                row += drawn
+            if bg: buf.fill_bg(x, row, w, drawn, bg)
+            row += drawn
     if ctx.llm_result and ctx.llm_result.error:
         row += 1
         for line in ctx.llm_result.error.split('\n'):
