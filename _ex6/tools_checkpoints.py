@@ -1,8 +1,9 @@
 
+import copy
 import ex6
 
-'''
 
+'''
 # Checkpoint / Condense
 
 ## What
@@ -13,14 +14,14 @@ Lazy alternative to subagents — agent doesn't need to predict task size upfron
 ```
 user: Implement auth for StudentService
 
-assistant: Sure.
+A: Sure.
 tools: checkpoint("exploring auth")
 
 tools: read_file(...)    # 
 tools: search(...)       #  these all get removed by condense
 tools: read_file(...)    #
 
-assistant: I found that AuthService does xyz...
+A: I found that AuthService does xyz...
 
 tools:
   a = read_file("a.py")
@@ -43,7 +44,6 @@ Everything between checkpoint and condense is deleted.
 
 '''
 
-
 def checkpoint(ctx: ex6.Context, objective: str) -> str:
     """Set a checkpoint at the current point in conversation.
     Used with condense() to collapse exploration back to this point.
@@ -51,6 +51,7 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
     ctx.data["_checkpoint"] = {
         "index": len(ctx.messages),
         "objective": objective,
+        "data": copy.copy(ctx.data),
     }
     return f"Checkpoint set: {objective}"
 
@@ -75,8 +76,9 @@ def condense(ctx: ex6.Context, findings: str, keep: list = None) -> str:
             else:
                 parts.append(str(tr.value))
 
-    ctx.messages = ctx.messages[:cp["index"]]
+    ctx.truncate(cp["index"])
+    ctx.data = cp["data"]
+    ctx._line_snapshots = {}
     ctx.messages.append(ex6.Message(role="assistant", content="\n".join(parts),
                                     overview="condensed checkpoint"))
-    del ctx.data["_checkpoint"]
     return "Context condensed."

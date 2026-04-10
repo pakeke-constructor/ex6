@@ -670,17 +670,36 @@ class Context:
 
         threading.Thread(target=run, daemon=True).start()
     
+    def truncate(self, index: int):
+        """Remove all messages from index onward. Cleans up tool renderers for removed messages.
+        Safe to call from tool execution (llm_suspended) or when LLM is not running.
+        Raises if LLM is actively streaming."""
+        if self.llm_is_running and not self.llm_suspended:
+            raise RuntimeError("Cannot truncate while LLM is streaming")
+        removed = self.messages[index:]
+        self.messages = self.messages[:index]
+        for m in removed:
+            if m.tool_call_id and m.tool_call_id in self._tool_renderers:
+                del self._tool_renderers[m.tool_call_id]
+
     def clear(self):
+        self.stop_early = True
         i = 0
         while i < len(self.messages) and self.messages[i].role == "system":
             i += 1
+        # Hard reset — bypass truncate() guard, clear() is a forced wipe
+        removed = self.messages[i:]
         self.messages = self.messages[:i]
+        for m in removed:
+            if m.tool_call_id and m.tool_call_id in self._tool_renderers:
+                del self._tool_renderers[m.tool_call_id]
         self.ui_stack = []
+        self.llm_is_running = False
+        self.llm_suspended = False
         self.llm_result = None
         self.llm_current_output = []
         self.last_invoke_time_start = 0
         self.last_invoke_time_end = 0
-        self._tool_renderers = {}
         self._read_hashes = {}
         self._line_snapshots = {}
 
