@@ -1,4 +1,5 @@
 import ex6
+import json, os
 from typing import Optional
 
 # colors:
@@ -74,6 +75,16 @@ THEMES = {
     ),
 }
 
+def _load_saved_theme():
+    try:
+        data = json.loads((ex6.get_folder() / "theme.json").read_text())
+        name = data.get("name", "")
+        if name in THEMES:
+            ex6.state.theme = THEMES[name]
+    except: pass
+
+_load_saved_theme()
+
 @ex6.command
 def theme(name: Optional[str]):
     """Switch theme. No arg lists available themes."""
@@ -84,3 +95,7 @@ def theme(name: Optional[str]):
         ex6.debug_print(f"Unknown theme: {name}")
         return
     ex6.state.theme = THEMES[name]
+    path = ex6.get_folder() / "theme.json"
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"name": name}))
+    os.replace(tmp, path)
