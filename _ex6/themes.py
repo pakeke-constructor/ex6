@@ -1,6 +1,9 @@
 import ex6
 from typing import Optional
 
+# colors:
+# https://blessed.readthedocs.io/en/latest/colors.html
+
 THEMES = {
     "default": ex6.Theme(),
 
@@ -32,11 +35,11 @@ THEMES = {
         muted="bright_black",
         accent="red",
         accent_alt="bright_red",
-        success="bright_green",
+        success="blue",
         warning="yellow",
         error="bright_red",
         running="bright_red",
-        invoking="bright_yellow",
+        invoking="orange",
         selection="bright_red",
         error_bg=(100, 10, 10),
         diff_add_bg=(18, 60, 18),
@@ -48,7 +51,6 @@ THEMES = {
         md_bold="bright_white",
     ),
 }
-
 
 @ex6.command
 def theme(name: Optional[str]):
