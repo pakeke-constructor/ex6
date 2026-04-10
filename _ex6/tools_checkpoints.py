@@ -2,6 +2,8 @@
 import copy
 import ex6
 
+from _ex6.code_mode import ToolResult
+
 
 '''
 # Checkpoint / Condense
@@ -56,7 +58,7 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
     return f"Checkpoint set: {objective}"
 
 
-def condense(ctx: ex6.Context, findings: str, keep: list = None) -> str:
+def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> str:
     """Collapse context back to the last checkpoint.
     findings: your summary of what you learned since the checkpoint.
     keep: list of ToolResult objects from this run_tools block whose values to preserve."""
@@ -64,21 +66,22 @@ def condense(ctx: ex6.Context, findings: str, keep: list = None) -> str:
     if not cp:
         raise ValueError("No checkpoint set")
 
-    parts = [f"## Checkpoint: {cp['objective']}", "", "## Findings", findings]
+    kept = ""
     if keep:
-        parts.append("")
-        parts.append("## Kept Context")
+        kept_parts = []
         for tr in keep:
-            parts.append(f"\n### {tr._call_str}")
             tr._event.wait()
-            if tr._error:
-                parts.append(f"ERROR: {tr._error}")
-            else:
-                parts.append(str(tr.value))
+            val = f"ERROR: {tr._error}" if tr._error else str(tr.value)
+            kept_parts.append(f"[{tr._call_str}]\n{val}")
+        kept = "\n\n".join(kept_parts)
+
+    summary = f"[Context condensed — objective: {cp['objective']}]\n\nFindings:\n{findings}"
+    if kept:
+        summary += f"\n\nRetained:\n{kept}"
 
     ctx.truncate(cp["index"])
     ctx.data = cp["data"]
     ctx._line_snapshots = {}
-    ctx.messages.append(ex6.Message(role="assistant", content="\n".join(parts),
+    ctx.messages.append(ex6.Message(role="assistant", content=summary,
                                     overview="condensed checkpoint"))
     return "Context condensed."
