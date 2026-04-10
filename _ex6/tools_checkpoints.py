@@ -60,7 +60,9 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
 
 def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> str:
     """Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
-    findings: summary of what you learned. This is your ONLY memory — be thorough.
+    (If no checkpoint, collapse context until first non system-prompt)
+
+    findings: summary of what you learned. This is your ONLY memory after the checkpoint — be thorough.
     keep: ToolResult objects from THIS run_tools block to preserve in context. Choose wisely:
       - read_file for critical files you'll edit soon
       - read_headers for files you need the structure of
