@@ -101,6 +101,26 @@ def _text_panel(lines):
 
 
 
+CONDENSE_MSG = r"""Your context window is getting large. You MUST condense now.
+Current token usage: {tokens} tokens {estimate_note}.
+
+Call `condense` or `compact` to collapse your context.
+Summarize ALL important findings, decisions, and file locations. Keep any files you'll need to edit soon.
+"""
+
+@ex6.command
+def c(additional_msg: Optional[str]):
+    'Invokes agent, asking it to compact/condense itself.'
+    ctx = ex6.state.current
+    if not ctx: return
+    tokens = ctx.token_count()
+    estimate_note = " (estimated)" if ctx.is_token_count_estimate() else ""
+    msg = CONDENSE_MSG.format(tokens=tokens, estimate_note=estimate_note)
+    if additional_msg:
+        msg += "\nAdditional user note: " + additional_msg
+    ctx.invoke(msg)
+
+
 SMP = r'''
 Take step back, and check for a simpler solution.
 If lot of code was added/changed, take a step back and evaluate the actual problem.
@@ -110,11 +130,12 @@ Otherwise, if the code is clean and minimal; that's fine, carry on.
 
 @ex6.command
 def smp(additional_msg: Optional[str]):
+    'Invokes agent, asking it to attempt to simpllfy or shorten recent code'
     ctx = ex6.state.current
     if not ctx: return
     msg = SMP
     if additional_msg:
-        msg += "\n\nAdditional note:" + additional_msg
+        msg += "\n\nAdditional user note:" + additional_msg
     ctx.invoke(msg)
 
 
