@@ -8,6 +8,7 @@ import ex6
 
 @ex6.command
 def clr(name: Optional[str]):
+    'Clear context messages.'
     ctx = ex6.state.contexts.get(name) if name else ex6.state.current
     if not ctx: return
     ctx.clear()
@@ -15,6 +16,7 @@ def clr(name: Optional[str]):
 
 @ex6.command
 def delete(name: Optional[str]):
+    'Delete a context.'
     ctx = ex6.state.contexts.get(name) if name else ex6.state.current
     if not ctx: return
     del ex6.state.contexts[ctx.name]
@@ -24,6 +26,7 @@ def delete(name: Optional[str]):
 
 @ex6.command
 def fork(name: Optional[str]):
+    'Fork current context.'
     ctx = ex6.state.current
     if not ctx: return
     ctx.fork(name)
@@ -31,6 +34,7 @@ def fork(name: Optional[str]):
 
 @ex6.command
 def stop():
+    'Stop running LLM.'
     ctx = ex6.state.current
     if ctx and ctx.is_running():
         ctx.stop_early = True
@@ -38,6 +42,7 @@ def stop():
 
 @ex6.command
 def yolo():
+    'Toggle auto-approve tools.'
     ctx = ex6.state.current
     if not ctx: return
     ctx.yolo = not ctx.yolo
@@ -45,6 +50,7 @@ def yolo():
 
 @ex6.command
 def crash():
+    'Force a crash (debug).'
     raise RuntimeError("Crash!")
 
 
