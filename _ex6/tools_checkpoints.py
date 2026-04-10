@@ -70,12 +70,14 @@ def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> 
     if keep:
         kept_parts = []
         for tr in keep:
+            if not isinstance(tr, ToolResult):
+                raise ValueError(f"keep must contain ToolResult objects, got {type(tr).__name__}. Example: a = read_file('x.py'); condense(findings='...', keep=[a])")
             tr._event.wait()
             val = f"ERROR: {tr._error}" if tr._error else str(tr.value)
             kept_parts.append(f"[{tr._call_str}]\n{val}")
         kept = "\n\n".join(kept_parts)
 
-    summary = f"[Context condensed — objective: {cp['objective']}]\n\nFindings:\n{findings}"
+    summary = f"[Context condensed — all messages between checkpoint and here were removed from your context.]\n[Objective: {cp['objective']}]\n\nFindings:\n{findings}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
