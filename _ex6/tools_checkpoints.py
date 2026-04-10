@@ -49,7 +49,8 @@ Everything between checkpoint and condense is deleted.
 def checkpoint(ctx: ex6.Context, objective: str) -> str:
     """Set a checkpoint at the current point in conversation.
     Used with condense() to collapse exploration back to this point.
-    Only one checkpoint active at a time (new overwrites old)."""
+    Only one checkpoint active at a time (new overwrites old).
+    Use a checkpoint when starting a new task / when embarking in 'new' direction."""
     ctx.data["_checkpoint"] = {
         "index": len(ctx.messages),
         "objective": objective,
@@ -72,6 +73,8 @@ def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> 
         for tr in keep:
             if not isinstance(tr, ToolResult):
                 raise ValueError(f"keep must contain ToolResult objects, got {type(tr).__name__}. Example: a = read_file('x.py'); condense(findings='...', keep=[a])")
+            # hacky: reaching into code mode internals here:
+            # (It's "fine", its simple and scrappy and internal.)
             tr._event.wait()
             val = f"ERROR: {tr._error}" if tr._error else str(tr.value)
             kept_parts.append(f"[{tr._call_str}]\n{val}")
