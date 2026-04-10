@@ -78,7 +78,13 @@ def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> 
       ).status()"""
     cp = ctx.data.get("_checkpoint")
     if not cp:
-        raise ValueError("No checkpoint set")
+        # No checkpoint — collapse to first non-system message
+        index = 0
+        for i, m in enumerate(ctx.messages):
+            if m.role != "system":
+                index = i
+                break
+        cp = {"index": index, "objective": "(no checkpoint)", "data": copy.copy(ctx.data)}
 
     kept = ""
     if keep:
