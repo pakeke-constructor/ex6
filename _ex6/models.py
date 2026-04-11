@@ -22,6 +22,7 @@ class M:
     GPT5_MINI        = ModelInfo("openai/gpt-5-mini",                 400_000, 0.25, 2,    0.025)
     GPT5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
     GPT52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
+    GPT53_CODEX      = ModelInfo("openai/gpt-5.3-codex",              400_000, 1.75, 14,   0.175)
     GPT51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",         400_000, 0.25, 2,    0.025)
     CODEX_MINI       = ModelInfo("openai/codex-mini",                 200_000, 1.5,  6,    0.375)
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
