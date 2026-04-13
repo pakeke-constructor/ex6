@@ -32,6 +32,7 @@ tools:
   c = read_body("c.py", "get_user_id")
   condense(
       findings="AuthService does xyz. barfoo is the best approach.",
+      next_steps="implement token check in auth.py",
       keep=[a, b, c]
   )
 ```
@@ -60,13 +61,14 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
 
 
 
-CONDENSE_MSG = f"[Context condensed — you called condense() which pruned your context. Messages were pruned; including the most recent checkpoint() AND condense().]"
+CONDENSE_MSG = "[Context condensed — you called condense() which pruned your context. Messages were pruned; including the most recent checkpoint() AND condense()]"
 
-def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] = None) -> str:
+def condense(ctx: ex6.Context, findings: str, next_steps: str, keep: Optional[list[ToolResult]] = None) -> str:
     f"""Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
     (If no checkpoint, collapse context until first non system-prompt)
 
     findings: summary of what you learned. This is your ONLY memory after the checkpoint — be thorough.
+    next_steps: what you plan to do next. Forces you to articulate intent before losing context.
     keep: ToolResult objects from THIS run_tools block to preserve in context. Choose wisely:
       - read_file for critical files you'll edit soon
       - read_headers for files you need the structure of
@@ -77,16 +79,13 @@ def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] =
       b = read_headers("src/models.py")       # just need the API surface
       c = read_body("src/db.py", "get_conn")  # one function I need
       condense(
-          findings="auth.py needs a token check in login(). models.py has User on line 40. get_conn returns a pooled connection. Next steps: fixes in auth.py",
+          findings="auth.py needs a token check in login(). models.py has User on line 40. get_conn returns a pooled connection.",
+          next_steps="Add token expiry check to login() in auth.py, then update tests.",
           keep=[a, b, c]
       )
       
-      You cannot call .status() or .print() here; it won't work.
-      This is because after you `condense()`, your messages will be pruned. (INCLUDING YOUR condense()/checkpoint() CALLS.)
-      After calling condense, you will see the following message:
-      {CONDENSE_MSG}
-
-      This tells you that a `checkpoint()/condense()` call pair occured, and you should trust the information provided.
+      Note: condense() prunes messages (including this call), so .status()/.print() won't work.
+      You will see: {CONDENSE_MSG} — trust the information provided.
       """
     cp = ctx.data.get("_checkpoint")
     if not cp:
@@ -112,7 +111,7 @@ def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] =
         kept = "\n\n".join(kept_parts)
 
     summary = CONDENSE_MSG
-    summary += f"\n[Checkpoint: {cp['objective']}]\n\nFindings:\n{findings}"
+    summary += f"\n[Checkpoint: {cp['objective']}]\n\nFindings:\n{findings}\n\nNext steps:\n{next_steps}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
