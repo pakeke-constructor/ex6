@@ -60,11 +60,25 @@ import glob
 
 _commands = {}
 _output_renderers = []
+_after_tool_calls = []
 
 # Type aliases for output rendering
 RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
 OutputLine = Union[str, RenderFn]  # str or render fn
 OutputRendererFn = Callable[[list, 'Message', 'Context'], None]  # fn(lines, msg, ctx) -> None
+
+def after_tool_calls(fn):
+    """
+    Called after tool execution, before the next LLM turn.
+    fn(ctx) -> None. Append messages to ctx.messages to inject reminders, etc.
+
+    @ex6.after_tool_calls
+    def token_reminder(ctx):
+        if ctx.llm_result and ctx.llm_result.input_tokens > 150000:
+            ctx.messages.append(ex6.Message(role="user", content="Wrap it up."))
+    """
+    _after_tool_calls.append(fn)
+    return fn
 
 def output_renderer(fn: OutputRendererFn) -> OutputRendererFn:
     '''
@@ -538,6 +552,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
         while t.is_alive():
             if ctx.stop_early: return False
             t.join(timeout=0.1)
+    if ctx._tools_invalidated:
+        ctx._tools_invalidated = False
+        return True
     for r in results:
         val = str(r["value"] or "")
         if len(val) > MAX_TOOL_OUTPUT_CHARACTERS:
@@ -574,6 +591,7 @@ class Context:
     yolo: bool = False
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
+    _tools_invalidated: bool = False
 
     def token_count(self) -> int:
         if self.llm_result:
@@ -664,6 +682,8 @@ class Context:
                 if not self.llm_result: break
                 self.llm_suspended = True
                 should_loop = call_tools(self, self.llm_result)
+                if should_loop:
+                    for fn in _after_tool_calls: fn(self)
                 self.llm_suspended = False
             self.llm_is_running = False
             self.last_invoke_time_end = time.time()
@@ -678,12 +698,14 @@ class Context:
             raise RuntimeError("Cannot truncate while LLM is streaming")
         removed = self.messages[index:]
         self.messages = self.messages[:index]
+        self._tools_invalidated = True
         for m in removed:
             if m.tool_call_id and m.tool_call_id in self._tool_renderers:
                 del self._tool_renderers[m.tool_call_id]
 
     def clear(self):
         self.stop_early = True
+        self._tools_invalidated = True
         i = 0
         while i < len(self.messages) and self.messages[i].role == "system":
             i += 1

@@ -192,11 +192,13 @@ def invoke_llm(ctx: ex6.Context):
         yield from invoke_claude_code(ctx)
         return
 
-    if ex6.is_over_budget():
-        yield ex6.LLMResult(error=f"daily budget exceeded (${ex6.get_daily_cost():.2f}/${ex6.get_daily_limit():.2f})")
-        return
-
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
+
+    if ex6.is_over_budget():
+        result = ex6.LLMResult(error=f"daily budget exceeded (${ex6.get_daily_cost():.2f}/${ex6.get_daily_limit():.2f})")
+        _log_invoke(ctx, messages, result)
+        yield result
+        return
 
     tools = ctx.get_tool_schemas() or None
 
@@ -250,7 +252,9 @@ def invoke_llm(ctx: ex6.Context):
         )
     except Exception as e:
         ex6.debug_print(f"[invoke] API EXCEPTION: {e}")
-        yield ex6.LLMResult(error=str(e))
+        result = ex6.LLMResult(error=str(e))
+        _log_invoke(ctx, messages, result)
+        yield result
         return
 
     ex6.debug_print("[invoke] stream started")
@@ -297,7 +301,9 @@ def invoke_llm(ctx: ex6.Context):
                 provider_cost = getattr(chunk.usage, 'cost', None)
     except Exception as e:
         ex6.debug_print(f"[invoke] stream exception: {e}")
-        yield ex6.LLMResult(error=str(e))
+        result = ex6.LLMResult(error=str(e))
+        _log_invoke(ctx, messages, result, cached_tokens, cache_write_tokens)
+        yield result
         return
     ex6.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
 
@@ -372,6 +378,7 @@ def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):
         f"cache_write_tokens: {cache_write_tokens}",
         f"cost: ${result.cost:.4f}" if result.cost else "cost: N/A",
         f"finish_reason: {result.finish_reason}",
+        f"error: {result.error}" if result.error else "error: None",
         "============",
         "",
         "=== CONTEXT ===",

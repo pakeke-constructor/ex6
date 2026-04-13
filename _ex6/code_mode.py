@@ -1,3 +1,6 @@
+
+import typing
+
 """
 code_mode: sandboxed Python as a tool-calling interface for LLMs.
 
@@ -169,6 +172,35 @@ def exec_sandboxed(code: str, env: dict):
     exec(result.code, sandbox_globals)
 
 
+
+def _strong_isinstance(obj: object, type_hint: type) -> bool:
+    """
+    isinstance but with support for generics
+    """
+    origin = typing.get_origin(type_hint)
+    args = typing.get_args(type_hint)
+
+    # Fall back to regular isinstance for non-generic types
+    if origin is None:
+        return isinstance(obj, type_hint)
+
+    # Optional[T] is Union[T, None], also handles X | Y | None unions
+    if origin is typing.Union or origin is types.UnionType:
+        return any(_strong_isinstance(obj, arg) for arg in args)
+
+    # Check the outer container type first
+    if not isinstance(obj, origin):
+        return False
+
+    # list[T]
+    if origin is list:
+        assert(isinstance(obj, list))
+        (item_type,) = args
+        return all(_strong_isinstance(item, item_type) for item in obj)
+
+    return False
+
+
 def _validate_tool_args(fn, args, kwargs):
     """Validate arg types against function annotations. Raises TypeError on mismatch."""
     sig = inspect.signature(fn)
@@ -184,7 +216,7 @@ def _validate_tool_args(fn, args, kwargs):
         p = sig.parameters[name]
         if p.annotation is inspect.Parameter.empty:
             continue
-        if not isinstance(val, p.annotation):
+        if not _strong_isinstance(val, p.annotation):
             raise TypeError(
                 f"{fn.__name__}() param '{name}' expected {p.annotation.__name__}, got {type(val).__name__}: {val!r}"
             )

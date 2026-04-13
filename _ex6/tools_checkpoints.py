@@ -2,6 +2,7 @@
 import copy
 import ex6
 
+from typing import Optional
 from _ex6.code_mode import ToolResult
 
 
@@ -51,14 +52,14 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
     Only one active at a time (new overwrites old).
     Call before exploring/reading files you won't need long-term."""
     ctx.data["_checkpoint"] = {
-        "index": len(ctx.messages),
+        "index": len(ctx.messages) - 1,
         "objective": objective,
         "data": copy.copy(ctx.data),
     }
     return f"Checkpoint set: {objective}"
 
 
-def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> str:
+def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] = None) -> str:
     """Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
     (If no checkpoint, collapse context until first non system-prompt)
 
@@ -99,7 +100,7 @@ def condense(ctx: ex6.Context, findings: str, keep: list[ToolResult] = None) -> 
             kept_parts.append(f"[{tr._call_str}]\n{val}")
         kept = "\n\n".join(kept_parts)
 
-    summary = f"[Context condensed — all messages between checkpoint and here were removed from your context.]\n[Objective: {cp['objective']}]\n\nFindings:\n{findings}"
+    summary = f"[Context condensed — you called called condense() which pruned your context. You will not see the checkpoint() call OR the condense() call; but they happened.]\n[Objective: {cp['objective']}]\n\nFindings:\n{findings}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
