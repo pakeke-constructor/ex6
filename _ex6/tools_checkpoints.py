@@ -33,7 +33,7 @@ tools:
   condense(
       findings="AuthService does xyz. barfoo is the best approach.",
       keep=[a, b, c]
-  ).status()
+  )
 ```
 
 After condense, the context becomes:
@@ -59,8 +59,11 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
     return f"Checkpoint set: {objective}"
 
 
+
+CONDENSE_MSG = f"[Context condensed — you called condense() which pruned your context. Messages were pruned; including the most recent checkpoint() AND condense().]"
+
 def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] = None) -> str:
-    """Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
+    f"""Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
     (If no checkpoint, collapse context until first non system-prompt)
 
     findings: summary of what you learned. This is your ONLY memory after the checkpoint — be thorough.
@@ -74,9 +77,17 @@ def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] =
       b = read_headers("src/models.py")       # just need the API surface
       c = read_body("src/db.py", "get_conn")  # one function I need
       condense(
-          findings="auth.py needs a token check in login(). models.py has User on line 40. get_conn returns a pooled connection.",
+          findings="auth.py needs a token check in login(). models.py has User on line 40. get_conn returns a pooled connection. Next steps: fixes in auth.py",
           keep=[a, b, c]
-      ).status()"""
+      )
+      
+      You cannot call .status() or .print() here; it won't work.
+      This is because after you `condense()`, your messages will be pruned. (INCLUDING YOUR condense()/checkpoint() CALLS.)
+      After calling condense, you will see the following message:
+      {CONDENSE_MSG}
+
+      This tells you that a `checkpoint()/condense()` call pair occured, and you should trust the information provided.
+      """
     cp = ctx.data.get("_checkpoint")
     if not cp:
         # No checkpoint — collapse to first non-system message
@@ -100,7 +111,8 @@ def condense(ctx: ex6.Context, findings: str, keep: Optional[list[ToolResult]] =
             kept_parts.append(f"[{tr._call_str}]\n{val}")
         kept = "\n\n".join(kept_parts)
 
-    summary = f"[Context condensed — you called called condense() which pruned your context. You will not see the checkpoint() call OR the condense() call; but they happened.]\n[Objective: {cp['objective']}]\n\nFindings:\n{findings}"
+    summary = CONDENSE_MSG
+    summary += f"\n[Checkpoint: {cp['objective']}]\n\nFindings:\n{findings}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
