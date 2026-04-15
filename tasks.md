@@ -153,6 +153,12 @@ when 'condense' is called, instead of instantly condensing, it should inject a b
 </compression>
 
 
+<skills>
+ex6 agent skills:
+When agent wants to load skills, instead of just doing `load_skill`, agents should do
+</skills>
+
+
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
 

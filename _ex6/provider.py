@@ -112,13 +112,13 @@ def invoke_claude_code(ctx: ex6.Context):
     import subprocess, uuid
 
     # Lazy init session
-    if "cc_session" not in ctx.data:
-        ctx.data["cc_session"] = str(uuid.uuid4())
-        ctx.data["cc_turn"] = 0
+    if "provider:cc_session" not in ctx.data:
+        ctx.data["provider:cc_session"] = str(uuid.uuid4())
+        ctx.data["provider:cc_turn"] = 0
 
-    session = ctx.data["cc_session"]
+    session = ctx.data["provider:cc_session"]
     model = ctx.model.removeprefix("cc/")
-    is_first = ctx.data["cc_turn"] == 0
+    is_first = ctx.data["provider:cc_turn"] == 0
 
     if is_first:
         # Gather system prompt from system messages
@@ -151,8 +151,8 @@ def invoke_claude_code(ctx: ex6.Context):
             content = f"<run_tools_result>\n{content}\n</run_tools_result>"
         cmd = ["claude", "-p", "--resume", session, content]
 
-    ctx.data["cc_turn"] += 1
-    ex6.debug_print(f"[cc] turn={ctx.data['cc_turn']} model={model} first={is_first}")
+    ctx.data["provider:cc_turn"] += 1
+    ex6.debug_print(f"[cc] turn={ctx.data['provider:cc_turn']} model={model} first={is_first}")
 
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

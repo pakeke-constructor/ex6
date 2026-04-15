@@ -161,8 +161,8 @@ class CodeEnv(dict):
     def prepare(self, results, threads, tool_infos):
         """Re-wrap tools into _globals with fresh per-call tracking state."""
         self.clear()
-        tools = dict(self.ctx.data_volatile.get('_codemode_base_tools', {}))
-        tools.update(self.ctx.data_volatile.get('_codemode_tools', {}))
+        tools = dict(self.ctx.data_volatile.get('codemode:base_tools', {}))
+        tools.update(self.ctx.data_volatile.get('codemode:tools', {}))
         for name, fn in tools.items():
             self._globals[name] = _wrap_tool_threaded(fn, self.ctx, results, threads, tool_infos)
 
@@ -305,11 +305,11 @@ def generate_tool_desc(fn) -> str:
 
 def _get_code_env(ctx, tools):
     """Get or create the CodeEnv for this context. Stores base tools on first call."""
-    env = ctx.data_volatile.get('_code_env')
+    env = ctx.data_volatile.get('codemode:env')
     if not env:
-        ctx.data_volatile['_codemode_base_tools'] = {fn.__name__: fn for fn in tools}
+        ctx.data_volatile['codemode:base_tools'] = {fn.__name__: fn for fn in tools}
         env = CodeEnv(ctx)
-        ctx.data_volatile['_code_env'] = env
+        ctx.data_volatile['codemode:env'] = env
     return env
 
 
@@ -372,12 +372,12 @@ def make_code_mode_tool(tools: list):
 
 def inject_tool(ctx, fn):
     """Add a tool to this context's code-mode sandbox. Available next run_tools call."""
-    tools = ctx.data_volatile.setdefault('_codemode_tools', {})
+    tools = ctx.data_volatile.setdefault('codemode:tools', {})
     tools[fn.__name__] = fn
 
 def remove_tool(ctx, fn):
     """Remove an injected tool from this context's code-mode sandbox."""
-    tools = ctx.data_volatile.get('_codemode_tools', {})
+    tools = ctx.data_volatile.get('codemode:tools', {})
     tools.pop(fn.__name__, None)
 
 
