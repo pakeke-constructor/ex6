@@ -266,13 +266,13 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list)
         def _short(a, maxlen=40):
             s = repr(a)
             return s if len(s) <= maxlen else s[:maxlen] + '...'
-        call_str = f'{fn.__name__}({", ".join(_short(a) for a in args)})'
+        call_str = f'{fn.__name__}({", ".join([_short(a) for a in args] + [f"{k}={_short(v)}" for k, v in kwargs.items()])})'
         tr = ToolResult(call_str, results)
         try:
             _validate_tool_args(fn, args, kwargs)
         except TypeError as e:
             tr._set_error(e)
-            tool_infos.append((fn.__name__, list(args), None, tr))
+            tool_infos.append((fn.__name__, list(args), kwargs, None, tr))
             return tr
         def run():
             try: tr._set(fn(ctx, *args, **kwargs))
@@ -282,7 +282,7 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list)
         t = threading.Thread(target=run)
         t.start()
         threads.append(t)
-        tool_infos.append((fn.__name__, list(args), t, tr))
+        tool_infos.append((fn.__name__, list(args), kwargs, t, tr))
         return tr
     return wrapper
 
@@ -330,11 +330,11 @@ def make_code_mode_tool(tools: list):
                 if exec_error:
                     ex6.render_tool_line(buf, x, y + row, w, "run_tools", [], 'error', str(exec_error))
                     row += 1
-                for name, args, t, tr in tool_infos:
+                for name, args, kwargs, t, tr in tool_infos:
                     alive = t is not None and t.is_alive()
                     status = 'running' if alive else ('error' if tr._error else 'ok')
                     detail = None if alive else (str(tr._error) if tr._error else None)
-                    ex6.render_tool_line(buf, x, y + row, w, name, args, status, detail)
+                    ex6.render_tool_line(buf, x, y + row, w, name, args, status, detail, kwargs)
                     row += 1
                 return max(row, 1)
             ctx.set_tool_renderer(tool_call_id, code_render)

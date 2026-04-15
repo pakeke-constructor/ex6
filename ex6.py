@@ -480,7 +480,7 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 
 SPIN = "/-\\|"
 
-def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None):
+def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwargs=None):
     th = state.theme
     icon, color = {'running': (SPIN[int(time.time()*8)%4], th.warning), 'error': ('x', th.error)}.get(status, ('v', th.success))
     buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
@@ -497,6 +497,13 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None):
         s = repr(a)
         if len(s) > 40: s = s[:40] + '...'
         _put(s, th.muted if isinstance(a, str) else th.accent)
+    if args and kwargs: _put(', ', th.accent)
+    for i, (k, v) in enumerate(kwargs.items() if kwargs else []):
+        if i: _put(', ', th.accent)
+        _put(f'{k}=', th.accent)
+        s = repr(v)
+        if len(s) > 40: s = s[:40] + '...'
+        _put(s, th.muted if isinstance(v, str) else th.accent)
     _put(')', th.accent)
     if detail:
         col += 1
