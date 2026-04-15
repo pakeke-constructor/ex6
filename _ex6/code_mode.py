@@ -272,7 +272,8 @@ def make_code_mode_tool(tools: list):
         - Do NOT use import statements.
         - Tools return a ToolResult. You MUST call .print() or .status() to see results, or call .get() or .is_ok() to use the result for another call."""
         results, threads, tool_infos = [], [], []
-        env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads, tool_infos) for fn in tools}
+        all_tools = list(tools) + ctx.data.get('_codemode_tools', [])
+        env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads, tool_infos) for fn in all_tools}
 
         exec_error = None
         if tool_call_id:
@@ -319,6 +320,16 @@ def make_code_mode_tool(tools: list):
             return "\n\n".join(parts)
         return "No output. (Use `.print()` or `.status()` if you want to see results)"
     return run_tools
+
+
+def inject_tool(ctx, fn):
+    """Add a tool to this context's code-mode sandbox. Available next run_tools call."""
+    if '_codemode_tools' not in ctx.data: ctx.data['_codemode_tools'] = []
+    ctx.data['_codemode_tools'].append(fn)
+
+def remove_tool(ctx, fn):
+    """Remove an injected tool from this context's code-mode sandbox."""
+    if '_codemode_tools' in ctx.data: ctx.data['_codemode_tools'].remove(fn)
 
 
 RUN_TOOLS_NAME = "run_tools"

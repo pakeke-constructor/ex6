@@ -135,11 +135,28 @@ Be kinda like claude-code.
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+<compression>
+ex6 compression idea:
+"condense()" should be a function with 0 args. 
+
+when 'condense' is called, instead of instantly condensing, it should inject a bunch of guidance and information into the ctx window:
+
+ Information to be injected:
+- list all checkpoints, AND token-counts. eg
+- checkpoint1: "objective blah" (40k toks)
+- checkpoint 2: "blah blh" (40k toks)
+
+- list the method signature for compress(...)
+- Add guidance for how to use condense(...), practices, etc
+- If less than 15k tokens used, tell the LLM "You probably don't need to condense, there's hardly any tokens used"
+- Tell the LLM how to choose the checkpoint
+</compression>
+
+
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
 
 
-- Allow agents to "undo" edits if they think they have made a mistake. Something as simple as `ToolResult.undo`
 
 - Allow agents to compress their own context-windows.
 
