@@ -26,17 +26,17 @@ New field cleared on both fork and clear. Houses things like:
 
 Injected tools live here — lost on fork. This is an acceptable tradeoff: the common case is base tools (in closure, always survive). Injected tools are session-scoped. If fork happens after injection, the forked context's messages may reference tools that aren't in the sandbox — but the error is loud (sandbox NameError), not silent corruption.
 
-### 4. CodeEnv: globals dict with prepare/sync lifecycle
+### 4. CodeEnv: split globals/locals with proxy
 
-CodeEnv is a dict subclass used as the `globals` argument to `exec()`.
+CodeEnv is a dict subclass used as the `locals` argument to `exec()`. A separate plain `_globals` dict holds builtins, modules, and wrapped tools.
 
-Critical discovery: CPython's `exec()` uses C-level `PyDict_SetItem`/`PyDict_GetItem` on the globals dict, completely bypassing Python-level `__setitem__`/`__getitem__` overrides. This means a proxy-style dict (intercept writes, redirect to ctx.data) is impossible for globals.
+CPython's `exec()` bypasses Python-level `__setitem__`/`__getitem__` on the globals dict (C-level PyDict ops). But the locals argument can be any mapping — Python calls the mapping protocol properly.
 
-Solution: pre/post sync pattern.
-- `prepare()`: called before each exec. Re-wraps all tools with fresh per-call tracking (results/threads/tool_infos lists). Loads persisted `cm:*` variables from ctx.data into the dict.
-- `sync()`: called after each exec. Scans dict for new simple-type values, writes them back to ctx.data with `cm:` prefix. Functions, ToolResults, etc. are skipped (not simple types) and remain local to the CodeEnv (lost on fork — correct behavior).
+So CodeEnv is passed as locals, where `__setitem__` proxies simple-type writes directly to `ctx.data` with `cm:` prefix, and `__getitem__` falls back to `ctx.data` for `cm:*` keys. No sync step needed.
 
-This means LLM variables like `x = 42` persist across run_tools calls (via ctx.data round-trip) and survive fork (ctx.data is copied). Complex assignments like `x = read_file("a.py")` stay local and are lost — also correct, since ToolResults aren't meaningful across calls.
+- `prepare()`: called before each exec. Clears local state, re-wraps tools into `_globals` with fresh per-call tracking.
+- Simple LLM variables (`x = 42`) are written to ctx.data immediately via `__setitem__`. They persist across calls and survive fork.
+- Complex assignments (`x = read_file("a.py")`) stay only in the dict (not simple types), lost on fork — correct behavior.
 
 ### 5. Namespace prefixing in ctx.data
 
@@ -64,11 +64,14 @@ ctx.data (StrictDataDict)          ctx.data_volatile (dict)
 ├── plan:id = "abc123"
 └── cc_session = "uuid..."
 
-CodeEnv (dict, used as exec globals)
+CodeEnv._globals (plain dict, exec globals)
 ├── __builtins__, _getattr_, modules  (static, set in __init__)
-├── read_file, edit_file, ...         (re-wrapped per call in prepare())
-├── cm:* vars loaded from ctx.data    (loaded in prepare())
-└── LLM assignments during exec       (synced back in sync())
+└── read_file, edit_file, ...         (re-wrapped per call in prepare())
+
+CodeEnv (dict, exec locals — mapping protocol)
+├── __setitem__ proxies simple types to ctx.data with cm: prefix
+├── __getitem__ falls back to ctx.data for cm:* keys
+└── LLM assignments during exec       (simple types persist immediately, complex stay local)
 ```
 
 fork: copies ctx.data (cm:* vars survive), clears data_volatile (CodeEnv recreated lazily)

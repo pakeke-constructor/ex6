@@ -113,20 +113,37 @@ SAFE_MODULES = {
     "os": types.SimpleNamespace(path=os.path),
 }
 
-_CM_PREFIX = "cm:"
-_STATIC_KEYS = {*SAFE_BUILTINS, *SAFE_MODULES, "__builtins__", "__import__", "_getattr_"}
+_CM_PREFIX = "codemode:"
 
 class CodeEnv(dict):
-    """Globals dict for code-mode exec(). Syncs simple-type LLM variables to/from ctx.data."""
+    """Locals mapping for code-mode exec(). Proxies simple-type vars to/from ctx.data."""
 
     def __init__(self, ctx):
         super().__init__()
         self.ctx = ctx
-        # static setup
-        self["__builtins__"] = SAFE_BUILTINS.copy()
-        self["__import__"] = _no_import
-        self["_getattr_"] = self._make_getattr()
-        self.update(SAFE_MODULES)
+        self._globals = {
+            "__builtins__": SAFE_BUILTINS.copy(),
+            "__import__": _no_import,
+            "_getattr_": self._make_getattr(),
+            **SAFE_MODULES,
+        }
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        if not key.startswith("_") and isinstance(value, ex6.SIMPLE_DATA_TYPES):
+            self.ctx.data[_CM_PREFIX + key] = value
+
+    def __getitem__(self, key):
+        try:
+            return super().__getitem__(key)
+        except KeyError:
+            cm_key = _CM_PREFIX + key
+            if cm_key in self.ctx.data:
+                return self.ctx.data[cm_key]
+            raise
+
+    def __contains__(self, key):
+        return super().__contains__(key) or (_CM_PREFIX + key) in self.ctx.data
 
     def _make_getattr(self):
         _safe_module_names = {"re", "json", "math", "time", "posixpath", "ntpath", "genericpath", "os.path"}
@@ -142,26 +159,12 @@ class CodeEnv(dict):
         return _getattr_
 
     def prepare(self, results, threads, tool_infos):
-        """Re-wrap tools with fresh per-call tracking state. Load persisted vars from ctx.data."""
+        """Re-wrap tools into _globals with fresh per-call tracking state."""
+        self.clear()
         tools = dict(self.ctx.data_volatile.get('_codemode_base_tools', {}))
         tools.update(self.ctx.data_volatile.get('_codemode_tools', {}))
         for name, fn in tools.items():
-            self[name] = _wrap_tool_threaded(fn, self.ctx, results, threads, tool_infos)
-        # load persisted variables from ctx.data
-        for k, v in self.ctx.data.items():
-            if k.startswith(_CM_PREFIX):
-                self[k[len(_CM_PREFIX):]] = v
-
-    def sync(self):
-        """
-        After exec: persist simple-type variables back to ctx.data.
-        The reason we must do 
-        """
-        for k, v in list(self.items()):
-            if k in _STATIC_KEYS or k.startswith("_"): continue
-            if isinstance(v, ex6.SIMPLE_DATA_TYPES):
-                self.ctx.data[_CM_PREFIX + k] = v
-
+            self._globals[name] = _wrap_tool_threaded(fn, self.ctx, results, threads, tool_infos)
 
 
 class ToolResult:
@@ -204,7 +207,7 @@ def exec_sandboxed(code: str, env: CodeEnv):
     result = compile_restricted_exec(code, '<tools>')
     if result.errors:
         raise SyntaxError(f"restricted compile: {result.errors}")
-    exec(result.code, env)
+    exec(result.code, env._globals, env)
 
 
 
@@ -340,10 +343,8 @@ def make_code_mode_tool(tools: list):
         except Exception as e:
             exec_error = e
             for t in threads: t.join()
-            env.sync()
             raise ValueError(f"exec failed: {e}")
         for t in threads: t.join()
-        env.sync()
         if results:
             full_results = [(tr, mode) for tr, mode in results if mode == "full"]
             fn_names = [tr._fn_name for tr, mode in full_results]
