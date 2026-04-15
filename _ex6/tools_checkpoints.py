@@ -1,5 +1,5 @@
 
-import copy
+import json
 import ex6
 
 from typing import Optional
@@ -52,11 +52,9 @@ def checkpoint(ctx: ex6.Context, objective: str) -> str:
     """Set a checkpoint. Used with condense() to collapse exploration back to this point.
     Only one active at a time (new overwrites old).
     Call before exploring/reading files you won't need long-term."""
-    ctx.data["_checkpoint"] = {
-        "index": len(ctx.messages) - 1,
-        "objective": objective,
-        "data": copy.copy(ctx.data),
-    }
+    ctx.data["cp:index"] = len(ctx.messages) - 1
+    ctx.data["cp:objective"] = objective
+    ctx.data["cp:data"] = json.dumps(dict(ctx.data))
     return f"Checkpoint set: {objective}"
 
 
@@ -87,15 +85,18 @@ def condense(ctx: ex6.Context, findings: str, next_steps: str, keep: Optional[li
       Note: condense() prunes messages (including this call), so .status()/.print() won't work.
       You will see: {CONDENSE_MSG} — trust the information provided.
       """
-    cp = ctx.data.get("_checkpoint")
-    if not cp:
-        # No checkpoint — collapse to first non-system message
-        index = 0
+    if "cp:index" in ctx.data:
+        cp_index = ctx.data["cp:index"]
+        cp_objective = ctx.data["cp:objective"]
+        cp_data = ex6.StrictDataDict(json.loads(ctx.data["cp:data"]))
+    else:
+        cp_index = 0
         for i, m in enumerate(ctx.messages):
             if m.role != "system":
-                index = i
+                cp_index = i
                 break
-        cp = {"index": index, "objective": "(no checkpoint)", "data": copy.copy(ctx.data)}
+        cp_objective = "(no checkpoint)"
+        cp_data = ex6.StrictDataDict(ctx.data)
 
     kept = ""
     if keep:
@@ -111,12 +112,12 @@ def condense(ctx: ex6.Context, findings: str, next_steps: str, keep: Optional[li
         kept = "\n\n".join(kept_parts)
 
     summary = CONDENSE_MSG
-    summary += f"\n[Checkpoint: {cp['objective']}]\n\nFindings:\n{findings}\n\nNext steps:\n{next_steps}"
+    summary += f"\n[Checkpoint: {cp_objective}]\n\nFindings:\n{findings}\n\nNext steps:\n{next_steps}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
-    ctx.truncate(cp["index"])
-    ctx.data = cp["data"]
+    ctx.truncate(cp_index)
+    ctx.data = cp_data
     ctx._line_snapshots = {}
     ctx.messages.append(ex6.Message(role="assistant", content=summary,
                                     overview="condensed checkpoint"))

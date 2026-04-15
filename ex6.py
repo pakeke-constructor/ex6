@@ -564,6 +564,26 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     return True
 
 
+SIMPLE_DATA_TYPES = (str, int, float, bool, type(None))
+
+class StrictDataDict(dict):
+    """Dict that only allows str/int/float/bool/None values. Catches bugs early."""
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.update(dict(*args, **kwargs))
+    def __setitem__(self, key, value):
+        if not isinstance(value, SIMPLE_DATA_TYPES):
+            raise TypeError(f"ctx.data[{key!r}] = {type(value).__name__} — only str/int/float/bool/None allowed. Use ctx.data_volatile for complex objects.")
+        super().__setitem__(key, value)
+    def update(self, other=(), **kwargs):
+        if isinstance(other, dict): other = other.items()
+        for k, v in other: self[k] = v
+        for k, v in kwargs.items(): self[k] = v
+    def setdefault(self, key, default=None):
+        if key not in self:
+            self[key] = default  # goes through __setitem__
+        return self[key]
+
 
 @dataclass
 class Context:
@@ -582,7 +602,8 @@ class Context:
     llm_suspended: bool = False
     stop_early: bool = False
     parent: Optional[str] = None # name of parent context (for subagents)
-    data: dict[str,Any] = field(default_factory=dict) # a dict for plugins to store stuff.
+    data: StrictDataDict = field(default_factory=StrictDataDict) # str/int/float/bool/None only. Use data_volatile for complex objects.
+    data_volatile: dict = field(default_factory=dict) # cleared on fork/clear. For complex/mutable objects.
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
@@ -724,13 +745,15 @@ class Context:
         self.last_invoke_time_end = 0
         self._read_hashes = {}
         self._line_snapshots = {}
+        self.data_volatile = {}
 
     def fork(self, new_name: Optional[str] = None) -> 'Context':
         cpy = copy.copy(self)
         cpy.messages = copy.deepcopy(self.messages)
         cpy._read_hashes = dict(self._read_hashes)
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
-        cpy.data = copy.copy(self.data)
+        cpy.data = StrictDataDict(self.data)
+        cpy.data_volatile = {}
         cpy._tool_renderers = {}
         cpy.ui_stack = []
         cpy._input_box = None

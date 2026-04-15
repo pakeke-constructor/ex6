@@ -113,6 +113,57 @@ SAFE_MODULES = {
     "os": types.SimpleNamespace(path=os.path),
 }
 
+_CM_PREFIX = "cm:"
+_STATIC_KEYS = {*SAFE_BUILTINS, *SAFE_MODULES, "__builtins__", "__import__", "_getattr_"}
+
+class CodeEnv(dict):
+    """Globals dict for code-mode exec(). Syncs simple-type LLM variables to/from ctx.data."""
+
+    def __init__(self, ctx):
+        super().__init__()
+        self.ctx = ctx
+        # static setup
+        self["__builtins__"] = SAFE_BUILTINS.copy()
+        self["__import__"] = _no_import
+        self["_getattr_"] = self._make_getattr()
+        self.update(SAFE_MODULES)
+
+    def _make_getattr(self):
+        _safe_module_names = {"re", "json", "math", "time", "posixpath", "ntpath", "genericpath", "os.path"}
+        def _getattr_(obj, name):
+            if isinstance(obj, ToolResult) and name in ("get", "print", "status", "is_ok"):
+                return getattr(obj, name)
+            if isinstance(obj, types.SimpleNamespace) or obj in SAFE_MODULES.values():
+                return getattr(obj, name)
+            obj_mod = getattr(type(obj), "__module__", None)
+            if obj_mod in _safe_module_names:
+                return getattr(obj, name)
+            raise AttributeError(f"no attribute {name}")
+        return _getattr_
+
+    def prepare(self, results, threads, tool_infos):
+        """Re-wrap tools with fresh per-call tracking state. Load persisted vars from ctx.data."""
+        tools = dict(self.ctx.data_volatile.get('_codemode_base_tools', {}))
+        tools.update(self.ctx.data_volatile.get('_codemode_tools', {}))
+        for name, fn in tools.items():
+            self[name] = _wrap_tool_threaded(fn, self.ctx, results, threads, tool_infos)
+        # load persisted variables from ctx.data
+        for k, v in self.ctx.data.items():
+            if k.startswith(_CM_PREFIX):
+                self[k[len(_CM_PREFIX):]] = v
+
+    def sync(self):
+        """
+        After exec: persist simple-type variables back to ctx.data.
+        The reason we must do 
+        """
+        for k, v in list(self.items()):
+            if k in _STATIC_KEYS or k.startswith("_"): continue
+            if isinstance(v, ex6.SIMPLE_DATA_TYPES):
+                self.ctx.data[_CM_PREFIX + k] = v
+
+
+
 class ToolResult:
     """Future-like object returned by tool calls."""
     __slots__ = ('value', '_error', '_event', '_call_str', '_fn_name', '_results')
@@ -148,28 +199,12 @@ def _no_import(*args, **kwargs):
     raise ImportError("imports disabled")
 
 
-def exec_sandboxed(code: str, env: dict):
+def exec_sandboxed(code: str, env: CodeEnv):
     """Execute code in RestrictedPython sandbox."""
-    sandbox_globals = {"__builtins__": SAFE_BUILTINS.copy()}
-    sandbox_globals["__import__"] = _no_import
-    _safe_module_names = {"re", "json", "math", "time", "posixpath", "ntpath", "genericpath", "os.path"}
-    def _getattr_(obj, name):
-        if isinstance(obj, ToolResult) and name in ("get", "print", "status", "is_ok"):
-            return getattr(obj, name)
-        if isinstance(obj, types.SimpleNamespace) or obj in SAFE_MODULES.values():
-            return getattr(obj, name)
-        obj_mod = getattr(type(obj), "__module__", None)
-        if obj_mod in _safe_module_names:
-            return getattr(obj, name)
-        raise AttributeError(f"no attribute {name}")
-    sandbox_globals["_getattr_"] = _getattr_
-    sandbox_globals.update(SAFE_MODULES)
-    sandbox_globals.update(env)
-
     result = compile_restricted_exec(code, '<tools>')
     if result.errors:
         raise SyntaxError(f"restricted compile: {result.errors}")
-    exec(result.code, sandbox_globals)
+    exec(result.code, env)
 
 
 
@@ -265,6 +300,16 @@ def generate_tool_desc(fn) -> str:
     return f"<tool {fn.__name__}>\n{body}\n</tool>"
 
 
+def _get_code_env(ctx, tools):
+    """Get or create the CodeEnv for this context. Stores base tools on first call."""
+    env = ctx.data_volatile.get('_code_env')
+    if not env:
+        ctx.data_volatile['_codemode_base_tools'] = {fn.__name__: fn for fn in tools}
+        env = CodeEnv(ctx)
+        ctx.data_volatile['_code_env'] = env
+    return env
+
+
 def make_code_mode_tool(tools: list):
     """Create the run_tools tool function for sandboxed code execution."""
     def run_tools(ctx: ex6.Context, code="", tool_call_id=None):
@@ -272,8 +317,8 @@ def make_code_mode_tool(tools: list):
         - Do NOT use import statements.
         - Tools return a ToolResult. You MUST call .print() or .status() to see results, or call .get() or .is_ok() to use the result for another call."""
         results, threads, tool_infos = [], [], []
-        all_tools = list(tools) + ctx.data.get('_codemode_tools', [])
-        env = {fn.__name__: _wrap_tool_threaded(fn, ctx, results, threads, tool_infos) for fn in all_tools}
+        env = _get_code_env(ctx, tools)
+        env.prepare(results, threads, tool_infos)
 
         exec_error = None
         if tool_call_id:
@@ -295,8 +340,10 @@ def make_code_mode_tool(tools: list):
         except Exception as e:
             exec_error = e
             for t in threads: t.join()
+            env.sync()
             raise ValueError(f"exec failed: {e}")
         for t in threads: t.join()
+        env.sync()
         if results:
             full_results = [(tr, mode) for tr, mode in results if mode == "full"]
             fn_names = [tr._fn_name for tr, mode in full_results]
@@ -324,12 +371,13 @@ def make_code_mode_tool(tools: list):
 
 def inject_tool(ctx, fn):
     """Add a tool to this context's code-mode sandbox. Available next run_tools call."""
-    if '_codemode_tools' not in ctx.data: ctx.data['_codemode_tools'] = []
-    ctx.data['_codemode_tools'].append(fn)
+    tools = ctx.data_volatile.setdefault('_codemode_tools', {})
+    tools[fn.__name__] = fn
 
 def remove_tool(ctx, fn):
     """Remove an injected tool from this context's code-mode sandbox."""
-    if '_codemode_tools' in ctx.data: ctx.data['_codemode_tools'].remove(fn)
+    tools = ctx.data_volatile.get('_codemode_tools', {})
+    tools.pop(fn.__name__, None)
 
 
 RUN_TOOLS_NAME = "run_tools"
