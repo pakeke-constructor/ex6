@@ -18,13 +18,6 @@ import datetime
 
 
 
-def main_system_prompt(
-        agent_strategy: str,
-        output_rules: str,
-        working_style: str,
-        code_editing_rules: str
-):
-    pass
 
 MAIN_SYSTEM_PROMPT = ex6.Message(
 role ="system",
