@@ -4,6 +4,7 @@ from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.tools_checkpoints import checkpoint, condense
+from _ex6.skills import load_skill
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
 import ex6
@@ -204,6 +205,7 @@ def auto_setup():
             bash, explore_agent, web_search, websearch_agent,
             plan_read, plan_done, plan_list,
             checkpoint, condense,
+            load_skill,
         ]),
         ENV_PROMPT,
         CLAUDE_MD,
@@ -219,6 +221,7 @@ def auto_setup():
             bash, explore_agent, web_search, websearch_agent,
             plan_read, plan_done, plan_list,
             checkpoint, condense,
+            load_skill,
         ]),
         ENV_PROMPT,
         CLAUDE_MD,
