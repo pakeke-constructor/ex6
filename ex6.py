@@ -606,22 +606,23 @@ class Context:
     last_invoke_time_start: float = 0
     llm_result: Optional[LLMResult] = None
     ui_stack: list = field(default_factory=list)
-    _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     llm_suspended: bool = False
     stop_early: bool = False
     parent: Optional[str] = None # name of parent context (for subagents)
+
+    cwd: Optional[str] = None
+    yolo: bool = False
 
     # data and volatile_data: Places where plugins can store arbitrary data.
     # Convention is to store data like ctx.data["pluginName:key"] = value
     data: StrictDataDict = field(default_factory=StrictDataDict) # str/int/float/bool/None only. Use data_volatile for complex objects.
     data_volatile: dict = field(default_factory=dict) # cleared on fork/clear. For complex/mutable objects.
 
+    _msg_lock: threading.Lock = field(default_factory=threading.Lock)
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
     _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
-    cwd: Optional[str] = None
-    yolo: bool = False
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _tools_invalidated: bool = False

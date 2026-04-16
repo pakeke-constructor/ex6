@@ -135,21 +135,53 @@ Be kinda like claude-code.
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
+<cwd_tool>
+```py
+safe_cwd = make_safe_cwd({
+    "army_game": "C:/programming/army_game/",
+    "ex6": "C:/programming/llms/ex6/",
+})
+```
+This allows LLMs to swap between different "folders" by calling `safe_cwd("army_game")` or `safe_cwd("ex6")`.
+but any number of folders are supported.
+
+And in the docstring of the `safe_cwd`, it shows all possible tags it can use,
+and explains how to use them.
+
+This essentially makes it so catx-agent and ex6-agents can exist inside of army-game repo,
+and essentially "look across" any kind of codebase.
+
+Whenever a `safe_cwd` call is made, it should print the cwd-key, the old-cwd, and both paths.
+</cwd_tool>
+
+
+<cwd-agents>
+Overarching goal: make an agent that has reference to ex6 codebase;
+FROM ANY CODEBASE.
+
+make it so you call setup_ex6_agent(), to setup this agent in ANY repository. It should be well-aware of _ex6 plugins and how they work.
+
+Make it so the agent can swap between working-directory with safe_cwd() function.
+<cwd-agents>
+
+
 <compression>
 ex6 compression idea:
 "condense()" should be a function with 0 args. 
 
-when 'condense' is called, instead of instantly condensing, it should inject a bunch of guidance and information into the ctx window:
+when 'condense' is called, instead of instantly condensing, it should inject a bunch of guidance and information into the ctx window as a tool-result: (just return string from the tool-call)
 
  Information to be injected:
-- list all checkpoints, AND token-counts. eg
-- checkpoint1: "objective blah" (40k toks)
-- checkpoint 2: "blah blh" (40k toks)
+- list all checkpoints, AND cumulative token-counts. eg
+- checkpoint 1: "objective blah" (10k toks)
+- checkpoint 2: "blah blh" (25k toks)
+- checkpoint 3: "hjhdfjdfh" (32k toks)
 
-- list the method signature for compress(...)
-- Add guidance for how to use condense(...), practices, etc
+- Add a new method to code-mode tools, called condense_to_checkpoint(...)
+- list the method signature for condense_to_checkpoint(...)
+- Add guidance for how to use condense_to_checkpoint(...), practices, etc
 - If less than 15k tokens used, tell the LLM "You probably don't need to condense, there's hardly any tokens used"
-- Tell the LLM how to choose the checkpoint
+- Tell the LLM how to choose the checkpoint to condense to, by calling appropriate tool.
 </compression>
 
 
