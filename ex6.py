@@ -692,6 +692,7 @@ class Context:
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
         self.stop_early = False
+        self._tools_invalidated = False
 
         def do_llm():
             self.last_invoke_time_start = time.time()
