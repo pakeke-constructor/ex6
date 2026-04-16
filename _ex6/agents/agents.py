@@ -206,7 +206,7 @@ def auto_setup():
     if SMART_MODEL.startswith("anthropic/"):
         cache_manually(coder)
 
-    coder = Context("coder_codex", model=M.GPT52_CODEX.id, reasoning="medium", messages=[
+    coder = Context("coder_codex", model=M.GPT53_CODEX.id, reasoning="medium", messages=[
         MAIN_SYSTEM_PROMPT,
         make_code_mode_system_prompt([
             read_file, glob, search, read_headers, read_body,

@@ -492,18 +492,19 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
             buf.put(col, y, ch, txt_color=clr)
             col += 1
     _put(name + '(', th.accent)
+    value_color = th.muted
     for i, a in enumerate(args):
         if i: _put(', ', th.accent)
         s = repr(a)
         if len(s) > 40: s = s[:40] + '...'
-        _put(s, th.muted if isinstance(a, str) else th.accent)
+        _put(s, value_color)
     if args and kwargs: _put(', ', th.accent)
     for i, (k, v) in enumerate(kwargs.items() if kwargs else []):
         if i: _put(', ', th.accent)
         _put(f'{k}=', th.accent)
         s = repr(v)
         if len(s) > 40: s = s[:40] + '...'
-        _put(s, th.muted if isinstance(v, str) else th.accent)
+        _put(s, value_color)
     _put(')', th.accent)
     if detail:
         col += 1
