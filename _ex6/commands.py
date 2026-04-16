@@ -83,6 +83,11 @@ perf: ...
 ci: ...
 refactor(...) ...
 
+Key strategies:
+- If small one-line change and is unclear what the purpose is, it's likely a fix
+- If many changes to existing systems, but the API / user facing code remains the same, it's likely a refactor
+- If there's a CLEAR improvement, i.e. an new API to use, or new feature users will see, it's likely a feature, (feat)
+
 One line only. No quotes. No explanation.
 Be extremely concise, grammatical correctness is not important.
 """
