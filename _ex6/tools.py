@@ -762,6 +762,26 @@ def _get_bash():
     return None
 
 
+
+def make_safe_cwd(folders: dict[str, str]):
+    reverse = {os.path.normpath(v): k for k, v in folders.items()}
+
+    def safe_cwd(ctx: ex6.Context, tag: str) -> str:
+        if tag not in folders:
+            raise ValueError(f"ERROR: unknown cwd tag '{tag}'. Valid tags: {', '.join(folders.keys())}")
+        old_cwd = ctx.cwd or os.getcwd()
+        old_key = reverse.get(os.path.normpath(old_cwd), old_cwd)
+        new_path = os.path.normpath(folders[tag])
+        ctx.cwd = new_path
+        return f"{old_key} -> {tag} ({new_path})"
+
+    lines = [f'  {k} => {v}' for k, v in folders.items()]
+    safe_cwd.__doc__ = "Switch working directory.\nAvailable folders:\n" + "\n".join(lines) + "\n\nUsage: safe_cwd(\"tag_name\")"
+    safe_cwd.__name__ = "safe_cwd"
+
+    return safe_cwd
+
+
 def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     """Run a bash/shell command and return its output (stdout + stderr combined).
     Use for: running tests, checking git status, installing packages, etc.

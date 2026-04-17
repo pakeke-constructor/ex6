@@ -151,7 +151,10 @@ and explains how to use them.
 This essentially makes it so catx-agent and ex6-agents can exist inside of army-game repo,
 and essentially "look across" any kind of codebase.
 
-Whenever a `safe_cwd` call is made, it should print the cwd-key, the old-cwd, and both paths.
+Whenever a `safe_cwd` call is made, it should print the old-cwd-key (where the agent WAS), the new cwd-key, and the new path.
+
+AGENT INSTRUCTIONS:
+IMPLEMENT THIS VERY VERY SLOWLY. START BY IMPLEMENTING THE FUNCTIONALITY; NO STRINGS.
 </cwd_tool>
 
 
