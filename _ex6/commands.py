@@ -15,6 +15,18 @@ def clr(name: Optional[str]):
 
 
 @ex6.command
+def pop(n: Optional[int]):
+    'Pop last N user messages and everything after each cutoff.'
+    ctx = ex6.state.current
+    if not ctx or ctx.is_running(): return
+    n = 1 if n is None else n
+    if n <= 0: return
+    user_idxs = [i for i, m in enumerate(ctx.messages) if m.role == "user"]
+    if len(user_idxs) < n: return
+    ctx.truncate(user_idxs[-n])
+
+
+@ex6.command
 def delete(name: Optional[str]):
     'Delete a context.'
     ctx = ex6.state.contexts.get(name) if name else ex6.state.current
