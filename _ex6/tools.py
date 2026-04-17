@@ -26,6 +26,8 @@ import fnmatch
 import threading
 import subprocess
 import shutil
+import datetime
+import platform
 import sys
 from _ex6.models import M
 from ex6 import Context, Message
@@ -747,8 +749,6 @@ def _get_claude_md_content(ctx):
 CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content, overview="CLAUDE.md")
 
 
-import datetime
-import platform
 
 def _env_content(ctx):
     cwd = ctx.cwd or os.getcwd()
