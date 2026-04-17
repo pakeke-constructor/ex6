@@ -1,7 +1,7 @@
 """
 skills: Progressive disclosure. LLMs can list/load skill files.
 Skill files live in _ex6/skills/*.md.
-Uses yaml frontmatter for name/description. Filename = skill id fallback.
+Requires yaml frontmatter with name and description fields.
 
 Skill format uses anthropic's skill format, using progressive disclosure:
 
@@ -23,17 +23,21 @@ _skills_dir = Path(__file__).parent / "skills"
 
 
 
-def _parse_frontmatter(text):
-    """Parse yaml frontmatter from --- delimited block. Returns (metadata_dict, body)."""
+def _parse_frontmatter(path, text):
+    """Parse yaml frontmatter from --- delimited block. Returns (name, description, body)."""
     if not text.startswith("---"):
-        return {}, text
+        raise ValueError(f"{path}: missing frontmatter")
     lines = text.split("\n")
     for i in range(1, len(lines)):
         if lines[i].strip() == "---":
-            fm = yaml.safe_load("\n".join(lines[1:i]))
+            fm = yaml.safe_load("\n".join(lines[1:i])) or {}
             body = "\n".join(lines[i+1:]).lstrip("\n")
-            return fm or {}, body
-    return {}, text
+            if "name" not in fm:
+                raise ValueError(f"{path}: frontmatter missing 'name'")
+            if "description" not in fm:
+                raise ValueError(f"{path}: frontmatter missing 'description'")
+            return fm["name"], fm["description"], body
+    raise ValueError(f"{path}: missing closing '---'")
 
 
 def _list_skills():
@@ -41,10 +45,8 @@ def _list_skills():
     out = []
     for p in sorted(_skills_dir.glob("*.md")):
         text = p.read_text(encoding="utf-8")
-        fm, _ = _parse_frontmatter(text)
-        sid = fm.get("name", p.stem)
-        desc = fm.get("description", "")
-        out.append((sid, desc))
+        name, desc, _ = _parse_frontmatter(p, text)
+        out.append((name, desc))
     return out
 
 
@@ -57,8 +59,7 @@ def load_skill(ctx: ex6.Context, skill_id: str) -> str:
         avail = ", ".join(sid for sid, _ in _list_skills())
         raise ValueError(f"Unknown skill '{skill_id}'. Available: {avail}")
     text = path.read_text(encoding="utf-8")
-    fm, body = _parse_frontmatter(text)
-    name = fm.get("name", skill_id)
+    name, _, body = _parse_frontmatter(path, text)
     ctx.messages.append(ex6.Message(role="user", content=f"[skill: {name}]\n{body}"))
     return f"Loaded skill '{name}'."
 
