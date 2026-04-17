@@ -1,7 +1,7 @@
 
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
-from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, explore_agent, CLAUDE_MD
+from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.tools_checkpoints import checkpoint, condense
 from _ex6.skills import load_skill
@@ -12,9 +12,6 @@ from ex6 import Context, Message
 import time
 import math
 import os
-import platform
-import subprocess
-import datetime
 
 
 
@@ -71,19 +68,6 @@ ANALYTICAL_MODEL = M.GPT52_CODEX.id
 PLANNER_MODEL = M.OPUS_46.id
 
 
-
-def _env_content(ctx):
-    cwd = ctx.cwd or os.getcwd()
-    plat = platform.system()
-    now = datetime.datetime.now().strftime("%Y-%m-%d")
-    try:
-        branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL, cwd=cwd).strip()
-    except Exception:
-        branch = "unknown"
-    return f"<environment>\n- cwd: {cwd}\n- platform: {plat}\n- date: {now}\n- git branch: {branch}\n</environment>"
-
-
-ENV_PROMPT = ex6.Message(role="system", overview="env", content=_env_content)
 
 
 PLANNER_SYSTEM_PROMPT = ex6.Message(

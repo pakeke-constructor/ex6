@@ -25,6 +25,7 @@ import time
 import fnmatch
 import threading
 import subprocess
+import shutil
 import sys
 from _ex6.models import M
 from ex6 import Context, Message
@@ -744,6 +745,22 @@ def _get_claude_md_content(ctx):
     return "(no CLAUDE.md found)"
 
 CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content, overview="CLAUDE.md")
+
+
+import datetime
+import platform
+
+def _env_content(ctx):
+    cwd = ctx.cwd or os.getcwd()
+    plat = platform.system()
+    now = datetime.datetime.now().strftime("%Y-%m-%d")
+    try:
+        branch = subprocess.check_output(["git", "branch", "--show-current"], text=True, stderr=subprocess.DEVNULL, cwd=cwd).strip()
+    except Exception:
+        branch = "unknown"
+    return f"<environment>\n- cwd: {cwd}\n- platform: {plat}\n- date: {now}\n- git branch: {branch}\n</environment>"
+
+ENV_PROMPT = ex6.Message(role="system", content=_env_content, overview="env")
 
 
 
