@@ -288,12 +288,16 @@ def _wrap_tool_threaded(fn, ctx, results: list, threads: list, tool_infos: list)
 
 
 
+def _annotation_name(p):
+    if p.annotation == inspect.Parameter.empty: return '?'
+    return p.annotation.__name__ if hasattr(p.annotation, '__name__') else str(p.annotation)
+
 def generate_tool_desc(fn) -> str:
     """Generate a description string for a tool function: name, args w/ types, and docstring."""
     sig = inspect.signature(fn)
     params = [(n, p) for n, p in sig.parameters.items() if n != 'ctx']
     args = ", ".join(
-        f"{n}: {p.annotation.__name__ if p.annotation != inspect.Parameter.empty else '?'}"
+        f"{n}: {_annotation_name(p)}"
         + (f" = {p.default!r}" if p.default != inspect.Parameter.empty else "")
         for n, p in params
     )
