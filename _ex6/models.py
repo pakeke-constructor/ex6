@@ -38,6 +38,8 @@ class M:
     DEEPSEEK_R1      = ModelInfo("deepseek/deepseek-r1",              64_000, 0.7,  2.5,   0)
     QWEN3_CODER      = ModelInfo("qwen/qwen3-coder",                 262_144, 0.22, 1,    0.022)
     KIMI_K25         = ModelInfo("moonshotai/kimi-k2.5",             262_144, 0.45, 2.2,  0.225)
+    KIMI_K25         = ModelInfo("moonshotai/kimi-k2.5",             262_144, 0.45, 2.2,  0.225)
+    GEMMA_4          = ModelInfo("google/gemma-4-31b-it",            262_144, 0.13, 0.38, 0)
 
     _index: Optional[dict[str, "ModelInfo"]] = None
 
