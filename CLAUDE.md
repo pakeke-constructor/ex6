@@ -11,9 +11,9 @@ ex6: A hyper-minimal TUI where you create agents from scratch. Every token expli
 Plugins give absolute control over everything, from orchestration to tools.
 
 
-## architecture:
-- ex6.py: (1.6k lines of code) The entirety of ex6 is stored in this file.
-- _ex6/*: Plugins. This is where
+## simple architecture:
+- ex6.py: (1.6k lines of code) All of ex6 is in this file.
+- _ex6/**: plugins defined here
 
 
 ## design:
@@ -35,7 +35,7 @@ Files in _ex6 loaded as plugins.
 Any file or folder starting with _ is ignored.
 
 CORE ETHOS:
-Plugins should be able to be removed, WITHOUT affecting core ex6.
+Plugins should be able to be removed or altered completely, WITHOUT affecting core ex6.
 
 
 ## tech:
