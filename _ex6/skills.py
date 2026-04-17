@@ -61,8 +61,7 @@ def load_skill(ctx: ex6.Context, skill_id: str = "") -> str:
         raise ValueError(f"Unknown skill '{skill_id}'. Available: {avail}")
     text = path.read_text(encoding="utf-8")
     name, _, body = _parse_frontmatter(path, text)
-    ctx.messages.append(ex6.Message(role="user", content=f"[skill: {name}]\n{body}"))
-    return f"Loaded skill '{name}'."
+    return f"[skill: {name}]\n{body}"
 
 
 
