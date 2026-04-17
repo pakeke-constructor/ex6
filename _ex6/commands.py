@@ -19,10 +19,11 @@ def pop(n: Optional[int]):
     'Pop last N user messages and everything after each cutoff.'
     ctx = ex6.state.current
     if not ctx or ctx.is_running(): return
-    n = 1 if n is None else n
+    if n is None: n = 1
     if n <= 0: return
     user_idxs = [i for i, m in enumerate(ctx.messages) if m.role == "user"]
-    if len(user_idxs) < n: return
+    n = min(n, len(user_idxs))
+    if n == 0: return
     ctx.truncate(user_idxs[-n])
 
 
