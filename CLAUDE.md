@@ -23,6 +23,19 @@ ex6 doesn't care how or why an agent is invoked.
 ex6 doesn't care how the tokens are passed, or what tokens are passed. Completely neutral, the programmer is given FULL power.
 
 ## existing plugins:
+- tools: Agentic coding tools — file ops, bash, search, approval flow, subagents.
+- provider: LLM invocation and caching.
+- models: Model registry (pricing, context limits).
+- commands: Slash commands for context management and workflow shortcuts.
+- code-mode: The tool-use paradigm. Instead of JSON tool_calls, the LLM writes Python in run_tools blocks. Tools run in parallel threads, return ToolResult futures (.print()/.get()/.status()). Sandboxed via RestrictedPython.
+- tasks: Lightweight plan/task tracking.
+- skills, themes, highlights: Skill persistence, color themes, syntax highlighting.
+
+Files in _ex6 loaded as plugins.
+Any file or folder starting with _ is ignored.
+
+CORE ETHOS:
+Plugins should be able to be removed, WITHOUT affecting core ex6.
 
 
 ## tech:
