@@ -1,7 +1,7 @@
 
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
-from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, CLAUDE_MD
+from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, explore_agent, CLAUDE_MD
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.tools_checkpoints import checkpoint, condense
 from _ex6.skills import load_skill
@@ -69,56 +69,6 @@ ANALYTICAL_MODEL = M.GPT52_CODEX.id
 
 
 PLANNER_MODEL = M.OPUS_46.id
-EXPLORE_MODEL = M.GEMINI3_FLASH.id
-
-
-EXPLORE_SYSTEM_PROMPT = Message(role="system", overview="explore-system", content="""\
-You are a fast, read-only exploration agent. Your output is given to another agent - plain text only, no markdown headers, no tables, no emojis.
-
-<goal>
-Understand the code, then return a tight, information-dense summary. No fluff. Match length to information content.
-</goal>
-
-<strategy>
-- Start broad, go deep. Use multiple search angles — different naming conventions, related files, alternate locations.
-- Maximize parallel tool calls. Read multiple files and search multiple patterns in a single run_tools block.
-- Start with token efficient tools like `read_headers` / `search` / `glob`, then `read_body` for specifics, then `read_file` for going deep.
-</strategy>
-
-<output>
-- Bullet points over paragraphs. Code references (file:function_name) over prose.
-- Concrete facts, relevant paths, function names, relationships.
-- Favour conciseness at all costs. Conciseness is much more important than grammatical correctness.
-- Be ultra concise and minimal. Do NOT use "the", "a", "it looks like", or anything else that bloats the output.
-- If the answer is 3 lines, write 3 lines. If it needs 30, write 30.
-</output>
-""",
-tools = [read_file, glob, search, read_headers, read_body]
-)
-
-
-def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
-    """Spawn a read-only subagent to explore the codebase. Returns its findings.
-    files: optional file paths to pre-read and include in the prompt."""
-    # prepend file contents to prompt
-    if files:
-        parts = []
-        for f in files:
-            fp = ctx.resolve(f)
-            with open(fp, "r") as fh:
-                parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
-        prompt = "\n".join(parts) + "\n\n" + prompt
-    sub = Context("explore", model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[
-        EXPLORE_SYSTEM_PROMPT
-    ])
-    sub.parent = ctx.name
-    sub.invoke(prompt)
-    while sub.llm_is_running:
-        time.sleep(0.05)
-    result = sub.messages[-1].content if sub.messages else ""
-    del ex6.state.contexts[sub.name]
-    return result
-
 
 
 
