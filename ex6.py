@@ -1615,7 +1615,7 @@ if __name__ == "__main__":
                     if _ui_panel_stack:
                         r = Region(3, 2, buf.w - 6, buf.h - 4)
                         _ui_panel_stack[-1](buf, inpt, r)
-                    elif state.mode == "work" and state.current.ui_stack:
+                    elif state.mode == "work" and state.current and state.current.ui_stack:
                         r = Region(3, 2, buf.w - 6, buf.h - 4)
                         state.current.ui_stack[-1](buf, inpt, r)
                     if state.mode != prev_mode:
