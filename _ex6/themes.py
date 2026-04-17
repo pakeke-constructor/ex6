@@ -10,7 +10,7 @@ THEMES = {
 
     "green": ex6.Theme(
         name="green",
-        text="bright_white",
+        text = "white",
         muted="bright_black",
         accent="seagreen",
         accent_alt="darkturquoise",
@@ -32,7 +32,7 @@ THEMES = {
 
     "blue": ex6.Theme(
         name="blue",
-        text="bright_white",
+        text = "white",
         muted="bright_black",
         accent="bright_blue",
         accent_alt="mediumpurple",
@@ -54,7 +54,7 @@ THEMES = {
 
     "red": ex6.Theme(
         name="red",
-        text="bright_white",
+        text = "white",
         muted="bright_black",
         accent="red",
         accent_alt="bright_red",
