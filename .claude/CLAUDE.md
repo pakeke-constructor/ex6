@@ -1,15 +1,19 @@
 
 
-# Project description:
+# Project: ex6
+A plugin-based, hyper-minimal TUI for coding agents/assistants
 
-## ex6: A tool for context engineering.
-This project, `ex6`, serves as a thin, simple alternative to claude-code.
+## Core problem:
+Existing coding agent harness are often bloated, and inject a tonne of stuff, tools, tokens into context windows explicitly.
+Great for noobs. Not so great for high-performing engineers who want to optimize.
 
-## Project goals:
+## Solution and project goals:
+ex6: A hyper-minimal TUI coding harness where you create agents from scratch. Every token explicit. Every tool explicit. Plugins give absolute control over everything, from orchestration to tools.
 - Serves as a thin, simple layer; no leaky/overreaching abstractions.
 - No hidden/implicit context. User can see entire ctx window, and has FULL control.
 - Total degree of customization/control via plugins.
 - Lives in terminal.
+
 
 ## Project architecture:
 - `ex6.py`: project file. EVERYTHING is layed out in this file.
