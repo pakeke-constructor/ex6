@@ -19,7 +19,7 @@ import yaml
 from pathlib import Path
 
 
-_skills_dir = Path(__file__).parent / "skills"
+_skills_dir = Path(__file__).parent / "_skills"
 
 
 
