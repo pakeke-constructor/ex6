@@ -764,6 +764,8 @@ def _get_bash():
 
 
 def make_safe_cwd(folders: dict[str, str]):
+    if len(folders) < 2:
+        raise ValueError("make_safe_cwd requires at least 2 folders")
     reverse = {os.path.normpath(v): k for k, v in folders.items()}
 
     def safe_cwd(ctx: ex6.Context, tag: str) -> str:
@@ -775,8 +777,14 @@ def make_safe_cwd(folders: dict[str, str]):
         ctx.cwd = new_path
         return f"{old_key} -> {tag} ({new_path})"
 
-    lines = [f'  {k} => {v}' for k, v in folders.items()]
-    safe_cwd.__doc__ = "Switch working directory.\nAvailable folders:\n" + "\n".join(lines) + "\n\nUsage: safe_cwd(\"tag_name\")"
+    folder_list = "\n".join(f"  {k} => {v}" for k, v in folders.items())
+    safe_cwd.__doc__ = f"""\
+Switch working directory to a named folder.
+
+Available folders:
+{folder_list}
+
+Usage: safe_cwd("tag_name")"""
     safe_cwd.__name__ = "safe_cwd"
 
     return safe_cwd
