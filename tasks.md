@@ -135,27 +135,6 @@ Be kinda like claude-code.
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
-<cwd_tool>
-```py
-safe_cwd = make_safe_cwd({
-    "army_game": "C:/programming/army_game/",
-    "ex6": "C:/programming/llms/ex6/",
-})
-```
-This allows LLMs to swap between different "folders" by calling `safe_cwd("army_game")` or `safe_cwd("ex6")`.
-but any number of folders are supported.
-
-And in the docstring of the `safe_cwd`, it shows all possible tags it can use,
-and explains how to use them.
-
-This essentially makes it so catx-agent and ex6-agents can exist inside of army-game repo,
-and essentially "look across" any kind of codebase.
-
-Whenever a `safe_cwd` call is made, it should print the old-cwd-key (where the agent WAS), the new cwd-key, and the new path.
-
-AGENT INSTRUCTIONS:
-IMPLEMENT THIS VERY VERY SLOWLY. START BY IMPLEMENTING THE FUNCTIONALITY; NO STRINGS.
-</cwd_tool>
 
 
 <cwd-agents>
@@ -188,19 +167,12 @@ when 'condense' is called, instead of instantly condensing, it should inject a b
 </compression>
 
 
-<skills>
-ex6 agent skills:
-When agent wants to load skills, instead of just doing `load_skill`, agents should do
-</skills>
+
+- ex6 agent skills
 
 
 
 - Tell LLMs to write comments in code as a form of "CoT" thinking
-
-
-
-- Allow agents to compress their own context-windows.
-
 
 
 - system reminder infrastructure.
@@ -226,12 +198,26 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 - ev/q buses would become a core `idea`.
 - knowing how best to write ui code/layout would become an `idea`.
 - writing animations simplfy/robustly (ie with state-robust incremental timers) is an `idea`
-And ideas would be constantly iterated on / tuned.
+ideas would be iterated on / tuned when the user does `/tune` command.
+(That way, it doesnt just end up like slop.)
 
 
 
 
 - command auto-completion.
+
+
+
+<better_interop>
+SPIKE: 
+
+What if agents could "interact" with ex6 much better?
+- Have tools to set/get users clipboard?
+- Send prompts to other agents?
+- Store data in ex6? like a buffer? 
+- Look at / change settings?
+</better_interop>
+
 
 
 

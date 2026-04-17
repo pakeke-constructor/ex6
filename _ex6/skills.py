@@ -17,9 +17,10 @@ blah
 import ex6
 import yaml
 from pathlib import Path
+from typing import Optional
 
 
-_skills_dir = Path(__file__).parent / "_skills"
+_skills_dir = Path.cwd() / "_ex6" / "_skills"
 
 
 
@@ -50,7 +51,7 @@ def _list_skills():
     return out
 
 
-def load_skill(ctx: ex6.Context, skill_id: str) -> str:
+def load_skill(ctx: ex6.Context, skill_id: str = "") -> str:
     if not skill_id:
         lines = [f"{sid}: {desc}" for sid, desc in _list_skills()]
         return "\n".join(lines) if lines else "(no skills are available!)"
