@@ -7,7 +7,7 @@ Existing agentic harness are often bloated, and inject a tonne of stuff, tools, 
 Great for noobs. Not so great for high-performing engineers who want to optimize.
 
 ### Core solution:
-ex6: A hyper-minimal TUI where you create agents from scratch. Every token explicit. Every tool explicit.
+ex6: A hyper-minimal TUI coding harness where you create agents from scratch. Every token explicit. Every tool explicit.
 Plugins give absolute control over everything, from orchestration to tools.
 
 
@@ -18,7 +18,7 @@ Plugins give absolute control over everything, from orchestration to tools.
 
 ## design:
 Two modes: work-mode (chatting to agent), and selection-mode, (select between agents)
-Multiple agents run in parellel.
+Multiple agents can run in parellel.
 ex6 doesn't care how or why an agent is invoked.
 ex6 doesn't care how the tokens are passed, or what tokens are passed. Completely neutral, the programmer is given FULL power.
 
@@ -40,7 +40,12 @@ Plugins should be able to be removed or altered completely, WITHOUT affecting co
 
 ## tech:
 Uses python
-blessing library for rendering
-Uses double-buffering setup for rendering; clears every frame via ScreenBuffer
+blessed library for rendering
+Double-buffered rendering via ScreenBuffer; clears every frame.
+
+Plugin system: _ex6/ next to ex6.py (core) and _ex6/ in cwd (project-local). Files loaded alphabetically, _ prefix ignored.
+Extension points: @overridable/@override for replacing core fns (e.g. invoke_llm, call_tools). @output_renderer for post-processing assistant output. @after_tool_calls for injecting messages between tool runs and next LLM turn. @command for slash commands.
+Context: the central object. Holds messages, model, tools, cwd, data dicts. Messages carry tools — tool availability is per-message, not global. Message.content can be a callable (lazy/dynamic system prompts).
+Agentic loop: ctx.invoke() spawns a thread that loops: call LLM → call_tools → repeat until no tool calls or stop_early.
 
 
