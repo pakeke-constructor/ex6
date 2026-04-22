@@ -136,10 +136,10 @@ def dispatch_command(text: str):
 
     fn, spec = _commands[name]
     if len(spec) == 1:
-        # 1 arg = pass the entire arg as a string.
+        # 1 arg = pass the entire arg as a string. 
+        # eg (/command blah blah blah), passes "blah blah blah" as a string IFF /command has 1 arg.
         args = [rest.strip()] if sep else []
-    else:
-        # Otherwise, split by space.
+    else: # Otherwise, split by space.
         args = rest.split() if sep else []
 
     parsed = []
