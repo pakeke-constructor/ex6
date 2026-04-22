@@ -128,13 +128,20 @@ def _coerce_arg(value: str, typ):
 
 def dispatch_command(text: str):
     if not text.startswith("/"): return False
-    parts = text[1:].split()
-    if not parts: return False
+    body = text[1:].strip()
+    if not body: return False
 
-    name, args = parts[0], parts[1:]
+    name, sep, rest = body.partition(" ")
     if name not in _commands: return True
 
     fn, spec = _commands[name]
+    if len(spec) == 1:
+        # 1 arg = pass the entire arg as a string.
+        args = [rest.strip()] if sep else []
+    else:
+        # Otherwise, split by space.
+        args = rest.split() if sep else []
+
     parsed = []
     for i, (_, typ) in enumerate(spec):
         if i < len(args):
