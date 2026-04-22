@@ -388,15 +388,25 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
 _SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
 
 
-def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 15) -> str:
+def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 15, page: int = 1) -> str:
     """Search file contents for a regex pattern, filtered by glob.
     Returns matching lines with file:line: prefix.
+    Pagination: page is 1-indexed and returns at most max_results matches for that page.
     When you just want to check whether a pattern exists, (e.g. after a refactor) use max_results=1 to save context.
     - Make sure to use regex patterns correctly. WRONG: search("func("), malformed regex pattern. CORRECT: search("func\\(")
     """
+    if page < 1:
+        raise ValueError("page must be >= 1")
+    if max_results < 1:
+        raise ValueError("max_results must be >= 1")
+
     regex = re.compile(pattern)
     root = ctx.cwd or os.getcwd()
+    start_idx = (page - 1) * max_results
+    end_idx = start_idx + max_results
+    seen = 0
     results = []
+
     for f in _glob.glob(match, recursive=True, root_dir=root):
         if _is_gitignored(f):
             continue
@@ -406,15 +416,20 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
         try:
             with open(fp, "r", errors="ignore") as fh:
                 for i, line in enumerate(fh, 1):
-                    if regex.search(line):
-                        prefix = f"{f}:{i}: "
-                        results.append(f"{prefix}{line.rstrip()}")
-                        if len(results) >= max_results:
-                            return "\n".join(results) + f"\n... (capped at {max_results} results)"
+                    if not regex.search(line):
+                        continue
+                    if seen < start_idx:
+                        seen += 1
+                        continue
+                    if seen >= end_idx:
+                        return "\n".join(results) + f"\n... (page {page}, max_results {max_results})"
+                    prefix = f"{f}:{i}: "
+                    results.append(f"{prefix}{line.rstrip()}")
+                    seen += 1
         except (OSError, UnicodeDecodeError):
             continue
-    return "\n".join(results) if results else "No matches."
 
+    return "\n".join(results) if results else "No matches."
 
 
 
