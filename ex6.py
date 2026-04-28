@@ -510,10 +510,17 @@ _TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", li
 def _validate_tool_sig(name: str, fn: Callable):
     """Ensure tool has (ctx: Context, ...) signature."""
     params = list(inspect.signature(fn).parameters.values())
-    if len(params) < 1:
-        raise TypeError(f"Tool '{name}' must have at least 1 param: (ctx)")
-    if params[0].annotation not in (Context, 'Context', inspect.Parameter.empty):
+    if not params:
         raise TypeError(f"Tool '{name}' first param must be ctx: Context")
+    ann = params[0].annotation
+    if ann is inspect.Parameter.empty:
+        return
+    try:
+        ann = get_type_hints(fn).get(params[0].name, ann)
+    except Exception:
+        pass
+    if ann is not Context:
+        raise TypeError(f"Tool '{name}' first param must be ctx: Context, got {ann!r}")
 
 
 def tool_to_schema(name: str, fn: Callable) -> dict:
