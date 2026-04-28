@@ -211,10 +211,32 @@ def exec_sandboxed(code: str, env: CodeEnv):
 
 
 
+def _resolve_type_hint(h):
+    if not isinstance(h, str):
+        return h
+    return {
+        'str': str,
+        'int': int,
+        'float': float,
+        'bool': bool,
+        'list': list,
+        'dict': dict,
+        'tuple': tuple,
+    }.get(h, h)
+
+
+
 def _strong_isinstance(obj: object, type_hint: type) -> bool:
     """
     isinstance but with support for generics
     """
+    type_hint = _resolve_type_hint(type_hint)
+    if type_hint is typing.Any:
+        return True
+    if isinstance(type_hint, str):
+        hint = type_hint.rsplit('.', 1)[-1]
+        return type(obj).__name__ == hint
+
     origin = typing.get_origin(type_hint)
     args = typing.get_args(type_hint)
 
@@ -250,13 +272,22 @@ def _validate_tool_args(fn, args, kwargs):
             bound[name] = args[i]
         elif name in kwargs:
             bound[name] = kwargs[name]
+
+    try:
+        hints = typing.get_type_hints(fn)
+    except Exception:
+        hints = {}
+
     for name, val in bound.items():
         p = sig.parameters[name]
-        if p.annotation is inspect.Parameter.empty:
+        ann = hints.get(name, p.annotation)
+        if ann is inspect.Parameter.empty:
             continue
-        if not _strong_isinstance(val, p.annotation):
+        ann = _resolve_type_hint(ann)
+        if not _strong_isinstance(val, ann):
+            ann_name = ann.__name__ if hasattr(ann, '__name__') else str(ann)
             raise TypeError(
-                f"{fn.__name__}() param '{name}' expected {p.annotation.__name__}, got {type(val).__name__}: {val!r}"
+                f"{fn.__name__}() param '{name}' expected {ann_name}, got {type(val).__name__}: {val!r}"
             )
 
 
@@ -319,6 +350,8 @@ def _get_code_env(ctx, tools):
 
 def make_code_mode_tool(tools: list):
     """Create the run_tools tool function for sandboxed code execution."""
+    for fn in tools:
+        ex6._validate_tool_sig(fn.__name__, fn)
     def run_tools(ctx: ex6.Context, code="", tool_call_id=None):
         """Execute tool calls as Python code.
         - Do NOT use import statements.
@@ -376,6 +409,7 @@ def make_code_mode_tool(tools: list):
 
 def inject_tool(ctx, fn):
     """Add a tool to this context's code-mode sandbox. Available next run_tools call."""
+    ex6._validate_tool_sig(fn.__name__, fn)
     tools = ctx.data_volatile.setdefault('codemode:tools', {})
     tools[fn.__name__] = fn
 

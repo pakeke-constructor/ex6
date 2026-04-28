@@ -51,7 +51,7 @@ from dataclasses import dataclass, field
 from typing import Optional,Any
 import threading
 import inspect
-from typing import get_origin, get_args
+from typing import get_origin, get_args, get_type_hints
 import copy
 import time
 import glob
@@ -391,8 +391,14 @@ class Message:
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
 
+    def __post_init__(self):
+        for fn in self.tools:
+            _validate_tool_sig(fn.__name__, fn)
+
     def with_tools(self, tools: list[Callable]):
         assert self.role == "system"
+        for fn in tools:
+            _validate_tool_sig(fn.__name__, fn)
         clone = copy.copy(self)
         clone.tools = self.tools + tools
         return clone
@@ -436,13 +442,65 @@ def _ensure_unique_name(name):
     return name
 
 
+def _resolve_type_hint(h):
+    if not isinstance(h, str):
+        return h
+    return {
+        'str': str,
+        'int': int,
+        'float': float,
+        'bool': bool,
+        'list': list,
+        'dict': dict,
+        'tuple': tuple,
+    }.get(h, h)
+
+
+def _type_hint_name(h):
+    return h.__name__ if hasattr(h, '__name__') else str(h)
+
+
+def _strong_isinstance(obj: object, type_hint) -> bool:
+    type_hint = _resolve_type_hint(type_hint)
+    if type_hint is Any:
+        return True
+    if isinstance(type_hint, str):
+        hint = type_hint.rsplit('.', 1)[-1]
+        return type(obj).__name__ == hint
+
+    origin = get_origin(type_hint)
+    args = get_args(type_hint)
+
+    if origin is None:
+        return isinstance(obj, type_hint)
+
+    if origin is Union:
+        return any(_strong_isinstance(obj, arg) for arg in args)
+
+    if not isinstance(obj, origin):
+        return False
+
+    if origin is list:
+        assert(isinstance(obj, list))
+        (item_type,) = args
+        return all(_strong_isinstance(item, item_type) for item in obj)
+
+    return False
+
 
 def _check_tool_args(fn: Callable, args: dict) -> dict:
     """Validate args against fn annotations, raise TypeError if mismatch."""
-    hints = fn.__annotations__
+    try:
+        hints = get_type_hints(fn)
+    except Exception:
+        hints = fn.__annotations__
+
     for name, val in args.items():
-        if name in hints and not isinstance(val, hints[name]):
-            raise TypeError(f"{fn.__name__}: arg '{name}' expected {hints[name].__name__}, got {type(val).__name__}")
+        if name not in hints:
+            continue
+        hint = hints[name]
+        if not _strong_isinstance(val, hint):
+            raise TypeError(f"{fn.__name__}: arg '{name}' expected {_type_hint_name(hint)}, got {type(val).__name__}")
     return args
 
 
