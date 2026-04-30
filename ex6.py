@@ -1584,18 +1584,21 @@ if __name__ == "__main__":
                     sys.stdout, sys.stderr = _sink, _sink
                 if _fatal_error:
                     raise RuntimeError(f"FATAL: {_fatal_error}")
-                try:
-                    key = term.inkey(timeout=0.011)
-                except UnicodeDecodeError:
-                    key = None
-                while key:
-                    if _log_keys:
-                        debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
-                    keyls.append(key)
+                for _ in range(10):
                     try:
-                        key = term.inkey(timeout=0)
+                        key = term.inkey(timeout=0.001)
                     except UnicodeDecodeError:
                         key = None
+                    while key:
+                        if _log_keys:
+                            debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
+                        keyls.append(key)
+                        try:
+                            key = term.inkey(timeout=0)
+                        except UnicodeDecodeError:
+                            key = None
+                    if keyls:
+                        break
 
                 if buf.w != term.width or buf.h != term.height:
                     buf = ScreenBuffer(term.width, term.height)
