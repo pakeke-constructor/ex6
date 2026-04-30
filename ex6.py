@@ -1150,23 +1150,36 @@ class Region(tuple):
 
 
 class InputPass:
-    KEY_ALIASES = {'\x17': 'KEY_CTRL_BACKSPACE', '\x7f': 'KEY_CTRL_BACKSPACE', '\x1bd': 'KEY_CTRL_DELETE', '\x18': 'KEY_CTRL_X', '\x03': 'KEY_CTRL_C'}
+    KEY_ALIASES = {
+        '\x17': ('KEY_CTRL_BACKSPACE',),
+        '\x08': ('KEY_CTRL_BACKSPACE',),
+        '\x7f': ('KEY_CTRL_BACKSPACE',),
+        '\x1bd': ('KEY_CTRL_DELETE',),
+        '\x18': ('KEY_CTRL_X',),
+        '\x03': ('KEY_CTRL_C',),
+    }
 
     def __init__(self, keys: list):
         self._keys = list(keys)
 
+    def _candidates(self, k):
+        s = str(k)
+        out = {k.name, s}
+        out.update(self.KEY_ALIASES.get(s, ()))
+        return out
+
     def consume(self, *names: str) -> bool:
+        wanted = set(names)
         for i, k in enumerate(self._keys):
-            key_name = self.KEY_ALIASES.get(str(k), k.name)
-            if key_name in names or k.name in names or str(k) in names:
+            if self._candidates(k) & wanted:
                 self._keys.pop(i)
                 return True
         return False
 
     def peek(self, *names: str) -> bool:
+        wanted = set(names)
         for k in self._keys:
-            key_name = self.KEY_ALIASES.get(str(k), k.name)
-            if key_name in names or k.name in names or str(k) in names:
+            if self._candidates(k) & wanted:
                 return True
         return False
 
