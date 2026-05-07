@@ -1501,7 +1501,7 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
     th = state.theme
     if ctx.is_running():
         input_box(buf, inpt, input_r, txt_color=th.accent)
-        spin = "[" + "/—\\|"[int(time.time() * 12) % 4] + "]"
+        spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         chunks = ctx.llm_current_output
         y = input_r[1]
