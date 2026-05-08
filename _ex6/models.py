@@ -16,6 +16,7 @@ class ModelInfo:
 # On first lookup via M.get(model_id), builds a reverse index for O(1) access.
 class M:
     OPUS_46          = ModelInfo("anthropic/claude-opus-4.6",         200_000, 5,    25,   0.5,  6.25)
+    OPUS_47          = ModelInfo("anthropic/claude-opus-4.7",         200_000, 5,    25,   0.5,  6.25)
     SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       200_000, 3,    15,   0.3,  3.75)
     HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",        200_000, 1,    5,    0.1,  1.25)
     GPT5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
@@ -23,6 +24,7 @@ class M:
     GPT5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
     GPT52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
     GPT53_CODEX      = ModelInfo("openai/gpt-5.3-codex",              400_000, 1.75, 14,   0.175)
+    # GPT54_CODEX      = ModelInfo("openai/gpt-5.4-codex",              400_000, 1.75, 14,   0.175)
     GPT51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",         400_000, 0.25, 2,    0.025)
     CODEX_MINI       = ModelInfo("openai/codex-mini",                 200_000, 1.5,  6,    0.375)
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
