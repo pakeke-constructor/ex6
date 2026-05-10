@@ -786,14 +786,29 @@ def _get_bash():
     global _bash_location
     if _bash_location:
         return _bash_location
-    if _IS_WINDOWS:
-        for p in [r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"]:
+    if not _IS_WINDOWS:
+        _bash_location = "bash"
+        return _bash_location
+    # Windows: try shutil.which first, then known install paths
+    b = shutil.which("bash")
+    if b:
+        _bash_location = b
+        return _bash_location
+    git_path = shutil.which("git")
+    if git_path:
+        # git.exe lives in <install>/cmd/ or <install>/bin/ — walk up and check
+        install_dir = os.path.dirname(os.path.dirname(git_path))
+        for sub in ("bin", "usr\\bin"):
+            p = os.path.join(install_dir, sub, "bash.exe")
             if os.path.isfile(p):
                 _bash_location = p
                 return _bash_location
-    else:
-        _bash_location = "bash"
-        return _bash_location
+    for d in (r"C:\Program Files\Git", r"C:\Program Files (x86)\Git"):
+        for sub in ("bin", "usr\\bin"):
+            p = os.path.join(d, sub, "bash.exe")
+            if os.path.isfile(p):
+                _bash_location = p
+                return _bash_location
     return None
 
 

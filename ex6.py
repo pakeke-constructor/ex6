@@ -57,6 +57,11 @@ import time
 import glob
 
 
+ESC_DELAY: float = 0
+# NOTE: if you are running ex6 through ssh or something,
+# (eg on a VPS) you might want to set this to 25 or 50 or something.
+# To understand why, ask an LLM about it
+
 
 _commands = {}
 _output_renderers = []
@@ -1597,9 +1602,9 @@ if __name__ == "__main__":
                     sys.stdout, sys.stderr = _sink, _sink
                 if _fatal_error:
                     raise RuntimeError(f"FATAL: {_fatal_error}")
-                for _ in range(10):
+                for _ in range(4):
                     try:
-                        key = term.inkey(timeout=0.001)
+                        key = term.inkey(timeout=0.001, esc_delay=ESC_DELAY)
                     except UnicodeDecodeError:
                         key = None
                     while key:
@@ -1607,7 +1612,7 @@ if __name__ == "__main__":
                             debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
                         keyls.append(key)
                         try:
-                            key = term.inkey(timeout=0)
+                            key = term.inkey(timeout=0, esc_delay=ESC_DELAY)
                         except UnicodeDecodeError:
                             key = None
                     if keyls:
