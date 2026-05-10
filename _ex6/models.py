@@ -43,6 +43,9 @@ class M:
     KIMI_K25         = ModelInfo("moonshotai/kimi-k2.5",             262_144, 0.45, 2.2,  0.225)
     GEMMA_4          = ModelInfo("google/gemma-4-31b-it",            262_144, 0.13, 0.38, 0)
 
+    OPUS_LATEST: ModelInfo
+    CODEX_LATEST: ModelInfo
+
     _index: Optional[dict[str, "ModelInfo"]] = None
 
     @classmethod
@@ -50,3 +53,6 @@ class M:
         if cls._index is None:
             cls._index = {v.id: v for v in vars(cls).values() if isinstance(v, ModelInfo)}
         return cls._index.get(model_id)
+
+M.OPUS_LATEST = M.OPUS_47
+M.CODEX_LATEST = M.GPT53_CODEX

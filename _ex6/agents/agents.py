@@ -105,7 +105,7 @@ After tool calls, say nothing unless there's a result to report or a question to
 
 
 def auto_setup():
-    coder = Context("coder_opus", model=M.OPUS_47.id, reasoning="medium", messages=[
+    coder = Context("coder_opus", model=M.OPUS_LATEST.id, reasoning="medium", messages=[
         MAIN_SYSTEM_PROMPT,
         make_code_mode_system_prompt([
             read_file, glob, search, read_headers, read_body,
@@ -121,7 +121,7 @@ def auto_setup():
     if SMART_MODEL.startswith("anthropic/"):
         cache_manually(coder)
 
-    coder = Context("coder_codex", model=M.GPT53_CODEX.id, reasoning="medium", messages=[
+    coder = Context("coder_codex", model=M.CODEX_LATEST.id, reasoning="medium", messages=[
         MAIN_SYSTEM_PROMPT,
         make_code_mode_system_prompt([
             read_file, glob, search, read_headers, read_body,
