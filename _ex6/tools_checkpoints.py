@@ -11,7 +11,8 @@ from _ex6.code_mode import ToolResult
 
 ## What
 Give agents a way to collapse their context window back to a checkpoint.
-Lazy alternative to subagents — agent doesn't need to predict task size upfront.
+Lazy alternative to subagents - agent doesn't need to predict task size upfront.
+Supports multiple named checkpoints.
 
 ## Flow
 ```
@@ -20,20 +21,29 @@ user: Implement auth for StudentService
 A: Sure.
 tools: checkpoint("exploring auth")
 
-tools: read_file(...)    # 
-tools: search(...)       #  these all get removed by condense
-tools: read_file(...)    #
+tools: read_file(...)
+tools: search(...)        # these all get removed by condense
+tools: read_file(...)
 
-A: I found that AuthService does xyz...
+A: checkpoint("writing implementation")
+
+tools: edit_file(...)
+
+A: I want to condense.
+tools: condense()        # phase 1 - shows checkpoint info + token usage
+
+# Output:
+#   checkpoint_1: "exploring auth" (~12k tokens)
+#   checkpoint_2: "writing implementation" (~25k tokens)
+#   Current: ~41k tokens
+#   Call condense("checkpoint_1", findings="...", next_steps="...", keep=[...])
 
 tools:
   a = read_file("a.py")
-  b = read_headers("b.py")
-  c = read_body("c.py", "get_user_id")
-  condense(
-      findings="AuthService does xyz. barfoo is the best approach.",
-      next_steps="implement token check in auth.py",
-      keep=[a, b, c]
+  condense("checkpoint_1",
+      findings="AuthService does xyz.",
+      next_steps="implement token check",
+      keep=[a]
   )
 ```
 
@@ -41,31 +51,64 @@ After condense, the context becomes:
 ```
 [system messages...]
 [user: Implement auth for StudentService]
-[tool: checkpoint summary — objective + findings + kept tool results]
+[tool: checkpoint summary - objective + findings + kept tool results]
 ```
 
-Everything between checkpoint and condense is deleted.
+Everything between the chosen checkpoint and condense is deleted.
 
 '''
 
+
+def _get_checkpoints(ctx):
+    raw = ctx.data.get("cp:list", "[]")
+    return json.loads(raw)
+
+def _set_checkpoints(ctx, cps):
+    ctx.data["cp:list"] = json.dumps(cps)
+
+
 def checkpoint(ctx: ex6.Context, objective: str) -> str:
     """Set a checkpoint. Used with condense() to collapse exploration back to this point.
-    Only one active at a time (new overwrites old).
+    Multiple checkpoints can exist. Each is auto-named checkpoint_1, checkpoint_2, etc.
     Call before exploring/reading files you won't need long-term."""
-    ctx.data["cp:index"] = len(ctx.messages) - 1
-    ctx.data["cp:objective"] = objective
-    ctx.data["cp:data"] = json.dumps(dict(ctx.data))
-    return f"Checkpoint set: {objective}"
+    cps = _get_checkpoints(ctx)
+    name = f"checkpoint_{len(cps) + 1}"
+    cps.append({
+        "name": name,
+        "objective": objective,
+        "index": len(ctx.messages) - 1,
+        "data": json.dumps(dict(ctx.data)),
+    })
+    _set_checkpoints(ctx, cps)
+    return f"Checkpoint '{name}' set: {objective}"
 
 
+def _tokens_for_range(ctx, start, end):
+    total = 0
+    for m in ctx.messages[start:end]:
+        c = m.content
+        if isinstance(c, str):
+            total += ex6.get_token_estimate(c)
+        elif callable(c):
+            total += ex6.get_token_estimate(c(ctx))
+    return total
 
-CONDENSE_MSG = "[Context condensed — you called condense() which pruned your context. Messages were pruned; including the most recent checkpoint() AND condense()]"
+def _fmt_tokens(n):
+    if n >= 1000:
+        return f"~{n // 1000}k tokens"
+    return f"~{n} tokens"
 
-def condense(ctx: ex6.Context, findings: str, next_steps: str, keep: Optional[list[ToolResult]] = None) -> str:
-    f"""Collapse context back to the last checkpoint. Everything between checkpoint and condense is deleted.
-    (If no checkpoint, collapse context until first non system-prompt)
 
-    findings: summary of what you learned. This is your ONLY memory after the checkpoint — be thorough.
+CONDENSE_MSG = "[Context condensed - you called condense() which pruned your context. Messages were pruned; including the chosen checkpoint AND condense()]"
+
+def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[str] = None, next_steps: Optional[str] = None, keep: Optional[list[ToolResult]] = None) -> str:
+    """Collapse context back to a checkpoint. Everything between the checkpoint and condense is deleted.
+
+    Two-phase usage:
+    1) condense() - no args. Prints all checkpoints with token estimates. Call this first.
+    2) condense("checkpoint_N", findings="...", next_steps="...", keep=[...]) - actually collapse.
+
+    findings: summary of what you learned. This is your ONLY memory after the checkpoint - be thorough.
     next_steps: what you plan to do next. Forces you to articulate intent before losing context.
     keep: ToolResult objects from THIS run_tools block to preserve in context. Choose wisely:
       - read_file for critical files you'll edit soon
@@ -73,39 +116,88 @@ def condense(ctx: ex6.Context, findings: str, next_steps: str, keep: Optional[li
       - read_body for specific functions you'll reference or modify
 
     Example:
-      a = read_file("src/auth.py")           # full file — will edit this
-      b = read_headers("src/models.py")       # just need the API surface
-      c = read_body("src/db.py", "get_conn")  # one function I need
-      condense(
-          findings="auth.py needs a token check in login(). models.py has User on line 40. get_conn returns a pooled connection.",
-          next_steps="Add token expiry check to login() in auth.py, then update tests.",
-          keep=[a, b, c]
+      condense()  # see checkpoints and token counts
+
+      a = read_file("src/auth.py")
+      condense("checkpoint_1",
+          findings="auth.py needs a token check in login().",
+          next_steps="Add token expiry check to login() in auth.py.",
+          keep=[a]
       )
-      
-      Note: condense() prunes messages (including this call), so .status()/.print() won't work.
-      You will see: {CONDENSE_MSG} — trust the information provided.
+
+      Note: condense() with a checkpoint name prunes messages (including this call), so .status()/.print() won't work.
       """
-    if "cp:index" in ctx.data:
-        cp_index = ctx.data["cp:index"]
-        cp_objective = ctx.data["cp:objective"]
-        cp_data = ex6.StrictDataDict(json.loads(ctx.data["cp:data"]))
-    else:
+
+    # Phase 1: no name -> show info
+    if name is None:
+        cps = _get_checkpoints(ctx)
+        total_tokens = _fmt_tokens(ctx.token_count())
+
+        if not cps:
+            first_non_sys = 0
+            for i, m in enumerate(ctx.messages):
+                if m.role != "system":
+                    first_non_sys = i
+                    break
+            tokens_after = _tokens_for_range(ctx, first_non_sys, len(ctx.messages))
+            lines = [
+                "You are condensing your context window.",
+                "No checkpoints set. Condensing will collapse to the first non-system message.",
+                f"  (start of conversation) - {_fmt_tokens(tokens_after)} of content",
+                f"Current context: {total_tokens}",
+                "",
+                'Call condense("start", findings="...", next_steps="...", keep=[...]) to collapse to start of conversation.',
+            ]
+            return "\n".join(lines)
+
+        lines = ["You are condensing your context window. Available checkpoints:"]
+        for i, cp in enumerate(cps):
+            start = cp["index"]
+            end = cps[i + 1]["index"] if i + 1 < len(cps) else len(ctx.messages)
+            tokens = _tokens_for_range(ctx, start, end)
+            lines.append(f'  {cp["name"]}: {cp["objective"]} ({_fmt_tokens(tokens)})')
+
+        lines.append(f"Current context: {total_tokens}")
+        lines.append("")
+        lines.append('Choose a checkpoint to collapse to by calling condense("checkpoint_N", findings="...", next_steps="...", keep=[...])')
+        return "\n".join(lines)
+
+    # Phase 2: collapse to named checkpoint
+    if not findings:
+        raise ValueError("findings is required when collapsing. Call condense() with no args first to see checkpoints.")
+    if not next_steps:
+        raise ValueError("next_steps is required when collapsing.")
+
+    cps = _get_checkpoints(ctx)
+
+    # special "start" target - no checkpoints needed
+    if name == "start":
         cp_index = 0
         for i, m in enumerate(ctx.messages):
             if m.role != "system":
                 cp_index = i
                 break
-        cp_objective = "(no checkpoint)"
+        cp_objective = "(start of conversation)"
         cp_data = ex6.StrictDataDict(ctx.data)
+    else:
+        cp = None
+        for c in cps:
+            if c["name"] == name:
+                cp = c
+                break
+        if cp is None:
+            available = ", ".join(c["name"] for c in cps) if cps else "(none)"
+            raise ValueError(f"Checkpoint '{name}' not found. Available: {available}")
+        cp_index = cp["index"]
+        cp_objective = cp["objective"]
+        cp_data = ex6.StrictDataDict(json.loads(cp["data"]))
 
     kept = ""
     if keep:
         kept_parts = []
         for tr in keep:
             if not isinstance(tr, ToolResult):
-                raise ValueError(f"keep must contain ToolResult objects, got {type(tr).__name__}. Example: a = read_file('x.py'); condense(findings='...', keep=[a])")
-            # hacky: reaching into code mode internals here:
-            # (It's "fine", its simple and scrappy and internal.)
+                raise ValueError(f"keep must contain ToolResult objects, got {type(tr).__name__}. Example: a = read_file('x.py'); condense('checkpoint_1', findings='...', keep=[a])")
             tr._event.wait()
             val = f"ERROR: {tr._error}" if tr._error else str(tr.value)
             kept_parts.append(f"[{tr._call_str}]\n{val}")
