@@ -1,4 +1,5 @@
 
+import textwrap
 import json
 import ex6
 
@@ -6,7 +7,7 @@ from typing import Optional
 from _ex6.code_mode import ToolResult
 
 
-'''
+"""
 # Checkpoint / Condense
 
 ## What
@@ -36,13 +37,12 @@ tools: condense()        # phase 1 - shows checkpoint info + token usage
 #   checkpoint_1: "exploring auth" (~12k tokens)
 #   checkpoint_2: "writing implementation" (~25k tokens)
 #   Current: ~41k tokens
-#   Call condense("checkpoint_1", findings="...", next_steps="...", keep=[...])
+#   Call condense("checkpoint_1", findings="...", keep=[...])
 
 tools:
   a = read_file("a.py")
   condense("checkpoint_1",
-      findings="AuthService does xyz.",
-      next_steps="implement token check",
+      findings="AuthService does xyz. Next: implement token check.",
       keep=[a]
   )
 ```
@@ -56,7 +56,7 @@ After condense, the context becomes:
 
 Everything between the chosen checkpoint and condense is deleted.
 
-'''
+"""
 
 
 def _get_checkpoints(ctx):
@@ -89,14 +89,14 @@ def _tokens_for_range(ctx, start, end):
         c = m.content
         if isinstance(c, str):
             total += ex6.get_token_estimate(c)
-        elif callable(c):
-            total += ex6.get_token_estimate(c(ctx))
     return total
+
 
 def _fmt_tokens(n):
     if n >= 1000:
         return f"~{n // 1000}k tokens"
     return f"~{n} tokens"
+
 
 
 CONDENSE_MSG = "[Context condensed - you called condense() which pruned your context. Messages were pruned; including the chosen checkpoint AND condense()]"
@@ -106,15 +106,15 @@ CONDENSE_MSG = "[Context condensed - you called condense() which pruned your con
 # THE DOCSTRING CAL BE MADE SMALLER, AND IT JUST CAN BE BETTER.
 
 
-def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[str] = None, next_steps: Optional[str] = None, keep: Optional[list[ToolResult]] = None) -> str:
+def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[str] = None, keep: Optional[list[ToolResult]] = None) -> str:
     """Collapse context back to a checkpoint. Everything between the checkpoint and condense is deleted.
 
     Two-phase usage:
     1) condense() - no args. Prints all checkpoints with token estimates. Call this first.
-    2) condense("checkpoint_N", findings="...", next_steps="...", keep=[...]) - actually collapse.
+    2) condense("checkpoint_N", findings="...", keep=[...]) - actually collapse.
 
     findings: summary of what you learned. This is your ONLY memory after the checkpoint - be thorough.
-    next_steps: what you plan to do next. Forces you to articulate intent before losing context.
+      Include what you plan to do next.
     keep: ToolResult objects from THIS run_tools block to preserve in context. Choose wisely:
       - read_file for critical files you'll edit soon
       - read_headers for files you need the structure of
@@ -125,8 +125,7 @@ def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[st
 
       a = read_file("src/auth.py")
       condense("checkpoint_1",
-          findings="auth.py needs a token check in login().",
-          next_steps="Add token expiry check to login() in auth.py.",
+          findings="auth.py needs a token check in login(). Next: add token expiry check.",
           keep=[a]
       )
 
@@ -145,33 +144,31 @@ def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[st
                     first_non_sys = i
                     break
             tokens_after = _tokens_for_range(ctx, first_non_sys, len(ctx.messages))
-            lines = [
-                "You are condensing your context window.",
-                "No checkpoints set. Condensing will collapse to the first non-system message.",
-                f"  (start of conversation) - {_fmt_tokens(tokens_after)} of content",
-                f"Current context: {total_tokens}",
-                "",
-                'Call condense("start", findings="...", next_steps="...", keep=[...]) to collapse to start of conversation.',
-            ]
-            return "\n".join(lines)
+            return textwrap.dedent(f"""\
+                You are condensing your context window.
+                No checkpoints set. Condensing will collapse to the first non-system message.
+                  (start of conversation) - {_fmt_tokens(tokens_after)} of content
+                Current context: {total_tokens}
 
-        lines = ["You are condensing your context window. Available checkpoints:"]
+                Call condense("start", findings="...", keep=[...]) to collapse to start of conversation.""")
+
+        cp_lines = []
         for i, cp in enumerate(cps):
             start = cp["index"]
             end = cps[i + 1]["index"] if i + 1 < len(cps) else len(ctx.messages)
             tokens = _tokens_for_range(ctx, start, end)
-            lines.append(f'  {cp["name"]}: {cp["objective"]} ({_fmt_tokens(tokens)})')
+            cp_lines.append(f'  {cp["name"]}: {cp["objective"]} ({_fmt_tokens(tokens)})')
+        cp_list = "\n".join(cp_lines)
+        return textwrap.dedent(f"""\
+            You are condensing your context window. Available checkpoints:
+            {cp_list}
+            Current context: {total_tokens}
 
-        lines.append(f"Current context: {total_tokens}")
-        lines.append("")
-        lines.append('Choose a checkpoint to collapse to by calling condense("checkpoint_N", findings="...", next_steps="...", keep=[...])')
-        return "\n".join(lines)
+            Choose a checkpoint to collapse to by calling condense("checkpoint_N", findings="...", keep=[...])""")
 
     # Phase 2: collapse to named checkpoint
     if not findings:
         raise ValueError("findings is required when collapsing. Call condense() with no args first to see checkpoints.")
-    if not next_steps:
-        raise ValueError("next_steps is required when collapsing.")
 
     cps = _get_checkpoints(ctx)
 
@@ -209,7 +206,7 @@ def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[st
         kept = "\n\n".join(kept_parts)
 
     summary = CONDENSE_MSG
-    summary += f"\n[Checkpoint: {cp_objective}]\n\nFindings:\n{findings}\n\nNext steps:\n{next_steps}"
+    summary += f"\n[Checkpoint: {cp_objective}]\n\nFindings:\n{findings}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 

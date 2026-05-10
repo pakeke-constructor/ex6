@@ -105,26 +105,7 @@ After tool calls, say nothing unless there's a result to report or a question to
 
 
 def auto_setup():
-    planner = Context("planner", model=PLANNER_MODEL, reasoning="medium", messages=[
-        PLANNER_SYSTEM_PROMPT,
-        make_code_mode_system_prompt([
-            read_file, glob, search, read_headers, read_body,
-            explore_agent, web_search, websearch_agent,
-            escalate,
-            plan_write, plan_read, plan_add_log, plan_done, plan_list,
-        ]),
-        ENV_PROMPT,
-        CLAUDE_MD,
-    ])
-
-    reader = Context("reader",model=ANALYTICAL_MODEL, reasoning="medium", messages=[
-        MAIN_SYSTEM_PROMPT,
-        make_code_mode_system_prompt([read_file, glob, search, read_headers, read_body, explore_agent, web_search, websearch_agent, escalate]),
-        ENV_PROMPT,
-        CLAUDE_MD,
-    ])
-
-    coder = Context("coder_opus", model=M.OPUS_46.id, reasoning="medium", messages=[
+    coder = Context("coder_opus", model=M.OPUS_47.id, reasoning="medium", messages=[
         MAIN_SYSTEM_PROMPT,
         make_code_mode_system_prompt([
             read_file, glob, search, read_headers, read_body,
