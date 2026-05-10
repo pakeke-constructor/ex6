@@ -101,6 +101,11 @@ def _fmt_tokens(n):
 
 CONDENSE_MSG = "[Context condensed - you called condense() which pruned your context. Messages were pruned; including the chosen checkpoint AND condense()]"
 
+## TODO: SIMPLIFY ALL OF THIS.
+# IT CAN FOR SURE BE MADE SIMPLER;
+# THE DOCSTRING CAL BE MADE SMALLER, AND IT JUST CAN BE BETTER.
+
+
 def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[str] = None, next_steps: Optional[str] = None, keep: Optional[list[ToolResult]] = None) -> str:
     """Collapse context back to a checkpoint. Everything between the checkpoint and condense is deleted.
 
