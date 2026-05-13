@@ -103,7 +103,7 @@ CONDENSE_MSG = "[Context condensed - you called condense() which pruned your con
 
 ## TODO: SIMPLIFY ALL OF THIS.
 # IT CAN FOR SURE BE MADE SIMPLER;
-# THE DOCSTRING CAL BE MADE SMALLER, AND IT JUST CAN BE BETTER.
+# THE DOCSTRING CAN BE MADE SMALLER, AND IT JUST CAN BE BETTER.
 
 
 def condense(ctx: ex6.Context, name: Optional[str] = None, findings: Optional[str] = None, keep: Optional[list[ToolResult]] = None) -> str:
