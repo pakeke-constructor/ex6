@@ -1,4 +1,3 @@
-
 import textwrap
 import json
 import ex6
@@ -6,7 +5,6 @@ import ex6
 from typing import Optional
 
 from _ex6.code_mode import ToolResult
-
 
 
 def _get_checkpoints(ctx):
@@ -51,7 +49,7 @@ def _fmt_tokens(n):
 CONDENSE_MSG = "[Context condensed - messages pruned from chosen checkpoint through condense call]"
 
 
-def _checkpoint_list_blurb(starting_text: str, condense_target: str, findings_example: str) -> str:
+def _checkpoint_list_blurb(starting_text: str, condense_target: str, findings_example: str, next_steps_example: str) -> str:
     return textwrap.dedent(f"""\
         {starting_text}
 
@@ -63,7 +61,7 @@ def _checkpoint_list_blurb(starting_text: str, condense_target: str, findings_ex
           f = read_file("src/auth.py", lines=(1,120))
           s = search("TODO|FIXME", match="src/services/*.py") # there are important TODOs in here
           # NOTE: Don't call .get() or .status() here; it won't work since your context is being condensed!
-          condense("{condense_target}", findings="{findings_example}", keep=[h, f, s])""")
+          condense("{condense_target}", findings="{findings_example}", next_steps="{next_steps_example}", keep=[h, f, s])""")
 
 
 def checkpoint_list(ctx: ex6.Context) -> str:
@@ -86,7 +84,8 @@ def checkpoint_list(ctx: ex6.Context) -> str:
         return _checkpoint_list_blurb(
             starting_text=starting_text,
             condense_target="start",
-            findings_example="Added expiry check. Next: run tests.",
+            findings_example="Added expiry check.",
+            next_steps_example="Run tests, then patch login edge case if failures point there.",
         )
 
     cp_lines = []
@@ -103,14 +102,17 @@ def checkpoint_list(ctx: ex6.Context) -> str:
     return _checkpoint_list_blurb(
         starting_text=starting_text,
         condense_target="checkpoint_N",
-        findings_example="Auth path reviewed; TODOs mapped. Next: patch middleware.",
+        findings_example="Auth path reviewed; TODOs mapped.",
+        next_steps_example="Patch middleware, then run auth tests and verify TODO scope unchanged.",
     )
 
 
-def condense(ctx: ex6.Context, name: str, findings: str, keep: Optional[list[ToolResult]] = None) -> str:
+def condense(ctx: ex6.Context, name: str, findings: str, next_steps: str, keep: Optional[list[ToolResult]] = None) -> str:
     """Collapse context back to checkpoint. Must call checkpoint_list() first."""
     if not findings:
         raise ValueError("findings required")
+    if not next_steps:
+        raise ValueError("next_steps required")
 
     cps = _get_checkpoints(ctx)
     listed_count = ctx.data.get("cp:last_list_count")
@@ -145,7 +147,7 @@ def condense(ctx: ex6.Context, name: str, findings: str, keep: Optional[list[Too
             if not isinstance(tr, ToolResult):
                 raise ValueError(
                     f"keep must contain ToolResult objects, got {type(tr).__name__}. "
-                    "Example: a = read_file('x.py'); condense('checkpoint_1', findings='...', keep=[a])"
+                    "Example: a = read_file('x.py'); condense('checkpoint_1', findings='...', next_steps='...', keep=[a])"
                 )
             tr._event.wait()
             val = f"ERROR: {tr._error}" if tr._error else str(tr.value)
@@ -153,7 +155,7 @@ def condense(ctx: ex6.Context, name: str, findings: str, keep: Optional[list[Too
         kept = "\n\n".join(kept_parts)
 
     summary = CONDENSE_MSG
-    summary += f"\n[Checkpoint: {cp_objective}]\n\nFindings:\n{findings}"
+    summary += f"\n[Checkpoint: {cp_objective}]\n\nFindings:\n{findings}\n\nNext steps:\n{next_steps}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
