@@ -135,6 +135,14 @@ class CodeEnv(dict):
     def prepare(self, results, threads, tool_infos):
         """Re-wrap tools into _globals with fresh per-call tracking state."""
         self.clear()
+        if isinstance(__builtins__, dict):
+            builtins_dict = __builtins__.copy()
+        else:
+            builtins_dict = __builtins__.__dict__.copy()
+        def _blocked_print(*args, **kwargs):
+            raise RuntimeError("print() disabled in code-mode. Use ToolResult.print()")
+        builtins_dict["print"] = _blocked_print
+        self._globals["__builtins__"] = builtins_dict
         tools = dict(self.ctx.data_volatile.get('codemode:base_tools', {}))
         tools.update(self.ctx.data_volatile.get('codemode:tools', {}))
         for name, fn in tools.items():
@@ -392,11 +400,14 @@ RUN_TOOLS_NAME = "run_tools"
 COMMON_MISTAKES = """
 <common_mistakes>
 COMMON MISTAKES — do NOT do these:
-Tool calls do nothing unless you consume ToolResult with `.print()`, `.status()`, `.get()`, or `.is_ok()`.
+- Tool calls do nothing unless you consume ToolResult with `.print()`, `.status()`, `.get()`, or `.is_ok()`.
 
 run_tools```
+# BAD — since there's no `.print()` or `.status()`, result is silently discarded, you will see NOTHING:
 read_file("a.py")
-# BAD — since you didn't call `.print()` or `.status()`, result is silently discarded, you will see NOTHING:
+
+# BAD — print doesn't exist, this WILL error.
+print(read_file("a.py"))
 ```
 
 run_tools```
@@ -409,11 +420,14 @@ edit_file("a.py", old, new).status()
 # GOOD — .get() passes data to another tool:
 data = read_file("a.py").get()
 search(data).print()
+
+# GOOD — silent chaining via .get() (intermediate result not printed):
+search(read_file("a.py").get()).print()
 </common_mistakes>
 ```
 """
 
-def make_code_mode_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex6.Message:
+def make_code_mode_system_prompt(tools: list, include_common_mistakes: bool = True) -> ex6.Message:
     """System prompt + run_tools tool for Python code execution."""
     sorted_tools = sorted(tools, key=lambda f: f.__name__)
     tool_docs = ("\n").join(generate_tool_desc(fn) for fn in sorted_tools)
@@ -421,8 +435,9 @@ def make_code_mode_system_prompt(tools: list, include_common_mistakes: bool = Fa
     common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
     return ex6.Message(role="system", overview="tools", content=f"""\
 <tools>
-Use the `{RUN_TOOLS_NAME}` tool. The `code` param is normal Python.
-You have unrestricted Python execution in this tool environment.
+Use the `{RUN_TOOLS_NAME}` tool to invoke tools. This is your interface for file/system actions.
+The `code` param is a normal Python environment, however you are given tools that you should prefer to use.
+(IMPORTANT: `print()` is disabled in code-mode and raises error; use `ToolResult.print()` instead.)
 Combine multiple calls in a single run_tools block — they execute in parallel.
 
 These modules are pre-loaded for convenience:
@@ -444,7 +459,6 @@ You MUST call one of these to see output:
 IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.
 </tool_results>
 
-# List of available tools:
 <available_tools>
 {tool_docs}
 </available_tools>
@@ -474,6 +488,9 @@ end'''
 x = read_file("schema.sql") # `x` is a ToolResult
 x.print()
 search(x.get()).print()
+
+# Silent chaining: pass result without printing intermediate ToolResult
+search(read_file("schema.sql").get()).print()
 ```
 </tool_examples>
 {common_mistakes}
