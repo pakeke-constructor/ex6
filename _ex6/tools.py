@@ -1,6 +1,5 @@
 
 
-
 '''
 
 Basic tools for ex6.
@@ -856,6 +855,42 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     except subprocess.TimeoutExpired:
         return f"ERROR: command timed out after {timeout}s"
 
+
+
+def git_working_tree(ctx: ex6.Context) -> str:
+    """Show working tree changes: status + unstaged/staged diffs."""
+    try:
+        repo = git.Repo((ctx and ctx.cwd) or os.getcwd(), search_parent_directories=True)
+    except Exception:
+        return "ERROR: not in git repository"
+
+    branch = repo.active_branch.name if not repo.head.is_detached else "(detached)"
+    status_lines = [f"## {branch}"]
+
+    staged_paths = [d.a_path for d in repo.index.diff("HEAD")]
+    unstaged_paths = [d.a_path for d in repo.index.diff(None)]
+    untracked_paths = list(repo.untracked_files)
+
+    for p in staged_paths:
+        status_lines.append(f"M  {p}")
+    for p in unstaged_paths:
+        status_lines.append(f" M {p}")
+    for p in untracked_paths:
+        status_lines.append(f"?? {p}")
+    if len(status_lines) == 1:
+        status_lines.append("(clean)")
+
+    unstaged_diff = repo.git.diff("--no-ext-diff", "--", ".").strip() or "(no unstaged diff)"
+    staged_diff = repo.git.diff("--cached", "--no-ext-diff", "--", ".").strip() or "(no staged diff)"
+
+    return (
+        "=== git status --short --branch ===\n"
+        + "\n".join(status_lines)
+        + "\n\n=== git diff (unstaged) ===\n"
+        + unstaged_diff
+        + "\n\n=== git diff --cached (staged) ===\n"
+        + staged_diff
+    )
 
 
 

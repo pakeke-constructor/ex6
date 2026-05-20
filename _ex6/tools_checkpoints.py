@@ -1,5 +1,7 @@
+
 import textwrap
 import json
+import time
 import ex6
 
 from typing import Optional
@@ -44,6 +46,103 @@ def _fmt_tokens(n):
     if n >= 1000:
         return f"~{n // 1000}k tokens"
     return f"~{n} tokens"
+
+
+def _wrap_lines(text: str, width: int) -> list[str]:
+    width = max(20, width)
+    out = []
+    for raw in (text or "").splitlines() or [""]:
+        if not raw.strip():
+            out.append("")
+            continue
+        out.extend(textwrap.wrap(raw, width=width) or [""])
+    return out
+
+
+def _build_condense_lines(name: str, findings: str, next_steps: str, previews: list[str], width: int) -> list[str]:
+    lines = []
+    lines.append(f"Checkpoint: {name}")
+    lines.append("")
+    lines.append("Findings:")
+    lines.extend(_wrap_lines(findings, width))
+    lines.append("")
+    lines.append("Next steps:")
+    lines.extend(_wrap_lines(next_steps, width))
+    lines.append("")
+    lines.append("Tool-result previews:")
+    if previews:
+        for p in previews:
+            lines.extend(_wrap_lines(f"- {p}", width))
+    else:
+        lines.append("- (none)")
+    return lines
+
+
+def _confirm_condense(ctx: ex6.Context, name: str, findings: str, next_steps: str, previews: list[str]) -> str:
+    if ctx.yolo:
+        return ""
+
+    result = [False, "", False]
+
+    def on_submit(text):
+        result[0] = True
+        result[1] = text.strip()
+        ctx.ui_stack.pop()
+
+    input_draw = ex6.make_input(on_submit)
+
+    def draw(buf: ex6.ScreenBuffer, inpt, r):
+        x, y, w, h = r
+        th = ex6.state.theme
+        buf.fill(r, char=' ', bg_color=None)
+        buf.rect(r, txt_color=th.muted)
+
+        cx = x + 2
+        cy = y + 1
+        cw = max(20, w - 4)
+        prompt = "ENTER confirm condense | type + ENTER add user context"
+
+        lines = _build_condense_lines(name, findings, next_steps, previews, cw)
+        available = max(1, h - 4)
+        visible = lines[:available]
+
+        for i, line in enumerate(visible):
+            if cy + i >= y + h - 2:
+                break
+            if i == 0:
+                buf.puts(cx, cy + i, line[:cw], txt_color=th.accent_alt, bg_color=None)
+            elif line in ("Findings:", "Next steps:", "Tool-result previews:"):
+                buf.puts(cx, cy + i, line[:cw], txt_color=th.warning, bg_color=None)
+            else:
+                buf.puts(cx, cy + i, line[:cw], txt_color=th.text, bg_color=None)
+
+        if len(lines) > len(visible) and cy + len(visible) < y + h - 2:
+            rem = len(lines) - len(visible)
+            buf.puts(cx, cy + len(visible), f"... {rem} more lines", txt_color=th.muted, bg_color=None)
+
+        prompt_y = y + h - 2
+        buf.puts(cx, prompt_y - 1, prompt[:cw], txt_color=th.text, bg_color=None)
+
+        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
+            result[0] = True
+            ctx.ui_stack.pop()
+            return
+
+        input_draw(buf, inpt, (cx, prompt_y, cw, 1))
+
+    ctx.push_ui(draw)
+
+    while draw in ctx.ui_stack:
+        if ctx.stop_early:
+            result[2] = True
+            if draw in ctx.ui_stack:
+                ctx.ui_stack.remove(draw)
+            break
+        time.sleep(0.05)
+
+    if result[2]:
+        raise ValueError("Condense canceled: stopped")
+    return result[1]
 
 
 CONDENSE_MSG = "[Context condensed - messages pruned from chosen checkpoint through condense call]"
@@ -141,6 +240,7 @@ def condense(ctx: ex6.Context, name: str, findings: str, next_steps: str, keep: 
         cp_data = ex6.StrictDataDict(json.loads(cp["data"]))
 
     kept = ""
+    previews = []
     if keep:
         kept_parts = []
         for tr in keep:
@@ -152,10 +252,18 @@ def condense(ctx: ex6.Context, name: str, findings: str, next_steps: str, keep: 
             tr._event.wait()
             val = f"ERROR: {tr._error}" if tr._error else str(tr.value)
             kept_parts.append(f"[{tr._call_str}]\n{val}")
+            preview_val = " ".join(val.splitlines())
+            if len(preview_val) > 200:
+                preview_val = preview_val[:200] + "..."
+            previews.append(f"{tr._call_str}: {preview_val}")
         kept = "\n\n".join(kept_parts)
+
+    user_context = _confirm_condense(ctx, cp_objective, findings, next_steps, previews)
 
     summary = CONDENSE_MSG
     summary += f"\n[Checkpoint: {cp_objective}]\n\nFindings:\n{findings}\n\nNext steps:\n{next_steps}"
+    if user_context:
+        summary += f"\n\nUser context:\n{user_context}"
     if kept:
         summary += f"\n\nRetained:\n{kept}"
 
