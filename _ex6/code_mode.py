@@ -2,13 +2,13 @@
 import typing
 
 """
-code_mode: sandboxed Python as a tool-calling interface for LLMs.
+code_mode: Python as a tool-calling interface for LLMs.
 
 Instead of rigid JSON tool-call schemas, the LLM writes Python snippets to call
 tools. This gives us composition, chaining, and parallelism for free — using
 syntax the LLM already knows.
 
-The LLM has a single tool, `run_tools`, whose `code` param is sandboxed Python:
+The LLM has a single tool, `run_tools`, whose `code` param is Python:
 
     run_tools(code='''
         read_file("main.py").print()
@@ -90,22 +90,11 @@ import threading
 import time
 import types
 import ex6
-from RestrictedPython import compile_restricted_exec
 
 
-# Sandbox setup
-SAFE_BUILTINS = {
-    "None": None, "True": True, "False": False,
-    "int": int, "float": float, "bool": bool, "complex": complex,
-    "abs": abs, "round": round, "pow": pow,
-    "list": list, "tuple": tuple, "set": set, "dict": dict, "frozenset": frozenset,
-    "range": range, "len": len, "enumerate": enumerate, "zip": zip,
-    "min": min, "max": max, "sum": sum, "all": all, "any": any,
-    "str": str, "repr": repr, "format": format,
-    "Exception": Exception, "ValueError": ValueError, "TypeError": TypeError,
-}
 
-SAFE_MODULES = {
+# Code-mode globals
+PRELOADED_MODULES = {
     "re": re,
     "json": json,
     "math": math,
@@ -122,10 +111,8 @@ class CodeEnv(dict):
         super().__init__()
         self.ctx = ctx
         self._globals = {
-            "__builtins__": SAFE_BUILTINS.copy(),
-            "__import__": _no_import,
-            "_getattr_": self._make_getattr(),
-            **SAFE_MODULES,
+            "__builtins__": __builtins__,
+            **PRELOADED_MODULES,
         }
 
     def __setitem__(self, key, value):
@@ -144,19 +131,6 @@ class CodeEnv(dict):
 
     def __contains__(self, key):
         return super().__contains__(key) or (_CM_PREFIX + key) in self.ctx.data
-
-    def _make_getattr(self):
-        _safe_module_names = {"re", "json", "math", "time", "posixpath", "ntpath", "genericpath", "os.path"}
-        def _getattr_(obj, name):
-            if isinstance(obj, ToolResult) and name in ("get", "print", "status", "is_ok"):
-                return getattr(obj, name)
-            if isinstance(obj, types.SimpleNamespace) or obj in SAFE_MODULES.values():
-                return getattr(obj, name)
-            obj_mod = getattr(type(obj), "__module__", None)
-            if obj_mod in _safe_module_names:
-                return getattr(obj, name)
-            raise AttributeError(f"no attribute {name}")
-        return _getattr_
 
     def prepare(self, results, threads, tool_infos):
         """Re-wrap tools into _globals with fresh per-call tracking state."""
@@ -198,16 +172,10 @@ class ToolResult:
         return self
 
 
-def _no_import(*args, **kwargs):
-    raise ImportError("imports disabled")
-
-
 def exec_sandboxed(code: str, env: CodeEnv):
-    """Execute code in RestrictedPython sandbox."""
-    result = compile_restricted_exec(code, '<tools>')
-    if result.errors:
-        raise SyntaxError(f"restricted compile: {result.errors}")
-    exec(result.code, env._globals, env)
+    """Execute code in normal Python runtime."""
+    compiled = compile(code, '<tools>', 'exec')
+    exec(compiled, env._globals, env)
 
 
 
@@ -349,7 +317,7 @@ def _get_code_env(ctx, tools):
 
 
 def make_code_mode_tool(tools: list):
-    """Create the run_tools tool function for sandboxed code execution."""
+    """Create the run_tools tool function for Python code execution."""
     for fn in tools:
         ex6._validate_tool_sig(fn.__name__, fn)
     def run_tools(ctx: ex6.Context, code="", tool_call_id=None):
@@ -424,18 +392,11 @@ RUN_TOOLS_NAME = "run_tools"
 COMMON_MISTAKES = """
 <common_mistakes>
 COMMON MISTAKES — do NOT do these:
-NEVER use `print()`, `open()`, `import`, or any Python builtin. They do not exist. Only the listed tool functions exist.
+Tool calls do nothing unless you consume ToolResult with `.print()`, `.status()`, `.get()`, or `.is_ok()`.
 
 run_tools```
-# BAD — since you didn't call `.print()` or `.status()`, result is silently discarded, you will see NOTHING:
 read_file("a.py")
-
-# BAD — print() does not exist:
-print(read_file("a.py").get())
-
-# BAD — importing doesn't work (modules like re, json, math, time, os.path are pre-loaded):
-import os
-os.listdir(".")
+# BAD — since you didn't call `.print()` or `.status()`, result is silently discarded, you will see NOTHING:
 ```
 
 run_tools```
@@ -453,18 +414,18 @@ search(data).print()
 """
 
 def make_code_mode_system_prompt(tools: list, include_common_mistakes: bool = False) -> ex6.Message:
-    """System prompt + run_tools tool for sandboxed code execution."""
+    """System prompt + run_tools tool for Python code execution."""
     sorted_tools = sorted(tools, key=lambda f: f.__name__)
-    tool_docs = "\n".join(generate_tool_desc(fn) for fn in sorted_tools)
+    tool_docs = ("\n").join(generate_tool_desc(fn) for fn in sorted_tools)
     run_tools = make_code_mode_tool(tools)
     common_mistakes = (include_common_mistakes and COMMON_MISTAKES) or ""
     return ex6.Message(role="system", overview="tools", content=f"""\
 <tools>
-Use the `{RUN_TOOLS_NAME}` tool. The `code` param is sandboxed Python.
-IMPORTANT: imports are NOT available. Do NOT use `import`, `from X import`, or `__import__`. Only the listed functions exist.
+Use the `{RUN_TOOLS_NAME}` tool. The `code` param is normal Python.
+You have unrestricted Python execution in this tool environment.
 Combine multiple calls in a single run_tools block — they execute in parallel.
 
-These modules are pre-loaded and available directly (no import needed):
+These modules are pre-loaded for convenience:
 - `re` — regex: re.search(), re.findall(), re.sub(), etc.
 - `json` — json.loads(), json.dumps()
 - `math` — math.ceil(), math.floor(), math.log(), etc.
@@ -475,15 +436,15 @@ These modules are pre-loaded and available directly (no import needed):
 Every tool call returns a ToolResult, which is a future containing the task's output and status.
 On their own, tool-calls don't output anything in your context window.
 You MUST call one of these to see output:
-- `.print()` — non-blocking. injects the FULL result into your context. Returns self (ToolResult object)
-- `.status()` — non-blocking. injects OK or ERROR into your context. Use for writes/actions you don't need to read. Returns self (ToolResult object)
-- `.get()` — blocking. returns the value silently. Use to pass data to another tool.
-- `.is_ok()` — blocking. returns the value silently. Use to branch depending on whether another tool succeeded.
+- `ToolResult.print()` — non-blocking. injects the FULL result into your context. Returns self (ToolResult object)
+- `ToolResult.status()` — non-blocking. injects OK or ERROR into your context. Use for writes/actions you don't need to read. Returns self (ToolResult object)
+- `ToolResult.get()` — blocking. returns the value silently. Use to pass data to another tool.
+- `ToolResult.is_ok()` — blocking. returns the value silently. Use to branch depending on whether another tool succeeded.
 
 IMPORTANT: If you do not call .print() or .status(), you will NOT see the result AT ALL.
 </tool_results>
 
-
+# List of available tools:
 <available_tools>
 {tool_docs}
 </available_tools>
