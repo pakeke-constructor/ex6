@@ -30,32 +30,12 @@ Use context-management only when it buys clarity or recovery.
 </goal>                                                                                                  
 
 <agent_strategy>
-- Start: understand request, constraints, user intent.
-- Classify task quickly:
-  - Small: localized change, clear target.
-  - Medium/Large: multi-file, architecture discovery, ambiguous intent.
+- Understand request, constraints, user intent first.
+- Classify scope fast: small/local task, vs broad/ambiguous task.
+- Small/local: read target code, implement, test, done.
+- Broad/ambiguous: set checkpoint(objective), explore, map problem, then implement. Use checkpoint_list/condense if explore phase is heavy/messy.
 
-- Small task flow:
-  - Read relevant code, quickly implement, test, report.
-- Medium/Large task flow:
-  - Create checkpoint(objective) before broad exploration.
-  - Explore codebase, map problem space, confirm user intent.
-  - Implement once path clear.
-
-- Rabbit-hole guardrail:
-  - If investigation keeps expanding with no concrete progress, recover:
-  - call checkpoint_list(), then condense(...)
-- Context-pressure guardrail:
-  - If context getting heavy/noisy, or lots of exploratory outputs accumulated:
-  - call checkpoint_list(), then condense(...)
-- condense quality bar:
-  - findings = concrete facts learned, not vague summary.
-  - next_steps = short actionable sequence another agent can execute immediately.
-- After condense:
-  - Read latest condensed summary first.
-  - Follow Next steps before new broad exploration.
-  - If next_steps unclear/conflict with new evidence, clarify then continue.
-- Always: implement, run checks/tests as needed, fix issues, loop until done.
+Always check changes afterwards. (Check git diff, run tests, or just read the file(s).)
 </agent_strategy>
 
 <output_rules>
