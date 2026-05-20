@@ -3,7 +3,10 @@ import textwrap
 import json
 import ex6
 
+from typing import Optional
+
 from _ex6.code_mode import ToolResult
+
 
 
 def _get_checkpoints(ctx):
@@ -48,6 +51,21 @@ def _fmt_tokens(n):
 CONDENSE_MSG = "[Context condensed - messages pruned from chosen checkpoint through condense call]"
 
 
+def _checkpoint_list_blurb(starting_text: str, condense_target: str, findings_example: str) -> str:
+    return textwrap.dedent(f"""\
+        {starting_text}
+
+        Before condense: keep ToolResults that preserve proof/context for next step.
+        Show key outputs only (headers, file snippets, search hits, failing test logs).
+
+        Example:
+          h = read_headers("src/auth.py")
+          f = read_file("src/auth.py", lines=(1,120))
+          s = search("TODO|FIXME", match="src/services/*.py") # there are important TODOs in here
+          # NOTE: Don't call .get() or .status() here; it won't work since your context is being condensed!
+          condense("{condense_target}", findings="{findings_example}", keep=[h, f, s])""")
+
+
 def checkpoint_list(ctx: ex6.Context) -> str:
     """List checkpoints with token estimates. Must call before condense()."""
     cps = _get_checkpoints(ctx)
@@ -61,12 +79,15 @@ def checkpoint_list(ctx: ex6.Context) -> str:
                 first_non_sys = i
                 break
         tokens_after = _tokens_for_range(ctx, first_non_sys, len(ctx.messages))
-        return textwrap.dedent(f"""\
+        starting_text = textwrap.dedent(f"""\
             No checkpoints set.
               start: (start of conversation) ({_fmt_tokens(tokens_after)})
-            Current context: {total_tokens}
-
-            Next: call condense("start", findings="...", keep=[...])""")
+            Current context: {total_tokens}""")
+        return _checkpoint_list_blurb(
+            starting_text=starting_text,
+            condense_target="start",
+            findings_example="Added expiry check. Next: run tests.",
+        )
 
     cp_lines = []
     for i, cp in enumerate(cps):
@@ -75,15 +96,18 @@ def checkpoint_list(ctx: ex6.Context) -> str:
         tokens = _tokens_for_range(ctx, start, end)
         cp_lines.append(f'  {cp["name"]}: {cp["objective"]} ({_fmt_tokens(tokens)})')
     cp_list = "\n".join(cp_lines)
-    return textwrap.dedent(f"""\
+    starting_text = textwrap.dedent(f"""\
         Available checkpoints:
         {cp_list}
-        Current context: {total_tokens}
+        Current context: {total_tokens}""")
+    return _checkpoint_list_blurb(
+        starting_text=starting_text,
+        condense_target="checkpoint_N",
+        findings_example="Auth path reviewed; TODOs mapped. Next: patch middleware.",
+    )
 
-        Next: call condense("checkpoint_N", findings="...", keep=[...])""")
 
-
-def condense(ctx: ex6.Context, name: str, findings: str, keep: list[ToolResult] = None) -> str:
+def condense(ctx: ex6.Context, name: str, findings: str, keep: Optional[list[ToolResult]] = None) -> str:
     """Collapse context back to checkpoint. Must call checkpoint_list() first."""
     if not findings:
         raise ValueError("findings required")
