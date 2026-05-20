@@ -110,18 +110,21 @@ After tool calls, say nothing unless there's a result to report or a question to
 )
 
 
+CODE_MODE_SYS_PROMPT = make_code_mode_system_prompt([
+    read_file, glob, search, read_headers, read_body,
+    write_file, edit_file, edit_file_lines,
+    bash, explore_agent, web_search, websearch_agent,
+    git_working_tree,
+    plan_read, plan_done, plan_list,
+    checkpoint, checkpoint_list, condense,
+    load_skill,
+])
+
 
 def auto_setup():
     coder = Context("coder_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT,
-        make_code_mode_system_prompt([
-            read_file, glob, search, read_headers, read_body,
-            write_file, edit_file, edit_file_lines,
-            bash, explore_agent, web_search, websearch_agent,
-            plan_read, plan_done, plan_list,
-            checkpoint, checkpoint_list, condense,
-            load_skill,
-        ]),
+        CODE_MODE_SYS_PROMPT,
         ENV_PROMPT,
         CLAUDE_MD,
     ])
@@ -130,14 +133,7 @@ def auto_setup():
 
     coder = Context("coder_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT,
-        make_code_mode_system_prompt([
-            read_file, glob, search, read_headers, read_body,
-            write_file, edit_file, edit_file_lines,
-            bash, explore_agent, web_search, websearch_agent,
-            plan_read, plan_done, plan_list,
-            checkpoint, checkpoint_list, condense,
-            load_skill,
-        ]),
+        CODE_MODE_SYS_PROMPT,
         ENV_PROMPT,
         CLAUDE_MD,
     ])
