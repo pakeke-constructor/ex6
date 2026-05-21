@@ -30,13 +30,15 @@ class M:
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
     GEMINI3_PRO      = ModelInfo("google/gemini-3-pro-preview",     1_048_576, 2,    12,   0.2)
     GEMINI3_FLASH    = ModelInfo("google/gemini-3-flash-preview",   1_048_576, 0.5,  3,    0.05)
+    GEMINI35_FLASH    = ModelInfo("google/gemini-3.5-flash",   1_048_576, 0.5,  3,    0.05)
     GEMINI31_FLASH_LITE = ModelInfo("google/gemini-3.1-flash-lite-preview", 1_048_576, 0.25, 1.5, 0.025)
     GEMINI25_PRO     = ModelInfo("google/gemini-2.5-pro",           1_048_576, 1.25, 10,   0.125)
     GEMINI25_FLASH   = ModelInfo("google/gemini-2.5-flash",         1_048_576, 0.3,  2.5,  0.03)
     GEMINI25_FLASH_LITE = ModelInfo("google/gemini-2.5-flash-lite", 1_048_576, 0.1,  0.4,  0.01)
     GROK4            = ModelInfo("x-ai/grok-4",                      256_000, 3,    15,   0.75)
     GROK41_FAST      = ModelInfo("x-ai/grok-4.1-fast",             2_000_000, 0.2,  0.5,  0.05)
-    DEEPSEEK_CHAT    = ModelInfo("deepseek/deepseek-chat-v3.1",       32_768, 0.15, 0.75,  0)
+    DEEPSEEK_CHAT_V31    = ModelInfo("deepseek/deepseek-chat-v3.1",       32_768, 0.15, 0.75,  0)
+    DEEPSEEK_V4_PRO  = ModelInfo("deepseek/deepseek-v4-pro",         200_000, 1.5, 3, 0.15, 0)
     DEEPSEEK_R1      = ModelInfo("deepseek/deepseek-r1",              64_000, 0.7,  2.5,   0)
     QWEN3_CODER      = ModelInfo("qwen/qwen3-coder",                 262_144, 0.22, 1,    0.022)
     KIMI_K25         = ModelInfo("moonshotai/kimi-k2.5",             262_144, 0.45, 2.2,  0.225)
@@ -45,6 +47,8 @@ class M:
 
     OPUS_LATEST: ModelInfo
     CODEX_LATEST: ModelInfo
+    GEMINI_LATEST: ModelInfo
+    DEEPSEEK_LATEST: ModelInfo
 
     _index: Optional[dict[str, "ModelInfo"]] = None
 
@@ -56,3 +60,6 @@ class M:
 
 M.OPUS_LATEST = M.OPUS_47
 M.CODEX_LATEST = M.GPT53_CODEX
+M.GEMINI_LATEST = M.GEMINI35_FLASH
+M.DEEPSEEK_LATEST = M.DEEPSEEK_V4_PRO
+
