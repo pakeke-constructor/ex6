@@ -28,6 +28,7 @@ import shutil
 import datetime
 import platform
 import sys
+import git
 from _ex6.models import M
 from ex6 import Context, Message
 
