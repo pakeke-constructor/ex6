@@ -915,7 +915,7 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 - Concrete facts, relevant paths, function names, relationships.
 - Favour conciseness at all costs. Conciseness is much more important than grammatical correctness.
 - Be ultra concise and minimal. Do NOT use "the", "a", "it looks like", or anything else that bloats the output.
-- If the answer is 3 lines, write 3 lines. If it needs 30, write 30.
+- Be fast. Try to write 1 line if possible, more than 1 line only if needed.
 </output>
 """,
 tools = [read_file, glob, search, read_headers, read_body]
@@ -924,7 +924,21 @@ tools = [read_file, glob, search, read_headers, read_body]
 
 def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
     """Spawn a read-only subagent to explore the codebase. Returns its findings.
-    files: optional file paths to pre-read and include in the prompt."""
+    files: optional file paths to pre-read and include in the prompt.
+    
+    DO ask questions that are specific and general.
+    Do NOT ask questions that delegate your entire task.
+    
+    User: How does the data pipeline work when the microservices are in debug mode?
+
+    BAD: delegating entire task; subagent will be overwhelmed:
+    explore("How does the data pipeline work when the microservices are in debug mode?") 
+
+    GOOD: being more specific, splitting it up:
+    explore("Where does the data pipeline start?")
+    explore("What is microservice debug mode and what does it do?")
+    read_headers("data_service.py")
+    """
     # prepend file contents to prompt
     if files:
         parts = []
