@@ -17,6 +17,7 @@ class ModelInfo:
 class M:
     OPUS_46          = ModelInfo("anthropic/claude-opus-4.6",         200_000, 5,    25,   0.5,  6.25)
     OPUS_47          = ModelInfo("anthropic/claude-opus-4.7",         200_000, 5,    25,   0.5,  6.25)
+    OPUS_48          = ModelInfo("anthropic/claude-opus-4.8",         200_000, 5,    25,   0.5,  6.25)
     SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       200_000, 3,    15,   0.3,  3.75)
     HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",        200_000, 1,    5,    0.1,  1.25)
     GPT5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
@@ -57,7 +58,7 @@ class M:
             cls._index = {v.id: v for v in vars(cls).values() if isinstance(v, ModelInfo)}
         return cls._index.get(model_id)
 
-M.OPUS_LATEST = M.OPUS_47
+M.OPUS_LATEST = M.OPUS_48
 M.CODEX_LATEST = M.GPT53_CODEX
 M.GEMINI_LATEST = M.GEMINI35_FLASH
 M.DEEPSEEK_LATEST = M.DEEPSEEK_V4_PRO
