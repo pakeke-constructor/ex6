@@ -55,6 +55,7 @@ from typing import get_origin, get_args, get_type_hints
 import copy
 import time
 import glob
+import difflib
 
 
 ESC_DELAY: float = 0
@@ -1527,6 +1528,39 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
         input_box(buf, inpt, input_r)
 
 
+@overridable
+def render_work_mode_footer(buf, r, ctx):
+    """Draw into the 3 padding rows below the input divider."""
+    th = state.theme
+    x, y, w, h = r
+    text = ctx._input_box.get_text()
+
+    if not text.startswith("/"):
+        on = ctx.yolo
+        buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
+                 txt_color=th.success if on else th.muted)
+        return
+
+    query = text[1:].split(" ")[0]
+    names = sorted(_commands)
+    prefix = [n for n in names if n.startswith(query)]
+    fuzzy = difflib.get_close_matches(query, [n for n in names if n not in prefix], n=3)
+    matches = (prefix + fuzzy)[:3]
+    if not matches:
+        buf.puts(x, y, "  no matching command", txt_color=th.muted)
+        return
+
+    for i, name in enumerate(matches):
+        fn, spec = _commands[name]
+        args = " ".join(f"<{a}>" for a, _ in spec)
+        doc = (fn.__doc__ or "").strip()
+        cx = x
+        for s, col in (("  /", th.muted), (name, th.accent_alt),
+                       (" " + args if args else "", th.warning),
+                       ("  " + doc if doc else "", th.muted)):
+            buf.puts(cx, y + i, s, txt_color=col); cx += len(s)
+
+
 _ex6_dir = os.path.dirname(os.path.abspath(__file__))
 
 def _load_plugins():
@@ -1674,6 +1708,8 @@ if __name__ == "__main__":
                         # only render work-mode input when we dont have blocking panels
                         render_work_mode_input(buf, inpt, input_r, input_box)
                     buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
+                    footer_r = Region(0, divider_y + 2 + input_h, term.width, 3)
+                    render_work_mode_footer(buf, footer_r, state.current)
                     if inpt.consume('KEY_ESCAPE'):
                         state.mode = "selection"
                     if inpt.consume('KEY_CTRL_X') and state.current.is_running():
