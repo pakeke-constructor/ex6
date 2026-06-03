@@ -3,7 +3,6 @@ from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
-from _ex6.tools_checkpoints import checkpoint, checkpoint_list, condense
 from _ex6.skills import load_skill
 from _ex6.web.web_tools import web_search, websearch_agent
 from _ex6.provider import cache_manually
@@ -33,9 +32,9 @@ Use context-management only when it buys clarity or recovery.
 - Understand request, constraints, user intent first.
 - Classify scope fast: small/local task, vs broad/ambiguous task.
 - Small/local: read target code, implement, test, done.
-- Broad/ambiguous: set checkpoint(objective), explore, map problem, then implement. Use checkpoint_list/condense if explore phase is heavy/messy.
+- Broad/ambiguous: understand/map-out problem, think, then implement.
 
-Always check changes afterwards. (Check git diff, run tests, or just read the file(s).)
+Always check changes afterwards. (Check git diff, run tests, or just read the file(s))
 </agent_strategy>
 
 <output_rules>
@@ -109,22 +108,21 @@ After tool calls, say nothing unless there's a result to report or a question to
 """
 )
 
-
-CODE_MODE_SYS_PROMPT = make_code_mode_system_prompt([
+MAIN_TOOLS = [
     read_file, glob, search, read_headers, read_body,
     write_file, edit_file, edit_file_lines,
     bash, explore_agent, web_search, websearch_agent,
     git_working_tree,
     plan_read, plan_done, plan_list,
-    checkpoint, checkpoint_list, condense,
     load_skill,
-])
+]
+
+CODE_MODE_SYS_PROMPT = make_code_mode_system_prompt(MAIN_TOOLS)
 
 
 def auto_setup():
     coder = Context("coder_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=[
-        MAIN_SYSTEM_PROMPT,
-        CODE_MODE_SYS_PROMPT,
+        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ])
@@ -132,8 +130,7 @@ def auto_setup():
         cache_manually(coder)
 
     coder = Context("coder_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
-        MAIN_SYSTEM_PROMPT,
-        CODE_MODE_SYS_PROMPT,
+        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ])

@@ -239,7 +239,21 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
 def _ws_normalize(s):
     return re.sub(r'[ \t]+', ' ', s).strip()
 
+
 def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
+    """Edit a file by searching and replacing a unique string.
+    Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
+    search must match exactly one location. errors if zero or multiple matches.
+
+    Usage:
+    - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
+    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the lines. If you need to delete a lot of code, edit_file_lines is better because it avoids you rewriting the entire code.
+    - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
+    """
+    return edit_file_codemode(ctx, file, search, replace)
+
+
+def edit_file_codemode(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     """Edit a file by searching and replacing a unique string.
     Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
     search must match exactly one location. errors if zero or multiple matches.
