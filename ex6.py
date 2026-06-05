@@ -505,12 +505,16 @@ def _check_tool_args(fn: Callable, args: dict) -> dict:
         if name not in hints:
             continue
         hint = hints[name]
+        # JSON has no tuple type; coerce list -> tuple when a tuple is allowed
+        allowed = get_args(hint) if get_origin(hint) is Union else (hint,)
+        if tuple in (_resolve_type_hint(a) for a in allowed) and isinstance(val, list):
+            args[name] = val = tuple(val)
         if not _strong_isinstance(val, hint):
             raise TypeError(f"{fn.__name__}: arg '{name}' expected {_type_hint_name(hint)}, got {type(val).__name__}")
     return args
 
 
-_TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array"}
+_TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", tuple: "array"}
 
 
 def _validate_tool_sig(name: str, fn: Callable):

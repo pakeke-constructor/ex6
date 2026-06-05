@@ -402,7 +402,7 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
 _SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
 
 
-def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int = 15, page: int = 1) -> str:
+def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results: int = 15, page: int = 1) -> str:
     """Search file contents for a regex pattern, filtered by glob.
     Returns matching lines with file:line: prefix.
     Pagination: page is 1-indexed and returns at most max_results matches for that page.
@@ -421,7 +421,7 @@ def search(ctx: ex6.Context, pattern: str, match: str = "**/*", max_results: int
     seen = 0
     results = []
 
-    for f in _glob.glob(match, recursive=True, root_dir=root):
+    for f in _glob.glob(file_glob, recursive=True, root_dir=root):
         if _is_gitignored(f):
             continue
         fp = os.path.join(root, f)
@@ -922,14 +922,15 @@ Understand the code, then return a tight, information-dense summary. No fluff. M
 <strategy>
 - Start broad, go deep. Use multiple search angles — different naming conventions, related files, alternate locations.
 - Maximize parallel tool calls. Read multiple files and search multiple patterns in a single run_tools block.
-- Start with token efficient tools like `read_headers` / `search` / `glob`, then `read_body` for specifics, then `read_file` for going deep.
+- Start tools like `search` / `glob` to find out where to go, then `read_file` for going deep.
+- IMPORTANT: YOU MUST KEEP ROUND-TRIPS TO A MINIMUM, SINCE YOU ARE ON A TIME LIMIT. DO A MAXIMUM OF 5 ROUND-TRIPS, AND ALWAYS CALL TOOLS IN BATCHES.
 </strategy>
 
 <output>
 - Bullet points over paragraphs. Code references (file:function_name) over prose.
 - Concrete facts, relevant paths, function names, relationships.
 - Favour conciseness at all costs. Conciseness is much more important than grammatical correctness.
-- Be ultra concise and minimal. Do NOT use "the", "a", "it looks like", or anything else that bloats the output.
+- Be EXTREMELY CONCISE. Do NOT use "the", "a", "it looks like", or anything else that bloats the output.
 - Be fast. Try to write 1 line if possible, more than 1 line only if needed.
 </output>
 """,
