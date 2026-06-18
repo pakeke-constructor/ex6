@@ -329,6 +329,7 @@ class Theme:
     name: str = "default"
     text: str = "white"
     muted: str = "bright_black"
+    user_background: str = "black"
     accent: str = "blue"
     accent_alt: str = "cyan"
     success: str = "green"
@@ -1472,7 +1473,7 @@ def render_work_mode(buf, inpt, r):
     for role, lines, has_tool_calls in message_outputs:
         if role == 'user' or prev_role == 'user': row += 1
         prev_role = role
-        bg = th.muted if role == 'user' else None
+        bg = th.user_background if role == 'user' else None
         for line in lines:
             if line == '' and has_tool_calls: continue  # skip empty content in tool-call msgs
             if callable(line):
