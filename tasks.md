@@ -130,17 +130,17 @@ Be kinda like claude-code.
 
 - ~~FIX LLM CACHING.~~
 
+- ~~add GLM-model~~
+- ~~Need a better way to search web. (Maybe just use firecrawl)~~
+- ~~Fix explore subagent: (Better sys prompt?)~~
+- ~~Give agents powershell or bash. (if windows powershell else bash). Agents are actually amazing with powershell~~
+
 
 ## ^^^^ DONE TASKS ^^^^
 ## FROM THIS POINT ONWARDS, WE SHOULD ONLY EVER USE EX6 FOR WRITING CODE.
 
 
 
-ex6:
-- add GLM-model
-- Need a better way to search web. (Maybe just use firecrawl)
-- Fix explore subagent: (Better sys prompt?)
-- Give agents powershell or bash. (if windows powershell else bash). Agents are actually amazing with powershell
 - **COOL IDEA:** Make ex6 a generic runtime; not just a TUI. Make the tui completely optional - a thing you explicitly (hah) enable.
 
 THEN: Oli, you should use ex6 to optimize and organize your life a bit more.
