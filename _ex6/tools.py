@@ -872,6 +872,27 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
 
 
 
+def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
+    """Run a PowerShell command and return its output (stdout + stderr combined). Windows only.
+    Use for: running tests, checking git status, installing packages, etc.
+    timeout: max seconds to wait (default 30)."""
+    exe = shutil.which("pwsh") or shutil.which("powershell")
+    if not exe:
+        return "ERROR: powershell not found"
+    try:
+        result = subprocess.run([exe, "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
+        out = result.stdout + result.stderr
+        if result.returncode != 0:
+            out = f"[exit code {result.returncode}]\n" + out
+        return out.strip() or "(no output)"
+    except subprocess.TimeoutExpired:
+        return f"ERROR: command timed out after {timeout}s"
+
+
+COMMANDLINE_TOOL = powershell if _IS_WINDOWS else bash
+
+
+
 def git_working_tree(ctx: ex6.Context) -> str:
     """Show working tree changes: status + unstaged/staged diffs."""
     try:
@@ -945,32 +966,37 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
     DO ask questions that are specific and general.
     Do NOT ask questions that delegate your entire task.
     
+    <example>
     User: How does the data pipeline work when the microservices are in debug mode?
 
-    BAD: delegating entire task; subagent will be overwhelmed:
-    explore("How does the data pipeline work when the microservices are in debug mode?") 
+    ASSISTANT: vexplore("How does the data pipeline work when the microservices are in debug mode?") 
+    (BAD: delegating entire task; subagent will be overwhelmed:)
 
-    GOOD: being more specific, splitting it up:
-    explore("Where does the data pipeline start?")
-    explore("What is microservice debug mode and what does it do?")
-    read_headers("data_service.py")
+    ASSISTANT: explore("Where does the data pipeline start?")
+    - explore("What is microservice debug mode and what does it do?")
+    - read_headers("data_service.py")
+    (GOOD: being more specific, splitting it up, using hybrid )
+    </example>
     """
-    # prepend file contents to prompt
     if files:
         parts = []
         for f in files:
             fp = ctx.resolve(f)
-            with open(fp, "r") as fh:
+            with open(fp, "r", encoding="utf-8") as fh:
                 parts.append(f'<file path="{f}">\n{fh.read()}\n</file>')
         prompt = "\n".join(parts) + "\n\n" + prompt
-    sub = Context("explore", model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[
-        EXPLORE_SYSTEM_PROMPT
-    ])
+
+    sub_name = f"explore_{int(time.time() * 1000)}"
+    sub = Context(sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
     sub.parent = ctx.name
     sub.invoke(prompt)
     while sub.llm_is_running:
         time.sleep(0.05)
-    result = sub.messages[-1].content if sub.messages else ""
-    del ex6.state.contexts[sub.name]
-    return result
+
+    try:
+        if sub.llm_result and sub.llm_result.error:
+            raise RuntimeError(f"explore_agent failed: {sub.llm_result.error}")
+        return sub.messages[-1].content if sub.messages else ""
+    finally:
+        ex6.state.contexts.pop(sub.name, None)
 

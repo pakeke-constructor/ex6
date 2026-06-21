@@ -1,7 +1,7 @@
 
 from _ex6.models import M
 from _ex6.code_mode import make_code_mode_system_prompt
-from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, bash, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
+from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.skills import load_skill
 from _ex6.web.web_tools import web_search, websearch_agent
@@ -76,42 +76,11 @@ PLANNER_MODEL = M.OPUS_46.id
 
 
 
-PLANNER_SYSTEM_PROMPT = ex6.Message(
-role="system",
-overview="planner-system",
-content="""\
-You are a planning agent working alongside an experienced engineer in a terminal UI.
-You CANNOT write code. You can only read, explore, and research.
-
-<goal>
-Understand the request, explore the codebase, then write a plan using plan_write().
-The plan must be detailed enough for a separate coding agent to implement without ambiguity.
-Include verifiable done-criteria in the plan itself.
-</goal>
-
-<output_rules>
-Plain text only. No markdown headers, no tables, no emojis. Short lines.
-DO NOT explain your reasoning. Make tool calls IMMEDIATELY.
-After tool calls, say nothing unless there's a result to report or a question to ask.
-</output_rules>
-
-<planning_strategy>
-- Explore the codebase first. Understand what exists before planning changes.
-- Use explore_agent for broad questions; it's cheaper than exploring yourself.
-- Start with read_headers/search/glob, then go deeper as needed.
-- Write the plan with plan_write(content). Freeform markdown, whatever structure fits.
-- The plan should include: what files to change, what to add/remove, and why.
-- Include specific function names, line references, and concrete steps.
-- Include done-criteria: concrete, verifiable checks (bash commands, searches, etc.)
-- Log important findings with plan_add_log.
-</planning_strategy>
-"""
-)
 
 MAIN_TOOLS = [
     read_file, glob, search, read_headers, read_body,
     write_file, edit_file, edit_file_lines,
-    bash, explore_agent, web_search, websearch_agent,
+    COMMANDLINE_TOOL, explore_agent, web_search, websearch_agent,
     git_working_tree,
     plan_read, plan_done, plan_list,
     load_skill,
@@ -121,15 +90,20 @@ CODE_MODE_SYS_PROMPT = make_code_mode_system_prompt(MAIN_TOOLS)
 
 
 def auto_setup():
-    coder = Context("coder_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=[
+    coder_opus = Context("coder_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ])
-    if SMART_MODEL.startswith("anthropic/"):
-        cache_manually(coder)
+    cache_manually(coder_opus)
 
-    coder = Context("coder_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
+    Context("coder_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
+        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ])
+
+    Context("coder_glm", model=M.GLM_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
@@ -146,7 +120,7 @@ def auto_setup():
     #     CLAUDE_MD,
     # ])
 
-    ex6.state.current = coder
+    ex6.state.current = coder_opus
 
 
 
