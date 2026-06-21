@@ -1539,6 +1539,14 @@ def render_work_mode_footer(buf, r, ctx):
     th = state.theme
     x, y, w, h = r
     text = ctx._input_box.get_text()
+    """
+    todo: in future, instead of just "yolo ON" and "yolo OFF",
+    we should have actual 'modes' here.
+    Like, displaying auxiliary information about maybe like, task confidence,
+    or some other stuff, maybe like `plan-mode ON`, or even some other shit.
+
+    Do some thinking; we can do a lot more than this besides just yolo ON/OFF.
+    """
 
     if not text.startswith("/"):
         on = ctx.yolo

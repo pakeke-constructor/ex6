@@ -1,21 +1,21 @@
 # TUI Decoupling Plan
 
-Goal: make `ex6.py`'s runtime GENERIC — usable with no terminal UI. The TUI becomes an
-opt-in object: construct `TUI()` and call `.run()` to get the interactive app. Without
-instantiating it, you have a headless runtime (drive contexts from scripts, tests,
-servers, whatever).
+Goal: make `ex6.py`'s runtime GENERIC — usable with no terminal UI. The TUI becomes
+opt-in: `ex6.run_tui()` boots the interactive app. Without calling it, you have a headless
+runtime (drive contexts from scripts, tests, servers, whatever).
 
 Everything stays in **one file, `ex6.py`**. "Decoupled" here means: the runtime classes
-never reference TUI code, nothing starts the loop at import, and `TUI().run()` is the only
-thing that boots the UI. Physical file location is irrelevant; the dependency direction is
-what matters.
+never reference TUI code, nothing starts the loop at import, and `ex6.run_tui()` is the
+only thing that boots the UI. Physical file location is irrelevant; the dependency
+direction is what matters.
 
 ```python
 import ex6
 # headless: create contexts, invoke LLMs, run tools — no terminal needed
 # interactive:
-ex6.TUI().run()
+ex6.run_tui()
 ```
+
 
 ---
 
@@ -25,10 +25,11 @@ ex6.TUI().run()
   references NOTHING in the TUI half (ScreenBuffer, Terminal, Region, Theme, render_*,
   keys, modes).
 - The `TUI` class may freely use runtime code. Never the reverse.
-- Nothing runs the main loop at import time. The `__main__` block just does
-  `_load_plugins()` then `TUI().run()`.
-- Plugins keep working with minimal/zero churn. `import ex6` exposes the same names.
-- No behavior change for the existing app. Pure restructure.
+- Nothing runs the main loop at import time. The `__main__` block does
+  `_load_plugins()` then `ex6.run_tui()`.
+- Plugins migrate to the new accessors (`ex6.get_theme()`, `ctx.get_input_box()`).
+  Breaking backwards compat is acceptable; keep the new shapes simple.
+- No behavior change for the existing app's UX. Restructure + a few API renames.
 
 Layout within `ex6.py`: keep a clear top-to-bottom ordering — runtime section first, then
 a visibly-marked TUI section (`# ===== TUI =====`). A reader should be able to see where
@@ -80,54 +81,77 @@ Findings from reading `ex6.py` + `_ex6/`:
 
 ## 3. `AppState` -> `Runtime`
 
-Rename `AppState` to `Runtime`. Holds ONLY runtime state:
+Rename `AppState` to `Runtime`. Holds ONLY runtime state — keep it DEAD SIMPLE, no
+properties, no shims, no magic:
 ```python
 @dataclass
 class Runtime:
     contexts: dict[str, Context] = field(default_factory=dict)
     current: Optional[Context] = None
 ```
-Keep the global var named `state = Runtime()` so `ex6.state.contexts` / `ex6.state.current`
-keep working unchanged in plugins.
+Global var stays `state = Runtime()` so `ex6.state.contexts` / `ex6.state.current` keep
+working in plugins.
 
 `mode`, `_prev_mode`, `term`, `theme` move OFF Runtime, ONTO the `TUI` instance (§5).
+It's FINE to break backwards compatibility here — do NOT add `@property` delegators on
+Runtime. Plugins that read `ex6.state.theme` / `.mode` get migrated to the new accessors
+(§4) instead.
 
 ---
 
-## 4. `theme` / `mode` back-compat
+## 4. `theme` access
 
-~40 plugin refs to `ex6.state.theme` (tools.py, themes.py, all `z_*highlight*`,
-render_system_prompts, checkpoints) + a few to `ex6.state.mode`. All inside rendering code
+~40 plugin refs to `ex6.state.theme` + a few to `ex6.state.mode`, all inside rendering code
 that only runs while a TUI is active.
 
-Decision: `theme`/`mode` live on the `TUI` instance. Add a module-level `_active_tui` ref
-(set in `TUI.__init__`), and give `Runtime` `theme`/`mode` **properties** that delegate to
-`_active_tui`. So `ex6.state.theme` keeps resolving — zero plugin edits. Headless with no
-TUI: property raises a clear error (these paths only execute under a running UI anyway).
+Decision: theme is owned by the `TUI` but exposed through plain module-level functions:
+- `ex6.get_theme()` -> returns the active `Theme`
+- `ex6.set_theme(th)` -> sets the active `Theme`
+
+Theme is ALWAYS active (a default `Theme()` exists even when no TUI runs; sometimes unused,
+that's fine). No `@property` shims. Migrate plugin `ex6.state.theme` reads to
+`ex6.get_theme()`.
+
+`mode` likewise lives on the `TUI` instance; plugins needing it go through the TUI (§5).
 
 `Theme` class definition moves into the TUI section of the file.
 
-Since it's one file and `TUI()` is constructed in `__main__` BEFORE `_load_plugins()`, the
-module-top-level `ex6.state.theme` reads in `z_highlight_*` resolve fine. (Confirm
-`TUI.__init__` needs no plugins — it shouldn't.)
-
 ---
 
-## 5. The `TUI` class
+## 5. The `TUI` class + module-level boot
 
-Lives in the TUI section of `ex6.py`:
+`TUI` is a plain class. It is NOT instantiated directly by plugins or `__main__`. Two
+module-level functions own its lifecycle:
+
+- `ex6.run_tui()` — constructs the single `TUI` (once) and runs its blocking main loop.
+  Asserts it isn't already running. `__main__` calls this.
+- `ex6.get_tui()` — returns the live `TUI`, or `None` if headless / not yet started.
+  Cheap, never blocks. Plugins use this to reach the active UI.
+
+No `get_singleton()`, no raising `__init__`. Keeping "boot the app (blocking)" and "grab
+the live TUI (cheap)" as separate functions avoids a get-or-start helper that sometimes
+returns instantly and sometimes blocks forever.
+
 ```python
+_tui = None  # the live TUI, or None when headless
+
+def run_tui():
+    global _tui
+    assert _tui is None, "TUI already running"
+    _tui = TUI()
+    _tui.run()
+
+def get_tui():
+    return _tui  # None when headless
+
 class TUI:
-    def __init__(self, theme: Theme = None):
-        global _active_tui
+    def __init__(self):
         self.term = Terminal()
-        self.theme = theme or Theme()
         self.mode = "selection"
         self._prev_mode = "selection"
         self._ui_panel_stack = []
         self._sel_input_open = False
         self._sel_input_box = make_input(self._sel_on_submit)
-        _active_tui = self
 
     def run(self):
         # the entire current __main__ while-loop body
@@ -136,10 +160,14 @@ class TUI:
 
 Absorbed into `TUI` (as methods/attrs):
 - the `__main__` while-loop -> `TUI.run()`
-- `mode`, `_prev_mode`, `term`, `theme` -> instance attrs (no globals)
+- `mode`, `_prev_mode`, `term` -> instance attrs (no globals)
 - `_ui_panel_stack`, `push_ui_panel`, `pop_ui_panel` -> instance
 - `enter_scroll_mode` -> method
 - the `_sel_*` selection-input state + `sel_on_submit`
+
+Theme is NOT a TUI instance attr; it lives behind `ex6.get_theme()` / `ex6.set_theme()`
+(§4) and is always active (independent of the TUI), so plugin theme reads at import time
+work even while `get_tui()` is still `None`.
 
 Still module-level (the TUI section), because they're registries written at plugin-load
 time, before any `TUI` exists:
@@ -147,29 +175,25 @@ time, before any `TUI` exists:
 - `_render_chunks` machinery
 
 Plugin-facing forwarders kept at `ex6.` namespace so plugins don't change:
-- `ex6.push_ui_panel(fn)` -> `_active_tui.push_ui_panel(fn)`
-- `ex6.enter_scroll_mode()` -> `_active_tui.enter_scroll_mode()`
+- `ex6.push_ui_panel(fn)` / `ex6.pop_ui_panel()` -> forward to `get_tui()`
+- `ex6.enter_scroll_mode()` -> forward to `get_tui()`
 - `ex6.output_renderer` -> stays a module-level decorator (unchanged location/behavior)
-- `ex6.state.theme` / `.mode` -> property shim (§4)
+
 
 ---
 
 ## 6. Severing the tool-renderer seam (#4)
 
-Make `call_tools` emit data, let the TUI attach the draw closure.
-- `call_tools` stops calling `_default_tool_render`.
-- Add a runtime hook fired when a tool starts, e.g.
-  `_on_tool_started(ctx, tool_call_id, name, args, thread, result)` (a small list of
-  listeners, like `_after_tool_calls`).
-- `TUI` registers a listener that does
-  `ctx.set_tool_renderer(id, _default_tool_render(...))`.
-- `render_tool_line` / `_default_tool_render` move to the TUI section.
-- `Context.set_tool_renderer` / `_tool_renderers` stay on Context, unchanged. Headless:
-  no listener registered -> no renderers created -> harmless.
+Make the runtime stop building the draw closure; the TUI owns rendering.
+`render_tool_line` / `_default_tool_render` move to the TUI section.
+`Context.set_tool_renderer` / `_tool_renderers` stay on Context, unchanged.
 
-(Fallback if the hook feels heavy: runtime stores a plain-data record
-`{thread, result, name, args}` in `_tool_renderers`; TUI builds the draw fn at render
-time. Prefer the hook.)
+NOTE/TODO: the exact mechanism for attaching the tool renderer is UNDECIDED. The
+`on_tool_started` listener-hook approach was rejected as ugly. Figure out a cleaner way —
+options to consider: runtime stores a plain-data record (`{thread, result, name, args}`)
+in `_tool_renderers` and the TUI builds the draw fn at render time; or some other seam.
+Leave this open and pick the simplest thing during implementation.
+
 
 ---
 
@@ -177,46 +201,51 @@ time. Prefer the hook.)
 
 Small increments; app must still launch after each.
 
-1. **Rename `AppState` -> `Runtime`**, strip `mode/_prev_mode/term/theme` fields.
-   Temporarily leave them as no-op stubs if needed so the loop still runs. Verify launch.
+1. **Rename `AppState` -> `Runtime`**, strip `mode/_prev_mode/term/theme` fields down to
+   just `contexts`/`current`. No properties, no shims. Verify launch.
 
 2. **Add a `# ===== TUI =====` divider**; conceptually nothing below it may be referenced
-   above it. Move `Theme` below the divider. Verify launch.
+   above it. Move `Theme` below the divider. Add `get_theme()`/`set_theme()` (theme always
+   active). Verify launch.
 
-3. **Sever tool-renderer seam (§6)**: add `_on_tool_started` hook, move
-   `_default_tool_render`/`render_tool_line` below the divider, TUI registers the listener
-   (temporarily register it from `__main__` until `TUI` exists). Verify tool lines render
+3. **Sever tool-renderer seam (§6)**: move `_default_tool_render`/`render_tool_line` below
+   the divider. Pick a clean attach mechanism (see §6 NOTE/TODO). Verify tool lines render
    (running/ok/error).
 
-4. **Introduce `TUI` class**: move the `__main__` while-loop into `TUI.run()`, move
-   `push_ui_panel`/`pop`/`_ui_panel_stack`/`enter_scroll_mode`, the `_sel_*` state, and the
-   stdout-swap logic onto it. Add `ex6.push_ui_panel`/`enter_scroll_mode` forwarders.
-   Verify full interactive app (selection, work, scroll, panels, commands).
+4. **Introduce `TUI` + `run_tui()`/`get_tui()`**: move the `__main__` while-loop into
+   `TUI.run()`, move `push_ui_panel`/`pop`/`_ui_panel_stack`/`enter_scroll_mode`, the
+   `_sel_*` state, and the stdout-swap logic onto it. Add module-level `_tui`, `run_tui()`,
+   `get_tui()`. Repoint `ex6.push_ui_panel`/`enter_scroll_mode` forwarders to `get_tui()`.
+   Verify full interactive app.
 
-5. **Move `theme`/`mode` onto `TUI`** + `_active_tui` bridge + `Runtime.theme`/`.mode`
-   property shims. Remove the temporary stubs from step 1.
-   Set `__main__` order to: `tui = TUI(); _load_plugins(); tui.run()` so top-level
-   `ex6.state.theme` reads in `z_*` resolve. Verify highlighters, themes cmd, diff colors.
+5. **Migrate plugin theme/mode access**: change `ex6.state.theme` reads to `ex6.get_theme()`
+   across plugins. `__main__` order: `_load_plugins(); ex6.run_tui()`.
+   Verify highlighters, themes cmd, diff colors.
 
-6. **Lazy `InputBox` in `Context`** (§2/§3): `_input_box` defaults `None`; TUI creates it on
-   demand. `Context.__post_init__` no longer builds an InputBox. Keep
-   `ui_stack`/`_scroll_up`/`_prev_height` fields (plugins use `ctx.push_ui`) but ensure no
-   runtime logic depends on them. Verify `ctx.push_ui` (loading_cube, web_tools) works.
+6. **Lazy `InputBox` via `Context.get_input_box()`** (§2/§3): add `Context.get_input_box()`
+   that lazily builds the box; `_input_box` defaults `None`. `Context.__post_init__` no
+   longer builds an InputBox. The TUI calls `ctx.get_input_box()` instead of a static
+   helper. Keep `ui_stack`/`_scroll_up`/`_prev_height` fields; ensure no runtime logic
+   depends on them. Verify `ctx.push_ui` works.
 
-7. **Headless smoke test**: script that imports `ex6`, does NOT construct `TUI`, creates a
+7. **`blessed` import only in TUI mode**: move `from blessed import Terminal` out of the
+   module top and into the TUI section / `TUI.__init__` so headless `import ex6` never
+   imports blessed (if feasible). Verify.
+
+8. **Headless smoke test**: script that imports `ex6`, does NOT construct `TUI`, creates a
    `Context`, stubs `invoke_llm`, calls `ctx.invoke("hi")`, asserts a tool runs and a
-   message appends — no Terminal touched. Acceptance test for the whole effort.
+   message appends — no Terminal touched.
 
-8. **Run `_ex6/_test.py`** + manual smoke of the real app.
+9. **Run `_ex6/_test.py`** + manual smoke of the real app.
 
 ---
 
 ## 8. Acceptance criteria
-
-- `import ex6` with no `TUI()` constructed touches no terminal and starts no loop.
-- Headless script (step 7) drives a full invoke->tool->loop cycle with no `TUI`.
-- `ex6.TUI().run()` reproduces current app behavior exactly.
-- All existing plugins load and function unchanged (forwarders + property shims).
+- `import ex6` with no `run_tui()` called touches no terminal, starts no loop, imports no
+  blessed. `get_tui()` returns `None`.
+- Headless script drives a full invoke->tool->loop cycle with no `TUI`.
+- `ex6.run_tui()` reproduces current app behavior. Calling it twice asserts.
+- Plugins migrated to `ex6.get_theme()` / `ctx.get_input_box()` load and function.
 - No runtime-section code references TUI-section symbols (ScreenBuffer/Terminal/Region/
   Theme/render_*).
 
@@ -224,15 +253,48 @@ Small increments; app must still launch after each.
 
 ## 9. Risks / watch-items
 
-- **`ex6.state.theme` read at plugin import time**: `z_highlight_*`, `z_highlight_markdown`
-  build color tables at module top-level. So `__main__` must construct `TUI()` BEFORE
-  `_load_plugins()`. Confirm `TUI.__init__` needs no plugins.
-- **`Context.fork`** already sets `_input_box=None` (line 856) — keep lazy creation
-  consistent with that.
+- **theme read at plugin import time**: `z_highlight_*`, `z_highlight_markdown` build color
+  tables at module top-level via `ex6.get_theme()`. Theme must be always-active (default
+  exists pre-TUI) so these resolve regardless of TUI construction order.
+- **`Context.fork`** already sets `_input_box=None` — keep lazy `get_input_box()` consistent.
 - **LLM/tool threads**: invoke loop uses `self` only; `call_tools` uses `ctx` only — no
-  `state`/render access on worker threads. Keep this true after adding `_on_tool_started`
-  (the hook only stores a closure; the closure runs later on the render thread).
-- **stdout swap**: `_real_stdout`/`_real_stderr` captured at import (lines 24-25) stay in
-  the runtime section as plain captured handles; the swap *logic* moves onto `TUI`.
-- **`_fatal_error` / `_thread_excepthook`**: used by the loop. Loop moves to `TUI.run()`;
-  the excepthook + global stay module-level. Fine.
+  `state`/render access on worker threads. Keep this true through the renderer-seam rework.
+- **stdout swap**: `_real_stdout`/`_real_stderr` captured at import stay in the runtime
+  section as plain captured handles; the swap *logic* moves onto `TUI`.
+- **`_fatal_error` / `_thread_excepthook`**: loop moves to `TUI.run()`; the excepthook +
+  global stay module-level. Fine.
+
+---
+
+## 10. Revised design decisions (supersede earlier drafts)
+
+These reflect a deliberate rethink. Earlier sections were edited to match; this list is the
+canonical summary of WHAT changed and WHY.
+
+- **No `on_tool_started` hook.** The listener-hook for attaching tool renderers was ugly.
+  Find a cleaner seam during implementation (see §6 NOTE/TODO) — e.g. runtime stores a
+  plain-data record and the TUI builds the draw fn at render time. Undecided; keep simple.
+
+- **Input box via `Context.get_input_box()`.** No static helper on `TUI`. The Context lazily
+  builds and owns its input box through a plain method.
+
+- **`blessed` imports only in TUI mode.** Move the `from blessed import Terminal` into the
+  TUI section / `TUI.__init__` so a headless `import ex6` never pulls in blessed.
+
+- **`set_tool_renderer` may get refactored** — NOTE/TODO, not committed. Leave as-is unless
+  a clearly simpler shape emerges.
+
+- **NO `@property` magic. `Runtime` stays dumb.** Drop all the property delegators and the
+  `_active_tui` bridge. `Runtime` holds only `contexts` + `current`. Breaking backwards
+  compatibility is GOOD here — keep it simple and obvious.
+
+- **Theme via `ex6.get_theme()` / `ex6.set_theme(th)`.** Theme is ALWAYS active (a default
+  exists even with no TUI; sometimes unused, that's fine). Plugins migrate off
+  `ex6.state.theme`.
+
+- **TUI lifecycle via two module funcs, not a singleton classmethod.** `ex6.run_tui()`
+  builds the single `TUI` and runs the blocking loop (asserts not already running).
+  `ex6.get_tui()` returns the live `TUI` or `None` (cheap, never blocks). No
+  `get_singleton()`, no raising `__init__` — boot and access stay separate so plugins can
+  reach the UI without risking launching the loop.
+
