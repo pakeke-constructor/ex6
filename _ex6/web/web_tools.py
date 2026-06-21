@@ -1,20 +1,21 @@
 
-import os, json, urllib.request
+import os, json, base64, urllib.parse, urllib.request
 import ex6
 import time
 from _ex6.models import M
 
 
-_API = "https://api.firecrawl.dev/v2"
+_API = "https://api.zyte.com/v1/extract"
 
-def _firecrawl(endpoint: str, payload: dict) -> dict:
-    key = os.environ.get("FIRECRAWL_API_KEY", "")
+def _zyte(payload: dict) -> dict:
+    key = os.environ.get("ZYTE_API_KEY", "")
     if not key:
-        raise RuntimeError("FIRECRAWL_API_KEY not set")
+        raise RuntimeError("ZYTE_API_KEY not set")
+    auth = base64.b64encode(f"{key}:".encode()).decode()
     req = urllib.request.Request(
-        f"{_API}/{endpoint}",
+        _API,
         data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"},
     )
     with urllib.request.urlopen(req, timeout=120) as r:
         return json.loads(r.read().decode())
@@ -22,10 +23,11 @@ def _firecrawl(endpoint: str, payload: dict) -> dict:
 
 def web_search(ctx: ex6.Context, query: str) -> str:
     """Search the web. Returns top results as text."""
-    resp = _firecrawl("search", {"query": query, "limit": 8})
+    url = "https://www.google.com/search?" + urllib.parse.urlencode({"q": query})
+    resp = _zyte({"url": url, "serp": True})
     out = []
-    for r in resp.get("data", {}).get("web", []):
-        title = r.get("title", "").strip()
+    for r in resp.get("serp", {}).get("organicResults", [])[:8]:
+        title = r.get("name", "").strip()
         href = r.get("url", "").strip()
         snippet = r.get("description", "").strip()
         out.append(f"{title}\n  {href}\n  {snippet}")
@@ -44,10 +46,12 @@ def web_scrape(ctx: ex6.Context, url: str, max_chars: int = 50_000) -> str:
     - Will fail gracefully on paywalled, bot-protected, or JS-only pages
     - Avoid scraping the same URL repeatedly in one session
     """
-    resp = _firecrawl("scrape", {"url": url, "formats": ["markdown"], "onlyMainContent": True})
-    if not resp.get("success"):
-        raise RuntimeError(resp.get("error", "web_scrape failed"))
-    md = resp.get("data", {}).get("markdown", "")
+    resp = _zyte({"url": url, "pageContent": True, "pageContentOptions": {"extractFrom": "httpResponseBody"}})
+    md = resp.get("pageContent", {}).get("itemMain", "")
+    if isinstance(md, dict):
+        md = md.get("markdown") or md.get("text") or ""
+    if not md:
+        raise RuntimeError("web_scrape returned no content")
     if len(md) > max_chars:
         md = md[:max_chars] + "\n\n[...truncated]"
     return md
