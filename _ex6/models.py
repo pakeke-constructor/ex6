@@ -45,6 +45,7 @@ class M:
     DEEPSEEK_R1      = ModelInfo("deepseek/deepseek-r1",              64_000, 0.7,  2.5,   0)
     QWEN3_CODER      = ModelInfo("qwen/qwen3-coder",                 262_144, 0.22, 1,    0.022)
     KIMI_K25         = ModelInfo("moonshotai/kimi-k2.5",             262_144, 0.45, 2.2,  0.225)
+    GLM_52           = ModelInfo("z-ai/glm-5.2",                   1_048_576, 1.4,  4.4,  0.26)
     GEMMA_4          = ModelInfo("google/gemma-4-31b-it",            262_144, 0.13, 0.38, 0)
 
     OPUS_LATEST: ModelInfo
@@ -52,6 +53,7 @@ class M:
     CODEX_LATEST: ModelInfo
     GEMINI_LATEST: ModelInfo
     DEEPSEEK_LATEST: ModelInfo
+    GLM_LATEST: ModelInfo
 
     _index: Optional[dict[str, "ModelInfo"]] = None
 
@@ -66,4 +68,5 @@ M.GPT_LATEST = M.GPT55
 M.CODEX_LATEST = M.GPT53_CODEX
 M.GEMINI_LATEST = M.GEMINI35_FLASH
 M.DEEPSEEK_LATEST = M.DEEPSEEK_V4_PRO
+M.GLM_LATEST = M.GLM_52
 
