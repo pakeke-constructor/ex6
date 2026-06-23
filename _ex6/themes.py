@@ -80,7 +80,7 @@ def _load_saved_theme():
         data = json.loads((ex6.get_folder() / "theme.json").read_text())
         name = data.get("name", "")
         if name in THEMES:
-            ex6.state.theme = THEMES[name]
+            ex6.set_theme(THEMES[name])
     except: pass
 
 _load_saved_theme()
@@ -93,7 +93,7 @@ def theme(name: Optional[str]):
         scroll = [0]
         def draw(buf, inpt, r):
             x, y, w, h = r
-            th = ex6.state.theme
+            th = ex6.get_theme()
             buf.fill(r, ' ')
             buf.rect_line(r, txt_color=th.accent)
             if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
@@ -108,9 +108,10 @@ def theme(name: Optional[str]):
     if name not in THEMES:
         ex6.debug_print(f"Unknown theme: {name}")
         return
-    ex6.state.theme = THEMES[name]
+    ex6.set_theme(THEMES[name])
     path = ex6.get_folder() / "theme.json"
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"name": name}))
     os.replace(tmp, path)
+
 

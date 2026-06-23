@@ -357,26 +357,53 @@ class AppState:
     term: 'Terminal' = None  # set in main
     theme: Theme = field(default_factory=Theme)
 
+
+_tui = None
+_theme = Theme()
+
+
+def run_tui():
+    global _tui
+    assert _tui is None, "TUI already running"
+    _tui = TUI()
+    try:
+        _run_tui_loop(_tui)
+    finally:
+        _tui = None
+
+
+def get_tui():
+    return _tui
+
+
+def get_theme() -> Theme:
+    return _theme
+
+
+def set_theme(th):
+    global _theme
+    _theme = th
+
+
+
+
 state = AppState()
 
-_ui_panel_stack = []
-
 def push_ui_panel(draw_fn):
-    _ui_panel_stack.append(draw_fn)
+    tui = get_tui()
+    if tui is not None:
+        tui.ui_panel_stack.append(draw_fn)
 
 def pop_ui_panel():
-    if _ui_panel_stack:
-        return _ui_panel_stack.pop()
+    tui = get_tui()
+    if tui is not None and tui.ui_panel_stack:
+        return tui.ui_panel_stack.pop()
 
 def enter_scroll_mode():
     """Exit fullscreen for scroll mode. Caller prints, main loop handles re-entry."""
-    if state.mode == "scroll": return
-    state._prev_mode = state.mode
-    state.mode = "scroll"
-    sys.stdout, sys.stderr = _real_stdout, _real_stderr
-    _real_stdout.write(state.term.exit_fullscreen)
-    _real_stdout.flush()
-
+    tui = get_tui()
+    if tui is not None:
+        tui.enter_scroll_mode()
 
 
 @overridable
@@ -1323,8 +1350,8 @@ def make_input(on_submit):
 
 
 @overridable
-def render_selection_mode_context_name(buf, ctx, x, y):
-    th = state.theme
+def render_selection_mode_context_name(tui, buf, ctx, x, y):
+    th = get_theme()
     selected = ctx is state.current
     approx = "~" if ctx.is_token_count_estimate() else ""
     toks = f" ({approx}{ctx.token_count()//1000}k)"
@@ -1342,15 +1369,14 @@ def render_selection_mode_context_name(buf, ctx, x, y):
     buf.puts(x, y, suffix, txt_color=th.warning)
 
 @overridable
-def render_selection_left(buf, inpt, r, allow_nav=True):
+def render_selection_left(tui, buf, inpt, r, allow_nav=True):
     x, y, w, h = r
-    th = state.theme
+    th = get_theme()
     buf.rect_line(r, txt_color=th.accent)
 
     ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
     idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
 
-    # navigation
     if allow_nav:
         if inpt.consume('KEY_UP') and idx > 0:
             state.current = ctxs[idx - 1]
@@ -1361,18 +1387,17 @@ def render_selection_left(buf, inpt, r, allow_nav=True):
         if inpt.consume('j', 's') and idx < len(ctxs) - 1:
             state.current = ctxs[idx + 1]
 
-    # draw list
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
         selected = (ctx is state.current)
         prefix = ">> " if selected else "   "
         row = y + 1 + i
         buf.puts(x + 1, row, prefix, txt_color=th.selection if selected else None)
-        render_selection_mode_context_name(buf, ctx, x + 1 + len(prefix), row)
+        render_selection_mode_context_name(tui, buf, ctx, x + 1 + len(prefix), row)
 
 @overridable
-def render_context_window_bar(buf, ctx, x, y, bar_w):
-    th = state.theme
+def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
+    th = get_theme()
     ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
     filled = int(ratio * (bar_w - 2))
     empty = (bar_w - 2) - filled
@@ -1385,13 +1410,12 @@ def render_context_window_bar(buf, ctx, x, y, bar_w):
     buf.puts(x + bar_w + 1, y, tok_str, txt_color=th.accent_alt)
 
 @overridable
-def render_selection_right(buf, r):
+def render_selection_right(tui, buf, r):
     x, y, w, h = r
-    th = state.theme
+    th = get_theme()
     buf.rect_line(r, txt_color=th.accent)
 
     ctx = state.current
-    # header
     buf.puts(x + 2, y + 1, ctx.name, style='bold')
     model_x = x + 2 + len(ctx.name) + 2
     buf.puts(model_x, y + 1, ctx.model, style='dim')
@@ -1399,12 +1423,9 @@ def render_selection_right(buf, r):
     budget_color = th.error if is_over_budget() else th.success
     buf.puts(x + w - len(budget_str) - 2, y + 1, budget_str, txt_color=budget_color)
 
-    # token bar
     bar_w = min(w - 4, 20)
-    render_context_window_bar(buf, ctx, x + 2, y + 2, bar_w)
+    render_context_window_bar(tui, buf, ctx, x + 2, y + 2, bar_w)
 
-
-    # messages
     buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
     row = y + 4
     msgs = ctx.messages or []
@@ -1436,12 +1457,11 @@ def _render_chunks(chunks):
 
 
 @overridable
-def render_work_mode(buf, inpt, r):
+def render_work_mode(tui, buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
-    th = state.theme
+    th = get_theme()
 
-    # Build per-message output: list of (role, lines, has_tool_calls)
     message_outputs = []
     for msg in ctx.messages:
         if msg.role == "tool":
@@ -1460,10 +1480,8 @@ def render_work_mode(buf, inpt, r):
         for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
         message_outputs.append(('assistant', lines, False))
 
-    # Draw (start 1 row below token bar)
     available = h - 1
 
-    # Scroll input
     if inpt.consume('KEY_PGUP'): ctx._scroll_up += available // 2
     if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - available // 2)
     if ctx.is_running(): ctx._scroll_up = 0
@@ -1475,7 +1493,7 @@ def render_work_mode(buf, inpt, r):
         prev_role = role
         bg = th.user_background if role == 'user' else None
         for line in lines:
-            if line == '' and has_tool_calls: continue  # skip empty content in tool-call msgs
+            if line == '' and has_tool_calls: continue
             if callable(line):
                 drawn = line(buf, x, row, w)
             else:
@@ -1490,7 +1508,6 @@ def render_work_mode(buf, inpt, r):
             row += drawn
     ctx._prev_height = row - (y - scroll_offset)
 
-    # Scrollbar on right edge when scrolled up
     if ctx._scroll_up > 0 and ctx._prev_height > available:
         total = ctx._prev_height
         bar_h = max(1, available * available // total)
@@ -1498,18 +1515,17 @@ def render_work_mode(buf, inpt, r):
         for sy in range(bar_top, bar_top + bar_h):
             buf.put(x + w - 1, sy, '█', txt_color=th.muted)
 
-    # Token bar at top, with ctx name + model on the left
     label = f"{ctx.name}  {ctx.model or ''}"
     label_w = len(label) + 2
     bar_w = min(w - label_w - 20, 30)
     buf.puts(x, y, label, txt_color=th.text)
-    render_context_window_bar(buf, ctx, x + label_w, y, bar_w)
+    render_context_window_bar(tui, buf, ctx, x + label_w, y, bar_w)
 
 
 @overridable
-def render_work_mode_input(buf, inpt, input_r, input_box):
+def render_work_mode_input(tui, buf, inpt, input_r, input_box):
     ctx = state.current
-    th = state.theme
+    th = get_theme()
     if ctx.is_running():
         input_box(buf, inpt, input_r, txt_color=th.accent)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
@@ -1534,9 +1550,9 @@ def render_work_mode_input(buf, inpt, input_r, input_box):
 
 
 @overridable
-def render_work_mode_footer(buf, r, ctx):
+def render_work_mode_footer(tui, buf, r, ctx):
     """Draw into the 3 padding rows below the input divider."""
-    th = state.theme
+    th = get_theme()
     x, y, w, h = r
     text = ctx._input_box.get_text()
     """
@@ -1572,7 +1588,6 @@ def render_work_mode_footer(buf, r, ctx):
                        (" " + args if args else "", th.warning),
                        ("  " + doc if doc else "", th.muted)):
             buf.puts(cx, y + i, s, txt_color=col); cx += len(s)
-
 
 _ex6_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -1623,146 +1638,165 @@ def _load_plugins():
 
 
 
-if __name__ == "__main__":
-    _load_plugins()
+@dataclass
+class TUI:
+    mode: Literal["selection", "work", "help", "scroll"] = "selection"
+    prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"
+    term: Any = field(default_factory=Terminal)
+    ui_panel_stack: list = field(default_factory=list)
+    sel_input_open: bool = False
+    sel_input_box: Any = None
+    buf: Any = None
+    keyls: list = field(default_factory=list)
+    input_box: Any = None  # per-context; resolved each frame
+    stdout_sink: Any = None
 
-    state.term = Terminal()
-    term = state.term
-    buf = ScreenBuffer(term.width, term.height)
-    keyls = []
+    def __post_init__(self):
+        self.sel_input_box = make_input(self.sel_on_submit)
+        self.buf = ScreenBuffer(self.term.width, self.term.height)
+        self.stdout_sink = _StdoutSink()
 
-    input_box = None  # per-context; resolved each frame
-
-    _sel_input_open = False
-    def sel_on_submit(text):
-        global _sel_input_open
-        _sel_input_open = False
+    def sel_on_submit(self, text):
+        self.sel_input_open = False
         if text.startswith("/"):
             dispatch_command(text)
-    sel_input_box = make_input(sel_on_submit)
 
-    _sink = _StdoutSink()
+    def enter_scroll_mode(self):
+        if self.mode == "scroll":
+            return
+        self.prev_mode = self.mode
+        self.mode = "scroll"
+        sys.stdout, sys.stderr = _real_stdout, _real_stderr
+        _real_stdout.write(self.term.exit_fullscreen)
+        _real_stdout.flush()
+
+
+def _tui_loop(tui: TUI):
+    buf = tui.buf
+    _sink = tui.stdout_sink
+    term = tui.term
+
+    if tui.mode != "scroll":
+        sys.stdout, sys.stderr = _sink, _sink
+    if _fatal_error:
+        raise RuntimeError(f"FATAL: {_fatal_error}")
+    for _ in range(4):
+        try:
+            key = term.inkey(timeout=0.001, esc_delay=ESC_DELAY)
+        except UnicodeDecodeError:
+            key = None
+        while key:
+            if _log_keys:
+                debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
+            tui.keyls.append(key)
+            try:
+                key = term.inkey(timeout=0, esc_delay=ESC_DELAY)
+            except UnicodeDecodeError:
+                key = None
+        if tui.keyls:
+            break
+
+    if buf.w != term.width or buf.h != term.height:
+        buf = tui.buf = ScreenBuffer(term.width, term.height)
+
+    inpt = InputPass(tui.keyls)
+    tui.keyls = []
+
+    buf.clear()
+
+    if not state.contexts:
+        th = get_theme()
+        msg = "You must create a plugin with Contexts for ex6 to work."
+        mx = (term.width - len(msg)) // 2
+        my = term.height // 2
+        buf.puts(mx, my, msg, txt_color=th.error)
+        buf.flush(term)
+        return
+
+    if state.current not in state.contexts.values():
+        state.current = next(iter(state.contexts.values()))
+    input_box = tui.input_box = state.current._input_box
+
+    prev_mode = tui.mode
+
+    if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
+        tui.ui_panel_stack.pop()
+
+    if tui.mode == "work":
+        input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
+        divider_y = term.height - 4 - input_h - 1
+        input_r = Region(0, divider_y + 1, term.width, input_h)
+        main_r = Region(0, 0, term.width, divider_y)
+    else:
+        input_h = 3
+        input_r = Region(0, term.height - input_h, term.width, input_h)
+        main_r = Region(0, 0, term.width, term.height - input_h)
+
+    if tui.mode == "scroll":
+        if inpt._keys:
+            tui.mode = tui.prev_mode
+            _real_stdout.write(term.enter_fullscreen)
+            _real_stdout.flush()
+            sys.stdout, sys.stderr = _sink, _sink
+            buf.invalidate()
+    elif tui.mode == "work":
+        th = get_theme()
+        render_work_mode(tui, buf, inpt, main_r)
+        div_color = th.invoking if state.current.is_running() else th.muted
+        buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
+        if not state.current.ui_stack:
+            render_work_mode_input(tui, buf, inpt, input_r, input_box)
+        buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
+        footer_r = Region(0, divider_y + 2 + input_h, term.width, 3)
+        render_work_mode_footer(tui, buf, footer_r, state.current)
+        if inpt.consume('KEY_ESCAPE'):
+            tui.mode = "selection"
+        if inpt.consume('KEY_CTRL_X') and state.current.is_running():
+            state.current.stop_early = True
+    elif tui.mode == "selection":
+        th = get_theme()
+        if not tui.sel_input_open and inpt.consume("KEY_ENTER"):
+            tui.mode = "work"
+        if not tui.sel_input_open and inpt.consume("/"):
+            tui.sel_input_open = True
+            tui.sel_input_box.set_text("/")
+        if tui.sel_input_open and inpt.consume("KEY_ESCAPE"):
+            tui.sel_input_open = False
+            tui.sel_input_box.set_text("")
+        if tui.sel_input_open:
+            left, right = main_r.split_horizontal(1, 3)
+            render_selection_left(tui, buf, inpt, left, allow_nav=False)
+            render_selection_right(tui, buf, right)
+            buf.rect_line(input_r, txt_color=th.error)
+            tui.sel_input_box(buf, inpt, input_r.shrink(1))
+        else:
+            full_r = Region(0, 0, term.width, term.height)
+            left, right = full_r.split_horizontal(1, 3)
+            render_selection_left(tui, buf, inpt, left)
+            render_selection_right(tui, buf, right)
+    else:
+        assert tui.mode == "help"
+
+    if tui.mode != "scroll":
+        if tui.ui_panel_stack:
+            r = Region(3, 2, buf.w - 6, buf.h - 4)
+            tui.ui_panel_stack[-1](buf, inpt, r)
+        elif tui.mode == "work" and state.current and state.current.ui_stack:
+            r = Region(3, 2, buf.w - 6, buf.h - 4)
+            state.current.ui_stack[-1](buf, inpt, r)
+        if tui.mode != prev_mode:
+            buf.invalidate()
+        buf.flush(term)
+
+
+
+def _run_tui_loop(tui: TUI):
+    term = tui.term
+
     try:
         with term.cbreak(), term.hidden_cursor(), term.fullscreen():
             while True:
-                if state.mode != "scroll":
-                    sys.stdout, sys.stderr = _sink, _sink
-                if _fatal_error:
-                    raise RuntimeError(f"FATAL: {_fatal_error}")
-                for _ in range(4):
-                    try:
-                        key = term.inkey(timeout=0.001, esc_delay=ESC_DELAY)
-                    except UnicodeDecodeError:
-                        key = None
-                    while key:
-                        if _log_keys:
-                            debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
-                        keyls.append(key)
-                        try:
-                            key = term.inkey(timeout=0, esc_delay=ESC_DELAY)
-                        except UnicodeDecodeError:
-                            key = None
-                    if keyls:
-                        break
-
-                if buf.w != term.width or buf.h != term.height:
-                    buf = ScreenBuffer(term.width, term.height)
-
-                inpt = InputPass(keyls)
-                keyls = []
-
-                buf.clear()
-
-                # No contexts = show message and block everything
-                if not state.contexts:
-                    th = state.theme
-                    msg = "You must create a plugin with Contexts for ex6 to work."
-                    mx = (term.width - len(msg)) // 2
-                    my = term.height // 2
-                    buf.puts(mx, my, msg, txt_color=th.error)
-                    buf.flush(term)
-                    continue
-
-                # Ensure state.current always points to a valid context
-                if state.current not in state.contexts.values():
-                    state.current = next(iter(state.contexts.values()))
-                input_box = state.current._input_box
-
-                term_r = Region(0,0, term.width, term.height)
-                prev_mode = state.mode
-
-                if _ui_panel_stack and inpt.consume('KEY_ESCAPE'):
-                    pop_ui_panel()
-
-                if state.mode == "work":
-                    # work mode: no boxes, divider, 2 lines bottom padding
-                    input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
-                    divider_y = term.height - 4 - input_h - 1
-                    input_r = Region(0, divider_y + 1, term.width, input_h)
-                    main_r = Region(0, 0, term.width, divider_y)
-                else:
-                    input_h = 3
-                    input_r = Region(0, term.height - input_h, term.width, input_h)
-                    main_r = Region(0, 0, term.width, term.height - input_h)
-
-                if state.mode == "scroll":
-                    if inpt._keys:  # any key exits scroll mode
-                        state.mode = state._prev_mode
-                        _real_stdout.write(term.enter_fullscreen)
-                        _real_stdout.flush()
-                        sys.stdout, sys.stderr = _sink, _sink
-                        buf.invalidate()
-                elif state.mode == "work":
-                    th = state.theme
-                    render_work_mode(buf, inpt, main_r)
-                    div_color = th.invoking if state.current.is_running() else th.muted
-                    buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
-                    if not state.current.ui_stack:
-                        # only render work-mode input when we dont have blocking panels
-                        render_work_mode_input(buf, inpt, input_r, input_box)
-                    buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
-                    footer_r = Region(0, divider_y + 2 + input_h, term.width, 3)
-                    render_work_mode_footer(buf, footer_r, state.current)
-                    if inpt.consume('KEY_ESCAPE'):
-                        state.mode = "selection"
-                    if inpt.consume('KEY_CTRL_X') and state.current.is_running():
-                        state.current.stop_early = True
-                elif state.mode == "selection":
-                    th = state.theme
-                    if not _sel_input_open and inpt.consume("KEY_ENTER"):
-                        state.mode = "work"
-                    if not _sel_input_open and inpt.consume("/"):
-                        _sel_input_open = True
-                        sel_input_box.set_text("/")
-                    if _sel_input_open and inpt.consume("KEY_ESCAPE"):
-                        _sel_input_open = False
-                        sel_input_box.set_text("")
-                    if _sel_input_open:
-                        left, right = main_r.split_horizontal(1, 3)
-                        render_selection_left(buf, inpt, left, allow_nav=False)
-                        render_selection_right(buf, right)
-                        buf.rect_line(input_r, txt_color=th.error)
-                        sel_input_box(buf, inpt, input_r.shrink(1))
-                    else:
-                        full_r = Region(0, 0, term.width, term.height)
-                        left, right = full_r.split_horizontal(1, 3)
-                        render_selection_left(buf, inpt, left)
-                        render_selection_right(buf, right)
-                else:
-                    assert state.mode == "help"
-                    # press h to toggle help.
-                    # displays all keybinds for selection-mode
-                
-                if state.mode != "scroll":
-                    if _ui_panel_stack:
-                        r = Region(3, 2, buf.w - 6, buf.h - 4)
-                        _ui_panel_stack[-1](buf, inpt, r)
-                    elif state.mode == "work" and state.current and state.current.ui_stack:
-                        r = Region(3, 2, buf.w - 6, buf.h - 4)
-                        state.current.ui_stack[-1](buf, inpt, r)
-                    if state.mode != prev_mode:
-                        buf.invalidate()
-                    buf.flush(term)
+                _tui_loop(tui)
     except Exception:
         import traceback
         sys.stdout, sys.stderr = _real_stdout, _real_stderr
@@ -1776,3 +1810,7 @@ if __name__ == "__main__":
         print(tb)
         sys.exit(1)
 
+
+if __name__ == "__main__":
+    _load_plugins()
+    run_tui()

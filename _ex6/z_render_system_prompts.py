@@ -22,7 +22,7 @@ def compress_system_prompt(lines: list, msg: ex6.Message, ctx: ex6.Context) -> N
     expanded = [False]
 
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-        th = ex6.state.theme
+        th = ex6.get_theme()
         if expanded[0]:
             row = 0
             for line in full_text.split("\n"):
@@ -49,3 +49,4 @@ def compress_system_prompt(lines: list, msg: ex6.Message, ctx: ex6.Context) -> N
             return wr.lines
 
     lines[:] = [render]
+

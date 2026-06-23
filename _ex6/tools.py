@@ -614,7 +614,7 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.state.theme
+        th = ex6.get_theme()
         buf.puts(x, y, f"? {question}", txt_color=th.warning)
         input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
 
@@ -653,7 +653,7 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.state.theme
+        th = ex6.get_theme()
         buf.fill(r, char=' ', bg_color=None)
         buf.rect(r, txt_color=th.muted)
         cx = x + 3
@@ -703,20 +703,21 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     except:
         lexer = False
 
+    th = ex6.get_theme()
     max_lines = h
     truncated = len(diff_lines) > max_lines
     visible = diff_lines[:max_lines - 1] if truncated else diff_lines
     for i, line in enumerate(visible):
         if line.startswith('@@'):
-            buf.puts(x, y + i, line[:w], txt_color=ex6.state.theme.accent_alt); continue
-        bg = ex6.state.theme.diff_add_bg if line.startswith('+') else ex6.state.theme.diff_del_bg if line.startswith('-') else None
+            buf.puts(x, y + i, line[:w], txt_color=th.accent_alt); continue
+        bg = th.diff_add_bg if line.startswith('+') else th.diff_del_bg if line.startswith('-') else None
         if lexer:
             render_highlighted_line(buf, x, y + i, w, line, lexer, bg_color=bg)
         else:
-            buf.puts(x, y + i, line[:w], txt_color=ex6.state.theme.text, bg_color=bg); continue
+            buf.puts(x, y + i, line[:w], txt_color=th.text, bg_color=bg); continue
     if truncated:
         remainder = len(diff_lines) - len(visible)
-        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color=ex6.state.theme.muted)
+        buf.puts(x, y + len(visible), f"... {remainder} more lines", txt_color=th.muted)
     return len(visible) + (1 if truncated else 0)
 
 
@@ -736,7 +737,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.state.theme
+        th = ex6.get_theme()
         buf.fill(r, char=' ', bg_color=None)
         buf.rect(r, txt_color=th.muted)
         cx = x + 3

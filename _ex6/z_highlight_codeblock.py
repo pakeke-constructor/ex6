@@ -5,25 +5,27 @@ from pygments.token import Token
 # Map token types to blessed colors
 def get_token_colors():
     # must reconstruct every time, since theme may have changed
+    th = ex6.get_theme()
     return {
-        Token.Keyword: ex6.state.theme.md_italic,
-        Token.Keyword.Constant: ex6.state.theme.md_italic,
-        Token.Name.Function: ex6.state.theme.accent_alt,
-        Token.Name.Class: ex6.state.theme.accent_alt,
-        Token.Name.Builtin: ex6.state.theme.accent_alt,
-        Token.String: ex6.state.theme.md_code,
-        Token.Literal.String: ex6.state.theme.md_code,
-        Token.Number: ex6.state.theme.warning,
-        Token.Comment: ex6.state.theme.muted,
-        Token.Operator: ex6.state.theme.error,
-        Token.Punctuation: ex6.state.theme.text,
+        Token.Keyword: th.md_italic,
+        Token.Keyword.Constant: th.md_italic,
+        Token.Name.Function: th.accent_alt,
+        Token.Name.Class: th.accent_alt,
+        Token.Name.Builtin: th.accent_alt,
+        Token.String: th.md_code,
+        Token.Literal.String: th.md_code,
+        Token.Number: th.warning,
+        Token.Comment: th.muted,
+        Token.Operator: th.error,
+        Token.Punctuation: th.text,
     }
 
 def get_color(ttype, tokencols) -> str:
+    th = ex6.get_theme()
     while ttype:
         if ttype in tokencols: return tokencols[ttype]
         ttype = ttype.parent
-    return ex6.state.theme.text
+    return th.text
 
 
 def render_highlighted_line(buf, x, y, w, text, lexer, bg_color=None):
@@ -72,3 +74,4 @@ def syntax_highlight(output: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.Co
             if code_lines:
                 output.insert(i, make_code_renderer('\n'.join(code_lines), lang))
         i += 1
+

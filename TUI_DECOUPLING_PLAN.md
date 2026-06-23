@@ -184,15 +184,25 @@ Plugin-facing forwarders kept at `ex6.` namespace so plugins don't change:
 
 ## 6. Severing the tool-renderer seam (#4)
 
-Make the runtime stop building the draw closure; the TUI owns rendering.
-`render_tool_line` / `_default_tool_render` move to the TUI section.
-`Context.set_tool_renderer` / `_tool_renderers` stay on Context, unchanged.
+Decision: keep runtime/tool state minimal, no new renderer model.
 
-NOTE/TODO: the exact mechanism for attaching the tool renderer is UNDECIDED. The
-`on_tool_started` listener-hook approach was rejected as ugly. Figure out a cleaner way —
-options to consider: runtime stores a plain-data record (`{thread, result, name, args}`)
-in `_tool_renderers` and the TUI builds the draw fn at render time; or some other seam.
-Leave this open and pick the simplest thing during implementation.
+- `Context._tool_renderers` remains plugin override map (`tool_call_id -> callable`).
+  Runtime does not write default draw closures into it.
+- Add `Context._active_tools: dict[str, threading.Thread]` as in-flight tool tracker.
+- `call_tools` updates only runtime state:
+  - before `t.start()`: register `ctx._active_tools[tc_id] = t`
+  - always cleanup in `finally`: `pop` every started id
+  - still append normal `Message(role="tool", tool_call_id=...)` outputs as today
+- TUI computes default tool line on render, per assistant `msg.tool_calls`:
+  - if custom renderer exists in `_tool_renderers`, use it
+  - else if `tool_call_id` in `_active_tools` and thread alive -> `running`
+  - else inspect corresponding tool message:
+    - content starts `ERROR:` -> `error`
+    - otherwise -> `ok`
+  - draw via `render_tool_line(...)`
+
+This keeps one tiny in-flight source (`_active_tools`) and completed truth in messages.
+No hook system, no extra view-model dicts, no runtime->TUI closure dependency.
 
 
 ---
@@ -208,9 +218,10 @@ Small increments; app must still launch after each.
    above it. Move `Theme` below the divider. Add `get_theme()`/`set_theme()` (theme always
    active). Verify launch.
 
-3. **Sever tool-renderer seam (§6)**: move `_default_tool_render`/`render_tool_line` below
-   the divider. Pick a clean attach mechanism (see §6 NOTE/TODO). Verify tool lines render
-   (running/ok/error).
+3. **Sever tool-renderer seam (§6)**: remove `_default_tool_render` from runtime; keep
+   `render_tool_line` in TUI section. Add `Context._active_tools`, wire registration/cleanup
+   in `call_tools`, and make work-mode render derive default tool rows from
+   `_active_tools` + tool result messages. Verify running/ok/error rows.
 
 4. **Introduce `TUI` + `run_tui()`/`get_tui()`**: move the `__main__` while-loop into
    `TUI.run()`, move `push_ui_panel`/`pop`/`_ui_panel_stack`/`enter_scroll_mode`, the
@@ -258,7 +269,9 @@ Small increments; app must still launch after each.
   exists pre-TUI) so these resolve regardless of TUI construction order.
 - **`Context.fork`** already sets `_input_box=None` — keep lazy `get_input_box()` consistent.
 - **LLM/tool threads**: invoke loop uses `self` only; `call_tools` uses `ctx` only — no
-  `state`/render access on worker threads. Keep this true through the renderer-seam rework.
+  `state`/render access on worker threads. Keep this true through renderer-seam rework.
+- **`_active_tools` cleanup correctness**: must clear on all exits (`stop_early`, exception,
+  normal completion). Use `try/finally` around tool execution/join phase.
 - **stdout swap**: `_real_stdout`/`_real_stderr` captured at import stay in the runtime
   section as plain captured handles; the swap *logic* moves onto `TUI`.
 - **`_fatal_error` / `_thread_excepthook`**: loop moves to `TUI.run()`; the excepthook +
@@ -271,9 +284,11 @@ Small increments; app must still launch after each.
 These reflect a deliberate rethink. Earlier sections were edited to match; this list is the
 canonical summary of WHAT changed and WHY.
 
-- **No `on_tool_started` hook.** The listener-hook for attaching tool renderers was ugly.
-  Find a cleaner seam during implementation (see §6 NOTE/TODO) — e.g. runtime stores a
-  plain-data record and the TUI builds the draw fn at render time. Undecided; keep simple.
+- **No `on_tool_started` hook.** Rejected.
+
+- **Tool rendering seam finalized:** runtime tracks only in-flight tools via
+  `Context._active_tools`; completed status comes from existing tool messages.
+  `_tool_renderers` is plugin-custom callable override map only.
 
 - **Input box via `Context.get_input_box()`.** No static helper on `TUI`. The Context lazily
   builds and owns its input box through a plain method.
@@ -281,8 +296,8 @@ canonical summary of WHAT changed and WHY.
 - **`blessed` imports only in TUI mode.** Move the `from blessed import Terminal` into the
   TUI section / `TUI.__init__` so a headless `import ex6` never pulls in blessed.
 
-- **`set_tool_renderer` may get refactored** — NOTE/TODO, not committed. Leave as-is unless
-  a clearly simpler shape emerges.
+- **`set_tool_renderer` stays** as plugin override path. Runtime default tool rows do not
+  use it.
 
 - **NO `@property` magic. `Runtime` stays dumb.** Drop all the property delegators and the
   `_active_tui` bridge. `Runtime` holds only `contexts` + `current`. Breaking backwards

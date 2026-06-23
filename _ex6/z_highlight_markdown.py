@@ -16,18 +16,20 @@ import re
 
 def get_patterns():
     # must reconstruct every time, since theme may have changed
+    th = ex6.get_theme()
     return [
-        (r'^(#{1,6}\s.*)$', ex6.state.theme.warning, 'bold'),
-        (r'(\*\*[^*]+\*\*)', ex6.state.theme.md_bold, 'bold'),
-        (r'(\*[^*]+\*)', ex6.state.theme.md_italic, None),
-        (r'(`[^`]+`)', ex6.state.theme.md_code, None),
-        (r'^(\s*[-*]\s)', ex6.state.theme.md_bullet, None),
-        (r'^(\s*\d+\.\s)', ex6.state.theme.md_bullet, None),
-        (r'(\[[^\]]+\]\([^)]+\))', ex6.state.theme.md_link, None),
+        (r'^(#{1,6}\s.*)$', th.warning, 'bold'),
+        (r'(\*\*[^*]+\*\*)', th.md_bold, 'bold'),
+        (r'(\*[^*]+\*)', th.md_italic, None),
+        (r'(`[^`]+`)', th.md_code, None),
+        (r'^(\s*[-*]\s)', th.md_bullet, None),
+        (r'^(\s*\d+\.\s)', th.md_bullet, None),
+        (r'(\[[^\]]+\]\([^)]+\))', th.md_link, None),
     ]
 
 
 def make_md_renderer(line: str) -> ex6.RenderFn:
+    th = ex6.get_theme()
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         spans = []
         for pattern, color, style in get_patterns():
@@ -36,7 +38,7 @@ def make_md_renderer(line: str) -> ex6.RenderFn:
 
         wr = buf.writer(x, y, w)
         for i, ch in enumerate(line):
-            color, style = ex6.state.theme.text, None
+            color, style = th.text, None
             for start, end, c, s in spans:
                 if start <= i < end:
                     color, style = c, s
@@ -56,3 +58,4 @@ def markdown_highlight(output: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.
             if re.search(pattern, line):
                 output[i] = make_md_renderer(line)
                 break
+

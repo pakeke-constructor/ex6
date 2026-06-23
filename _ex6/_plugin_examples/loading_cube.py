@@ -61,8 +61,8 @@ def draw_cube(buf, cx, cy, size, t, bg='black'):
         draw_line(buf, pts[i][0], pts[i][1], pts[j][0], pts[j][1], char='#', color='cyan', bg=bg)
 
 @ex6.override
-def render_work_mode(buf, inpt, r):
-    _orig_render_work_mode(buf, inpt, r)
+def render_work_mode(tui, buf, inpt, r):
+    _orig_render_work_mode(tui, buf, inpt, r)
 
     ctx = ex6.state.current
     if not ctx.is_running():

@@ -111,7 +111,7 @@ def _text_panel(lines):
     scroll = [0]
     def draw(buf, inpt, r):
         x, y, w, h = r
-        th = ex6.state.theme
+        th = ex6.get_theme()
         buf.fill(r, ' ')
         buf.rect_line(r, txt_color=th.accent)
         if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
@@ -170,7 +170,7 @@ def cm(msg: Optional[str]):
 
     def draw(buf, inpt, r):
         x, y, w, h = r
-        th = ex6.state.theme
+        th = ex6.get_theme()
         buf.fill(r, ' ')
         buf.rect_line(r, txt_color=th.accent)
         visible = h - 2
@@ -226,4 +226,5 @@ def help():
         line = f"  /{name} {args}".rstrip()
         lines.append(f"{line}  {doc}" if doc else line)
     _text_panel(lines)
+
 

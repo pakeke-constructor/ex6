@@ -93,7 +93,7 @@ def _confirm_condense(ctx: ex6.Context, name: str, findings: str, next_steps: st
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.state.theme
+        th = ex6.get_theme()
         buf.fill(r, char=' ', bg_color=None)
         buf.rect(r, txt_color=th.muted)
 
@@ -273,3 +273,4 @@ def condense(ctx: ex6.Context, name: str, findings: str, next_steps: str, keep: 
     ctx._line_snapshots = {}
     ctx.messages.append(ex6.Message(role="assistant", content=summary, overview="condensed checkpoint"))
     return "Context condensed."
+
