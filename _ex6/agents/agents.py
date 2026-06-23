@@ -1,6 +1,5 @@
 
 from _ex6.models import M
-from _ex6.code_mode import make_code_mode_system_prompt
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.skills import load_skill
@@ -86,7 +85,6 @@ MAIN_TOOLS = [
     load_skill,
 ]
 
-CODE_MODE_SYS_PROMPT = make_code_mode_system_prompt(MAIN_TOOLS)
 
 
 def auto_setup():
@@ -111,7 +109,7 @@ def auto_setup():
 
     # coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
     #     MAIN_SYSTEM_PROMPT,
-    #     make_code_mode_system_prompt([
+    #     MAIN_SYSTEM_PROMPT.with_tools([
     #         read_file, glob, search, read_headers, read_body,
     #         write_file, edit_file, edit_file_lines,
     #         explore_agent, web_search, websearch_agent

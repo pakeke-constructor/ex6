@@ -334,22 +334,6 @@ def invoke_llm(ctx: ex6.Context):
     yield result
 
 
-@ex6.output_renderer
-def _cc_strip_tool_blocks(output: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.Context) -> None:
-    """Strip <run_tools>...</run_tools> blocks from CC output — code_mode already renders tools."""
-    i = 0
-    while i < len(output):
-        oi = output[i]
-        if not isinstance(oi, str) or '<run_tools>' not in oi:
-            i += 1
-            continue
-        j = i + 1
-        while j < len(output):
-            oj = output[j]
-            if isinstance(oj, str) and '</run_tools>' in oj: break
-            j += 1
-        del output[i:j+1]
-
 
 @ex6.command
 def usage():
