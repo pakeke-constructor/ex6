@@ -591,7 +591,7 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 SPIN = "/-\\|"
 
 def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwargs=None):
-    th = state.theme
+    th = get_theme()
     icon, color = {'running': (SPIN[int(time.time()*8)%4], th.warning), 'error': ('x', th.error)}.get(status, ('v', th.success))
     buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
     col = x + 4
@@ -621,18 +621,7 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
         buf.print_contained(str(detail), (col, y, x + w - col, 1), txt_color=th.muted, wrap=False, newlines=False)
 
 
-def _default_tool_render(name, args, t, result):
-    def render(buf, x, y, w):
-        if t.is_alive():
-            status = 'running'
-        elif result.get("error"):
-            status = 'error'
-        else:
-            status = 'ok'
-        detail = result.get("error") or result.get("value")
-        render_tool_line(buf, x, y, w, name, args, status, detail)
-        return 1
-    return render
+
 
 @overridable
 def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
@@ -644,32 +633,37 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
         return False
 
     tools = ctx.get_tools()
-    threads, results = [], []
-    for tc in llm_result.tool_calls:
-        fn = tools.get(tc["name"])
-        if not fn: continue
-        result = {"id": tc["id"], "value": None, "error": None}
-        results.append(result)
-        def run_tool(fn=fn, tc=tc, result=result):
-            try:
-                args = tc["args"]
-                # if a tool declares tool_call_id in its signature, pass it
-                if 'tool_call_id' in inspect.signature(fn).parameters:
-                    args = {**args, 'tool_call_id': tc["id"]}
-                result["value"] = fn(ctx, **_check_tool_args(fn, args))
-            except Exception as e:
-                debug_print(f"tool {tc['name']} failed: {e}")
-                result["value"] = f"ERROR: {e}"
-                result["error"] = str(e)
-        t = threading.Thread(target=run_tool)
-        ctx.set_tool_renderer(tc["id"], _default_tool_render(tc["name"], list(tc["args"].values()), t, result))
-        t.start()
-        threads.append(t)
+    threads, results, started_ids = [], [], []
+    try:
+        for tc in llm_result.tool_calls:
+            fn = tools.get(tc["name"])
+            if not fn: continue
+            result = {"id": tc["id"], "value": None, "error": None}
+            results.append(result)
+            def run_tool(fn=fn, tc=tc, result=result):
+                try:
+                    args = tc["args"]
+                    # if a tool declares tool_call_id in its signature, pass it
+                    if 'tool_call_id' in inspect.signature(fn).parameters:
+                        args = {**args, 'tool_call_id': tc["id"]}
+                    result["value"] = fn(ctx, **_check_tool_args(fn, args))
+                except Exception as e:
+                    debug_print(f"tool {tc['name']} failed: {e}")
+                    result["value"] = f"ERROR: {e}"
+                    result["error"] = str(e)
+            t = threading.Thread(target=run_tool)
+            ctx._active_tools[tc["id"]] = t
+            started_ids.append(tc["id"])
+            t.start()
+            threads.append(t)
 
-    for t in threads:
-        while t.is_alive():
-            if ctx.stop_early: return False
-            t.join(timeout=0.1)
+        for t in threads:
+            while t.is_alive():
+                if ctx.stop_early: return False
+                t.join(timeout=0.1)
+    finally:
+        for tc_id in started_ids:
+            ctx._active_tools.pop(tc_id, None)
     if ctx._tools_invalidated:
         ctx._tools_invalidated = False
         return True
@@ -680,6 +674,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             r["error"] = val
         ctx.messages.append(Message(role="tool", content=val, tool_call_id=r["id"]))
     return True
+
 
 
 SIMPLE_DATA_TYPES = (str, int, float, bool, type(None))
@@ -707,7 +702,7 @@ class StrictDataDict(dict):
 class Context:
     name: str
     model: str
-    reasoning: Literal["low","medium","high","none"]  # "low", "medium", "high", or "none"
+    reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     llm_is_running: bool = False
@@ -732,7 +727,8 @@ class Context:
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
-    _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn
+    _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn (plugin override)
+    _active_tools: dict = field(default_factory=dict)  # tool_call_id -> Thread (in-flight)
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _tools_invalidated: bool = False
@@ -879,6 +875,7 @@ class Context:
         cpy.data = StrictDataDict(self.data)
         cpy.data_volatile = {}
         cpy._tool_renderers = {}
+        cpy._active_tools = {}
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
@@ -1456,11 +1453,34 @@ def _render_chunks(chunks):
     return "".join(parts)
 
 
+def _default_tool_row(ctx, tc, tool_msg):
+    """Build a default tool-line renderer from in-flight state + tool result message."""
+    name = tc["name"]
+    args = list(tc["args"].values())
+    def render(buf, x, y, w):
+        t = ctx._active_tools.get(tc["id"])
+        if t is not None and t.is_alive():
+            status, detail = 'running', None
+        elif tool_msg is None:
+            status, detail = 'running', None
+        else:
+            content = tool_msg.content or ""
+            if content.startswith("ERROR:"):
+                status, detail = 'error', content
+            else:
+                status, detail = 'ok', content
+        render_tool_line(buf, x, y, w, name, args, status, detail)
+        return 1
+    return render
+
+
 @overridable
 def render_work_mode(tui, buf, inpt, r):
     x, y, w, h = r
     ctx = state.current
     th = get_theme()
+
+    tool_msgs = {m.tool_call_id: m for m in ctx.messages if m.role == "tool"}
 
     message_outputs = []
     for msg in ctx.messages:
@@ -1472,7 +1492,9 @@ def render_work_mode(tui, buf, inpt, r):
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 rfn = ctx._tool_renderers.get(tc["id"])
-                if rfn: lines.append(rfn)
+                if not rfn:
+                    rfn = _default_tool_row(ctx, tc, tool_msgs.get(tc["id"]))
+                lines.append(rfn)
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
     if ctx.is_running() and not ctx.llm_suspended:
         streaming_msg = Message(role="assistant", content="")
