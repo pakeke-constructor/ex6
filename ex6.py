@@ -462,6 +462,17 @@ class LLMResult:
     cost: Optional[float] = None
 
 
+@dataclass
+class ToolCall:
+    """A single tool-row for display. status: running | ok | error."""
+    id: str = ""
+    name: str = ""
+    args: list = field(default_factory=list)
+    kwargs: dict = field(default_factory=dict)
+    status: str = "running"
+    detail: Optional[str] = None
+
+
 def _ensure_unique_name(name):
     if name not in state.contexts:
         return name
@@ -726,7 +737,7 @@ class Context:
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
-    _tool_renderers: dict = field(default_factory=dict)  # tool_call_id -> RenderFn (plugin override)
+    _tool_rows: dict = field(default_factory=dict)  # tool_call_id -> list[ToolCall] (plugin-supplied display rows)
     _active_tools: dict = field(default_factory=dict)  # tool_call_id -> Thread (in-flight)
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
@@ -784,9 +795,6 @@ class Context:
     def get_read_files(self):
         return list(self._read_hashes.keys())
 
-    def set_tool_renderer(self, tool_call_id: str, render_fn):
-        self._tool_renderers[tool_call_id] = render_fn
-
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
         for m in self.messages:
@@ -834,7 +842,7 @@ class Context:
         threading.Thread(target=run, daemon=True).start()
     
     def truncate(self, index: int):
-        """Remove all messages from index onward. Cleans up tool renderers for removed messages.
+        """Remove all messages from index onward. Cleans up tool rows for removed messages.
         Safe to call from tool execution (llm_suspended) or when LLM is not running.
         Raises if LLM is actively streaming."""
         if self.llm_is_running and not self.llm_suspended:
@@ -842,9 +850,12 @@ class Context:
         removed = self.messages[index:]
         self.messages = self.messages[:index]
         self._tools_invalidated = True
+        self._drop_tool_rows(removed)
+
+    def _drop_tool_rows(self, removed):
         for m in removed:
-            if m.tool_call_id and m.tool_call_id in self._tool_renderers:
-                del self._tool_renderers[m.tool_call_id]
+            if m.tool_call_id:
+                self._tool_rows.pop(m.tool_call_id, None)
 
     def clear(self):
         self.stop_early = True
@@ -855,9 +866,7 @@ class Context:
         # Hard reset — bypass truncate() guard, clear() is a forced wipe
         removed = self.messages[i:]
         self.messages = self.messages[:i]
-        for m in removed:
-            if m.tool_call_id and m.tool_call_id in self._tool_renderers:
-                del self._tool_renderers[m.tool_call_id]
+        self._drop_tool_rows(removed)
         self.ui_stack = []
         self.llm_is_running = False
         self.llm_suspended = False
@@ -876,7 +885,7 @@ class Context:
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
         cpy.data = StrictDataDict(self.data)
         cpy.data_volatile = {}
-        cpy._tool_renderers = {}
+        cpy._tool_rows = {}
         cpy._active_tools = {}
         cpy.ui_stack = []
         cpy._input_box = None
@@ -1456,24 +1465,17 @@ def _render_chunks(chunks):
 
 
 def _default_tool_row(ctx, tc, tool_msg):
-    """Build a default tool-line renderer from in-flight state + tool result message."""
-    name = tc["name"]
-    args = list(tc["args"].values())
-    def render(buf, x, y, w):
-        t = ctx._active_tools.get(tc["id"])
-        if t is not None and t.is_alive():
-            status, detail = 'running', None
-        elif tool_msg is None:
-            status, detail = 'running', None
-        else:
-            content = tool_msg.content or ""
-            if content.startswith("ERROR:"):
-                status, detail = 'error', content
-            else:
-                status, detail = 'ok', content
-        render_tool_line(buf, x, y, w, name, args, status, detail)
-        return 1
-    return render
+    """Build a default ToolCall row from in-flight state + tool result message."""
+    t = ctx._active_tools.get(tc["id"])
+    if (t is not None and t.is_alive()) or tool_msg is None:
+        status, detail = 'running', None
+    else:
+        content = tool_msg.content or ""
+        status = 'error' if content.startswith("ERROR:") else 'ok'
+        detail = content
+    return ToolCall(id=tc["id"], name=tc["name"], args=list(tc["args"].values()),
+                    status=status, detail=detail)
+
 
 
 @overridable
@@ -1493,10 +1495,11 @@ def render_work_mode(tui, buf, inpt, r):
         for renderer in _output_renderers: renderer(lines, msg, ctx)
         if msg.tool_calls:
             for tc in msg.tool_calls:
-                rfn = ctx._tool_renderers.get(tc["id"])
-                if not rfn:
-                    rfn = _default_tool_row(ctx, tc, tool_msgs.get(tc["id"]))
-                lines.append(rfn)
+                rows = ctx._tool_rows.get(tc["id"])
+                if rows:
+                    lines.extend(rows)
+                else:
+                    lines.append(_default_tool_row(ctx, tc, tool_msgs.get(tc["id"])))
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
     if ctx.is_running() and not ctx.llm_suspended:
         streaming_msg = Message(role="assistant", content="")
@@ -1518,7 +1521,10 @@ def render_work_mode(tui, buf, inpt, r):
         bg = th.user_background if role == 'user' else None
         for line in lines:
             if line == '' and has_tool_calls: continue
-            if callable(line):
+            if isinstance(line, ToolCall):
+                render_tool_line(buf, x, row, w, line.name, line.args, line.status, line.detail, line.kwargs)
+                drawn = 1
+            elif callable(line):
                 drawn = line(buf, x, row, w)
             else:
                 drawn = buf.print_wrapped(line, x, row, w, txt_color=th.text, bg_color=bg)
