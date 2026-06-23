@@ -44,7 +44,9 @@ def _thread_excepthook(args):
     _fatal_error = (f"{args.exc_type.__name__}: {args.exc_value}")
 threading.excepthook = _thread_excepthook
 
-from blessed import Terminal
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
 import time
 from dataclasses import dataclass, field
@@ -352,10 +354,7 @@ class Theme:
 class AppState:
     contexts: dict[str,Context] = field(default_factory=dict)
     current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
-    mode: Literal["selection", "work", "help", "scroll"] = "selection"
-    _prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"  # for restoring after scroll
-    term: 'Terminal' = None  # set in main
-    theme: Theme = field(default_factory=Theme)
+
 
 
 _tui = None
@@ -744,8 +743,11 @@ class Context:
 
     def __post_init__(self):
         state.contexts[self.name] = self
+
+    def get_input_box(self):
         if self._input_box is None:
             self._input_box = InputBox(lambda text: _ctx_input_submit(self, text))
+        return self._input_box
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -1576,7 +1578,7 @@ def render_work_mode_footer(tui, buf, r, ctx):
     """Draw into the 3 padding rows below the input divider."""
     th = get_theme()
     x, y, w, h = r
-    text = ctx._input_box.get_text()
+    text = ctx.get_input_box().get_text()
     """
     todo: in future, instead of just "yolo ON" and "yolo OFF",
     we should have actual 'modes' here.
@@ -1664,7 +1666,7 @@ def _load_plugins():
 class TUI:
     mode: Literal["selection", "work", "help", "scroll"] = "selection"
     prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"
-    term: Any = field(default_factory=Terminal)
+    term: Any = None
     ui_panel_stack: list = field(default_factory=list)
     sel_input_open: bool = False
     sel_input_box: Any = None
@@ -1674,6 +1676,8 @@ class TUI:
     stdout_sink: Any = None
 
     def __post_init__(self):
+        from blessed import Terminal
+        self.term = Terminal()
         self.sel_input_box = make_input(self.sel_on_submit)
         self.buf = ScreenBuffer(self.term.width, self.term.height)
         self.stdout_sink = _StdoutSink()
@@ -1737,7 +1741,7 @@ def _tui_loop(tui: TUI):
 
     if state.current not in state.contexts.values():
         state.current = next(iter(state.contexts.values()))
-    input_box = tui.input_box = state.current._input_box
+    input_box = tui.input_box = state.current.get_input_box()
 
     prev_mode = tui.mode
 
