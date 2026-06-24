@@ -581,6 +581,10 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
                 break
         hit = node
 
+    # permissive fallback: try leaf name directly
+    if not hit and '.' in name:
+        hit = find(tree.root_node, name.rsplit('.', 1)[-1])
+
     if not hit:
         raise ValueError(f"'{name}' not found in {file}")
 
