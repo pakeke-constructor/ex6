@@ -552,7 +552,30 @@ def _check_tool_args(fn: Callable, args: dict) -> dict:
     return args
 
 
-_TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", tuple: "array"}
+_TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", tuple: "array", dict: "object"}
+
+
+def _type_to_schema(type_hint):
+    type_hint = _resolve_type_hint(type_hint)
+    origin = get_origin(type_hint)
+
+    if origin is Union:
+        non_none = [a for a in get_args(type_hint) if a is not type(None)]
+        type_hint = non_none[0] if non_none else str
+        return _type_to_schema(type_hint)
+
+    if origin in (list, tuple):
+        args = get_args(type_hint)
+        item_type = args[0] if args else str
+        return {"type": "array", "items": _type_to_schema(item_type)}
+
+    if origin is dict:
+        return {"type": "object"}
+
+    if type_hint in (list, tuple):
+        return {"type": "array", "items": {"type": "string"}}
+
+    return {"type": _TYPE_MAP.get(type_hint, "string")}
 
 
 def _validate_tool_sig(name: str, fn: Callable):
@@ -583,9 +606,7 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
         if param.default is inspect.Parameter.empty:
             required.append(pname)
         ptype = param.annotation if param.annotation != inspect.Parameter.empty else str
-        if get_origin(ptype) is Union:
-            ptype = [a for a in get_args(ptype) if a is not type(None)][0]
-        props[pname] = {"type": _TYPE_MAP.get(ptype, "string")}
+        props[pname] = _type_to_schema(ptype)
 
     return {
         "type": "function",
