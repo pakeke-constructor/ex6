@@ -525,11 +525,70 @@ def _strong_isinstance(obj: object, type_hint) -> bool:
         return False
 
     if origin is list:
-        assert(isinstance(obj, list))
+        assert isinstance(obj, list)
+        if not args:
+            return True
         (item_type,) = args
         return all(_strong_isinstance(item, item_type) for item in obj)
 
+    if origin is tuple:
+        assert isinstance(obj, tuple)
+        if not args:
+            return True
+        if len(args) == 2 and args[1] is Ellipsis:
+            return all(_strong_isinstance(item, args[0]) for item in obj)
+        if len(obj) != len(args):
+            return False
+        return all(_strong_isinstance(item, item_type) for item, item_type in zip(obj, args))
+
     return False
+
+
+def _coerce_to_type_hint(val, type_hint):
+    type_hint = _resolve_type_hint(type_hint)
+
+    if type_hint is Any or _strong_isinstance(val, type_hint):
+        return val, True
+
+    origin = get_origin(type_hint)
+    args = get_args(type_hint)
+
+    if origin is Union:
+        for arg in args:
+            coerced, ok = _coerce_to_type_hint(val, arg)
+            if ok:
+                return coerced, True
+        return val, False
+
+    if type_hint in (int, float) and isinstance(val, str):
+        try:
+            return type_hint(val), True
+        except Exception:
+            return val, False
+
+    if origin is not tuple:
+        return val, False
+
+    if isinstance(val, list):
+        val = tuple(val)
+    if not isinstance(val, tuple):
+        return val, False
+    if not args:
+        return val, True
+
+    item_hints = args
+    if len(args) == 2 and args[1] is Ellipsis:
+        item_hints = (args[0],) * len(val)
+    if len(val) != len(item_hints):
+        return val, False
+
+    out = []
+    for item, item_hint in zip(val, item_hints):
+        coerced, ok = _coerce_to_type_hint(item, item_hint)
+        if not ok:
+            return val, False
+        out.append(coerced)
+    return tuple(out), True
 
 
 def _check_tool_args(fn: Callable, args: dict) -> dict:
@@ -543,12 +602,10 @@ def _check_tool_args(fn: Callable, args: dict) -> dict:
         if name not in hints:
             continue
         hint = hints[name]
-        # JSON has no tuple type; coerce list -> tuple when a tuple is allowed
-        allowed = get_args(hint) if get_origin(hint) is Union else (hint,)
-        if tuple in (_resolve_type_hint(a) for a in allowed) and isinstance(val, list):
-            args[name] = val = tuple(val)
-        if not _strong_isinstance(val, hint):
+        coerced, ok = _coerce_to_type_hint(val, hint)
+        if not ok:
             raise TypeError(f"{fn.__name__}: arg '{name}' expected {_type_hint_name(hint)}, got {type(val).__name__}")
+        args[name] = coerced
     return args
 
 
