@@ -215,6 +215,52 @@ def cm(msg: Optional[str]):
 
     threading.Thread(target=run, daemon=True).start()
 
+@ex6.command
+def sync():
+    """Fetch origin, then merge origin/main into current branch."""
+    output_lines = ["Fetching origin..."]
+
+    def draw(buf, inpt, r):
+        x, y, w, h = r
+        th = ex6.get_theme()
+        buf.fill(r, ' ')
+        buf.rect_line(r, txt_color=th.accent)
+        visible = h - 2
+        start = max(0, len(output_lines) - visible)
+        for i, line in enumerate(output_lines[start:start + visible]):
+            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
+
+    done_time = [None]
+
+    def draw_auto_close(buf, inpt, r):
+        draw(buf, inpt, r)
+        if done_time[0] is not None and time.time() - done_time[0] >= 0.5:
+            ex6.pop_ui_panel()
+
+    ex6.push_ui_panel(draw_auto_close)
+
+    def run():
+        fetch = subprocess.run(["git", "fetch", "origin"], capture_output=True, text=True)
+        if fetch.returncode != 0:
+            output_lines.append("git fetch failed:")
+            if fetch.stderr:
+                output_lines.extend(fetch.stderr.split('\n'))
+            done_time[0] = time.time()
+            return
+
+        output_lines.append("Merging origin/main...")
+        merge = subprocess.run(["git", "merge", "origin/main"], capture_output=True, text=True)
+        if merge.returncode == 0:
+            output_lines.append("Merged origin/main.")
+        else:
+            output_lines.append("git merge failed:")
+            if merge.stdout:
+                output_lines.extend(merge.stdout.split('\n'))
+            if merge.stderr:
+                output_lines.extend(merge.stderr.split('\n'))
+        done_time[0] = time.time()
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 @ex6.command
