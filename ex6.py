@@ -331,6 +331,7 @@ class Theme:
     name: str = "default"
     text: str = "white"
     muted: str = "bright_black"
+    cot: str = "white"
     user_background: str = "black"
     accent: str = "blue"
     accent_alt: str = "cyan"
@@ -1580,10 +1581,16 @@ def render_work_mode(tui, buf, inpt, r):
                     lines.append(_default_tool_row(ctx, tc, tool_msgs.get(tc["id"])))
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
     if ctx.is_running() and not ctx.llm_suspended:
-        streaming_msg = Message(role="assistant", content="")
-        lines = (_render_chunks(ctx.llm_current_output) + "█").split('\n')
-        for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
-        message_outputs.append(('assistant', lines, False))
+        cot = "".join(c.content for c in ctx.llm_current_output if c.type == "cot") if tui.show_cot else ""
+        txt = _render_chunks(ctx.llm_current_output)
+        if cot:
+            message_outputs.append(('cot', (cot + ("" if txt else "█")).split('\n'), False))
+        if txt or not cot:
+            streaming_msg = Message(role="assistant", content="")
+            lines = (txt + "█").split('\n')
+            for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
+            message_outputs.append(('assistant', lines, False))
+
 
     available = h - 1
 
@@ -1597,6 +1604,7 @@ def render_work_mode(tui, buf, inpt, r):
         if role == 'user' or prev_role == 'user': row += 1
         prev_role = role
         bg = th.user_background if role == 'user' else None
+        fg = th.cot if role == 'cot' else th.text
         for line in lines:
             if line == '' and has_tool_calls: continue
             if isinstance(line, ToolCall):
@@ -1605,7 +1613,7 @@ def render_work_mode(tui, buf, inpt, r):
             elif callable(line):
                 drawn = line(buf, x, row, w)
             else:
-                drawn = buf.print_wrapped(line, x, row, w, txt_color=th.text, bg_color=bg)
+                drawn = buf.print_wrapped(line, x, row, w, txt_color=fg, bg_color=bg)
             if bg: buf.fill_bg(x, row, w, drawn, bg)
             row += drawn
     if ctx.llm_result and ctx.llm_result.error:
@@ -1758,6 +1766,7 @@ class TUI:
     keyls: list = field(default_factory=list)
     input_box: Any = None  # per-context; resolved each frame
     stdout_sink: Any = None
+    show_cot: bool = True
 
     def __post_init__(self):
         from blessed import Terminal
