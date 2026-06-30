@@ -217,7 +217,7 @@ def cm(msg: Optional[str]):
 
 @ex6.command
 def sync():
-    """Fetch origin, then merge origin/main into current branch."""
+    """Fetch origin, then merge origin/<branch>, then origin/main or origin/master."""
     output_lines = ["Fetching origin..."]
 
     def draw(buf, inpt, r):
@@ -248,16 +248,44 @@ def sync():
             done_time[0] = time.time()
             return
 
-        output_lines.append("Merging origin/main...")
-        merge = subprocess.run(["git", "merge", "origin/main"], capture_output=True, text=True)
-        if merge.returncode == 0:
-            output_lines.append("Merged origin/main.")
-        else:
+        branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True)
+        name = branch.stdout.strip() if branch.returncode == 0 else ""
+
+        targets = []
+        if name and name != "HEAD":
+            targets.append(f"origin/{name}")
+        targets.extend(["origin/main", "origin/master"])
+        targets = list(dict.fromkeys(targets))
+
+        merged_any = False
+        for target in targets:
+            output_lines.append(f"Merging {target}...")
+            merge = subprocess.run(["git", "merge", target], capture_output=True, text=True)
+            if merge.returncode == 0:
+                merged_any = True
+                output_lines.append(f"Merged {target}.")
+                if merge.stdout:
+                    output_lines.extend(merge.stdout.split('\n'))
+                if merge.stderr:
+                    output_lines.extend(merge.stderr.split('\n'))
+                continue
+
+            merge_text = (merge.stdout or "") + "\n" + (merge.stderr or "")
+            if "not something we can merge" in merge_text:
+                output_lines.append(f"Skipping {target} (missing remote branch).")
+                continue
+
             output_lines.append("git merge failed:")
             if merge.stdout:
                 output_lines.extend(merge.stdout.split('\n'))
             if merge.stderr:
                 output_lines.extend(merge.stderr.split('\n'))
+            done_time[0] = time.time()
+            return
+
+        if not merged_any:
+            output_lines.append("No matching remote branches found.")
+
         done_time[0] = time.time()
 
     threading.Thread(target=run, daemon=True).start()
