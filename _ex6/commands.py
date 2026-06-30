@@ -235,14 +235,11 @@ def sync():
         start = max(0, len(output_lines) - visible)
         for i, line in enumerate(output_lines[start:start + visible]):
             buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
-
-    def draw_wait_key(buf, inpt, r):
-        draw(buf, inpt, r)
         if done[0] and inpt._keys:
             inpt._keys.clear()
             ex6.pop_ui_panel()
 
-    ex6.push_ui_panel(draw_wait_key)
+    ex6.push_ui_panel(draw)
 
     def run():
         fetch = subprocess.run(["git", "fetch", "origin"], capture_output=True, text=True)
