@@ -171,12 +171,14 @@ def cm(msg: Optional[str]):
     def draw(buf, inpt, r):
         x, y, w, h = r
         th = ex6.get_theme()
-        buf.fill(r, ' ')
-        buf.rect_line(r, txt_color=th.accent)
-        visible = h - 2
+        panel = ex6.Region(x, y, w, max(3, h // 2))
+        px, py, pw, ph = panel
+        buf.fill(panel, ' ')
+        buf.rect_line(panel, txt_color=th.accent)
+        visible = ph - 2
         start = max(0, len(output_lines) - visible)
         for i, line in enumerate(output_lines[start:start + visible]):
-            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
+            buf.puts(px + 2, py + 1 + i, line[:pw - 4], txt_color=th.text)
     done_time = [None]
 
     def draw_auto_close(buf, inpt, r):
@@ -229,12 +231,14 @@ def sync():
     def draw(buf, inpt, r):
         x, y, w, h = r
         th = ex6.get_theme()
-        buf.fill(r, ' ')
-        buf.rect_line(r, txt_color=th.accent)
-        visible = h - 2
+        panel = ex6.Region(x, y, w, max(3, h // 2))
+        px, py, pw, ph = panel
+        buf.fill(panel, ' ')
+        buf.rect_line(panel, txt_color=th.accent)
+        visible = ph - 2
         start = max(0, len(output_lines) - visible)
         for i, line in enumerate(output_lines[start:start + visible]):
-            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
+            buf.puts(px + 2, py + 1 + i, line[:pw - 4], txt_color=th.text)
         if done[0] and inpt._keys:
             inpt._keys.clear()
             ex6.pop_ui_panel()
