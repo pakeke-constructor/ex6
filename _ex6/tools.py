@@ -631,6 +631,111 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
 
 
+def ask_user_question(ctx: ex6.Context, question: str, opt: list[str] = None) -> str:
+    """Ask user a question with optional selectable answers. Returns: Q: <question>\nA: <answer>"""
+    options = [str(o) for o in (opt or [])]
+    selected = [0]
+    typed_mode = [len(options) == 0]
+    result = [None]
+
+    def on_submit(text):
+        if not text:
+            return
+        result[0] = text
+        ctx.ui_stack.pop()
+
+    input_draw = ex6.make_input(on_submit)
+
+    def _wrap_words(text: str, width: int) -> list[str]:
+        if width < 1:
+            return [""]
+        out = []
+        for part in (text or "").split("\n"):
+            words = part.split()
+            if not words:
+                out.append("")
+                continue
+            line = ""
+            for word in words:
+                if not line:
+                    line = word
+                elif len(line) + 1 + len(word) <= width:
+                    line += " " + word
+                else:
+                    out.append(line)
+                    line = word
+            if line:
+                out.append(line)
+        return out or [""]
+
+    def draw(buf: ex6.ScreenBuffer, inpt, r):
+        x, y, w, h = r
+        th = ex6.get_theme()
+
+        show_options = bool(options) and not typed_mode[0]
+        q_lines = _wrap_words(question, max(1, w - 8))
+        base_h = 6 + len(q_lines) + (len(options) + 2 if show_options else 3)
+        box_h = min(h, max(h // 2, base_h))
+        box = ex6.Region(x, y, w, box_h)
+
+        buf.fill(box, char=' ', bg_color=None)
+        buf.rect_line(box, txt_color=th.accent)
+
+        cx = x + 3
+        cy = y + 1
+        buf.puts(cx, cy, "AGENT QUESTION", txt_color=th.accent_alt, style='bold')
+        cy += 2
+
+        for line in q_lines:
+            if cy >= y + box_h - 2:
+                break
+            buf.puts(cx, cy, line[:max(1, w - 6)], txt_color=th.warning)
+            cy += 1
+
+        cy += 1
+
+        if show_options:
+            if inpt.consume('KEY_UP'):
+                selected[0] = (selected[0] - 1) % len(options)
+            if inpt.consume('KEY_DOWN'):
+                selected[0] = (selected[0] + 1) % len(options)
+            if inpt.consume('KEY_ENTER'):
+                result[0] = options[selected[0]]
+                ctx.ui_stack.pop()
+                return
+            if inpt._keys:
+                typed_mode[0] = True
+                show_options = False
+
+        if show_options:
+            buf.puts(cx, cy, "UP/DOWN choose | ENTER submit | type custom answer", txt_color=th.text)
+            cy += 1
+            for i, option in enumerate(options):
+                if cy >= y + box_h - 1:
+                    break
+                is_sel = i == selected[0]
+                prefix = "›" if is_sel else " "
+                clr = th.success if is_sel else th.text
+                buf.puts(cx, cy, f"{prefix} {option}"[:max(1, w - 6)], txt_color=clr, style='bold' if is_sel else None)
+                cy += 1
+            return
+
+        buf.puts(cx, cy, "Type custom answer, ENTER submit", txt_color=th.text)
+        cy += 1
+        input_h = max(1, y + box_h - 1 - cy)
+        input_draw(buf, inpt, (cx, cy, max(1, w - 6), input_h))
+        if options and getattr(input_draw, 'text', '') == "":
+            typed_mode[0] = False
+
+    ctx.push_ui(draw)
+
+    while draw in ctx.ui_stack:
+        time.sleep(0.05)
+
+    answer = result[0] or ""
+    return f"Q: {question}\nA: {answer}"
+
+
 class EscalationError(Exception):
     def __init__(self, reason, severity=1):
         self.reason = reason
