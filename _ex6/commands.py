@@ -219,6 +219,12 @@ def cm(msg: Optional[str]):
 def sync():
     """Fetch origin, then merge origin/<branch>, then origin/main or origin/master."""
     output_lines = ["Fetching origin..."]
+    done = [False]
+
+    def mark_done():
+        if not done[0]:
+            output_lines.append("Press any key to close.")
+            done[0] = True
 
     def draw(buf, inpt, r):
         x, y, w, h = r
@@ -230,14 +236,13 @@ def sync():
         for i, line in enumerate(output_lines[start:start + visible]):
             buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
 
-    done_time = [None]
-
-    def draw_auto_close(buf, inpt, r):
+    def draw_wait_key(buf, inpt, r):
         draw(buf, inpt, r)
-        if done_time[0] is not None and time.time() - done_time[0] >= 0.5:
+        if done[0] and inpt._keys:
+            inpt._keys.clear()
             ex6.pop_ui_panel()
 
-    ex6.push_ui_panel(draw_auto_close)
+    ex6.push_ui_panel(draw_wait_key)
 
     def run():
         fetch = subprocess.run(["git", "fetch", "origin"], capture_output=True, text=True)
@@ -245,7 +250,7 @@ def sync():
             output_lines.append("git fetch failed:")
             if fetch.stderr:
                 output_lines.extend(fetch.stderr.split('\n'))
-            done_time[0] = time.time()
+            mark_done()
             return
 
         branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True)
@@ -280,13 +285,13 @@ def sync():
                 output_lines.extend(merge.stdout.split('\n'))
             if merge.stderr:
                 output_lines.extend(merge.stderr.split('\n'))
-            done_time[0] = time.time()
+            mark_done()
             return
 
         if not merged_any:
             output_lines.append("No matching remote branches found.")
 
-        done_time[0] = time.time()
+        mark_done()
 
     threading.Thread(target=run, daemon=True).start()
 
