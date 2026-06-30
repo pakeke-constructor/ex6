@@ -331,7 +331,7 @@ class Theme:
     name: str = "default"
     text: str = "white"
     muted: str = "bright_black"
-    cot: str = "white"
+    cot: str = "red"
     user_background: str = "black"
     accent: str = "blue"
     accent_alt: str = "cyan"
