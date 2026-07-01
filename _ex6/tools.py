@@ -34,6 +34,7 @@ import inspect
 import functools
 from _ex6.models import M
 from ex6 import Context, Message
+from typing import Optional
 
 
 
@@ -634,7 +635,7 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
 
 
-def ask_user_question(ctx: ex6.Context, question: str, opt: list[str] = None) -> str:
+def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] = None) -> str:
     """Ask user a question with optional selectable answers. Returns: Q: <question>\nA: <answer>"""
     options = [str(o) for o in (opt or [])]
     selected = [0]
@@ -1171,18 +1172,16 @@ def guard_repeat_calls(fn):
     return wrapped
 
 
-def add_tool_repetition_guard(ctx: ex6.Context, guard: list):
+def add_tool_repetition_guard(ctx: ex6.Context, guard: Optional[list] = None):
     """Wrap selected tools in this context to block repeated identical calls (3rd+)."""
-    if not guard:
-        return ctx
-
-    names = {fn.__name__ for fn in guard}
+    names = None if guard is None else {fn.__name__ for fn in guard}
     for m in ctx.messages:
         if not getattr(m, "tools", None):
             continue
         new_tools = []
         for fn in m.tools:
-            if fn.__name__ in names and not getattr(fn, "_ex6_repeat_guard_wrapped", False):
+            should_wrap = names is None or fn.__name__ in names
+            if should_wrap and not getattr(fn, "_ex6_repeat_guard_wrapped", False):
                 fn = guard_repeat_calls(fn)
             new_tools.append(fn)
         m.tools = new_tools
