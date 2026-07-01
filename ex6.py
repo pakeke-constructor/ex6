@@ -1863,7 +1863,7 @@ def _tui_loop(tui: TUI):
         render_work_mode(tui, buf, inpt, main_r)
         div_color = th.invoking if state.current.is_running() else th.muted
         buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
-        if not state.current.ui_stack:
+        if not state.current.ui_stack and not tui.ui_panel_stack:
             render_work_mode_input(tui, buf, inpt, input_r, input_box)
         buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
         footer_r = Region(0, divider_y + 2 + input_h, term.width, 3)

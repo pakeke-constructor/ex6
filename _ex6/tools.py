@@ -16,6 +16,7 @@ includes:
 import ex6
 import os
 import re
+import json
 import difflib
 import glob as _glob
 import importlib
@@ -29,6 +30,8 @@ import datetime
 import platform
 import sys
 import git
+import inspect
+import functools
 from _ex6.models import M
 from ex6 import Context, Message
 
@@ -1098,6 +1101,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
 
     sub_name = f"explore_{int(time.time() * 1000)}"
     sub = Context(sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
+    add_tool_repetition_guard(sub, [read_file, read_headers, read_body, search, glob])
     sub.parent = ctx.name
     sub.invoke(prompt)
     while sub.llm_is_running:
@@ -1109,4 +1113,78 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         return sub.messages[-1].content if sub.messages else ""
     finally:
         ex6.state.contexts.pop(sub.name, None)
+
+
+def _normalize_guard_value(v):
+    if isinstance(v, dict):
+        return {str(k): _normalize_guard_value(vv) for k, vv in sorted(v.items(), key=lambda kv: str(kv[0]))}
+    if isinstance(v, (list, tuple)):
+        return [_normalize_guard_value(x) for x in v]
+    if isinstance(v, str):
+        return v.replace("\\", "/")
+    return v
+
+
+def _guard_fingerprint(tool_name: str, kwargs: dict) -> str:
+    payload = {
+        "tool": tool_name,
+        "args": _normalize_guard_value(kwargs),
+    }
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)
+
+
+def guard_repeat_calls(fn):
+    sig = inspect.signature(fn)
+    params = list(sig.parameters.values())
+    if not params:
+        return fn
+
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        bound = sig.bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        ctx = bound.arguments.get(params[0].name)
+        if not isinstance(ctx, ex6.Context):
+            return fn(*args, **kwargs)
+
+        call_kwargs = {k: v for k, v in bound.arguments.items() if k != params[0].name}
+        fp = _guard_fingerprint(fn.__name__, call_kwargs)
+        state = ctx.data_volatile.setdefault("tool_repeat_guard", {})
+        row = state.get(fp)
+        if row is None:
+            row = {"count": 0, "result": ""}
+            state[fp] = row
+        row["count"] += 1
+
+        if row["count"] >= 3:
+            return f"WARNING: blocked repeated tool call ({fn.__name__}) with same args. Use previous tool output already in context."
+
+        out = fn(*args, **kwargs)
+        row["result"] = str(out or "")
+        return out
+
+    wrapped.__signature__ = sig
+    wrapped.__name__ = fn.__name__
+    wrapped.__qualname__ = fn.__qualname__
+    wrapped.__annotations__ = dict(getattr(fn, "__annotations__", {}))
+    wrapped._ex6_repeat_guard_wrapped = True
+    return wrapped
+
+
+def add_tool_repetition_guard(ctx: ex6.Context, guard: list):
+    """Wrap selected tools in this context to block repeated identical calls (3rd+)."""
+    if not guard:
+        return ctx
+
+    names = {fn.__name__ for fn in guard}
+    for m in ctx.messages:
+        if not getattr(m, "tools", None):
+            continue
+        new_tools = []
+        for fn in m.tools:
+            if fn.__name__ in names and not getattr(fn, "_ex6_repeat_guard_wrapped", False):
+                fn = guard_repeat_calls(fn)
+            new_tools.append(fn)
+        m.tools = new_tools
+    return ctx
 

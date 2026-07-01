@@ -3,6 +3,7 @@ import os, json, base64, urllib.parse, urllib.request
 import ex6
 import time
 from _ex6.models import M
+from _ex6.tools import add_tool_repetition_guard
 
 
 _API = "https://api.zyte.com/v1/extract"
@@ -94,6 +95,7 @@ def websearch_agent(ctx: ex6.Context, question: str) -> str:
     """Spawn a websearch subagent to research a question. Returns a concise answer.
     Use this when you need up-to-date information from the web."""
     sub = ex6.Context("websearch", model=M.GEMINI_LATEST.id, messages=[WEBSEARCH_SYSTEM_PROMPT, WEBSEARCH_TOOLS_MSG], reasoning="none")
+    add_tool_repetition_guard(sub, [web_search, web_scrape])
     sub.parent = ctx.name
     sub.invoke(question)
     while sub.llm_is_running:

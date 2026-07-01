@@ -33,7 +33,7 @@ class M:
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
     GEMINI3_PRO      = ModelInfo("google/gemini-3-pro-preview",     1_048_576, 2,    12,   0.2)
     GEMINI3_FLASH    = ModelInfo("google/gemini-3-flash-preview",   1_048_576, 0.5,  3,    0.05)
-    GEMINI35_FLASH    = ModelInfo("google/gemini-3.5-flash",   1_048_576, 0.5,  3,    0.05)
+    GEMINI35_FLASH    = ModelInfo("google/gemini-3.5-flash",   1_048_576, 1.5,  9,    0.05)
     GEMINI31_FLASH_LITE = ModelInfo("google/gemini-3.1-flash-lite-preview", 1_048_576, 0.25, 1.5, 0.025)
     GEMINI25_PRO     = ModelInfo("google/gemini-2.5-pro",           1_048_576, 1.25, 10,   0.125)
     GEMINI25_FLASH   = ModelInfo("google/gemini-2.5-flash",         1_048_576, 0.3,  2.5,  0.03)
