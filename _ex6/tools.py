@@ -1158,7 +1158,7 @@ def guard_repeat_calls(fn):
         row["count"] += 1
 
         if row["count"] >= 3:
-            return f"WARNING: blocked repeated tool call ({fn.__name__}) with same args. Use previous tool output already in context."
+            return f"ERROR: blocked repeated tool call ({fn.__name__}) with same args. Use previous tool output already in context."
 
         out = fn(*args, **kwargs)
         row["result"] = str(out or "")
