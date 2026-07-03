@@ -19,6 +19,7 @@ class M:
     OPUS_47          = ModelInfo("anthropic/claude-opus-4.7",         200_000, 5,    25,   0.5,  6.25)
     OPUS_48          = ModelInfo("anthropic/claude-opus-4.8",         200_000, 5,    25,   0.5,  6.25)
     SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       200_000, 3,    15,   0.3,  3.75)
+    SONNET_5        = ModelInfo("anthropic/claude-sonnet-5",         200_000, 2,    10,   0.3,  3.75)
     HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",        200_000, 1,    5,    0.1,  1.25)
     GPT5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
     GPT54            = ModelInfo("openai/gpt-5.4",                  1_050_000, 2.5,  15,   0.25)
@@ -49,6 +50,7 @@ class M:
     GEMMA_4          = ModelInfo("google/gemma-4-31b-it",            262_144, 0.13, 0.38, 0)
 
     OPUS_LATEST: ModelInfo
+    SONNET_LATEST: ModelInfo
     GPT_LATEST: ModelInfo
     CODEX_LATEST: ModelInfo
     GEMINI_LATEST: ModelInfo
