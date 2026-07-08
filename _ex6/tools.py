@@ -1134,6 +1134,24 @@ def _guard_fingerprint(tool_name: str, kwargs: dict) -> str:
     return json.dumps(payload, sort_keys=True, ensure_ascii=False)
 
 
+def _count_matching_tool_outputs(ctx: ex6.Context, fp: str, output: str) -> int:
+    tc_map = {}
+    count = 0
+    for m in ctx.messages:
+        if m.role == "assistant" and m.tool_calls:
+            for tc in m.tool_calls:
+                tc_fp = _guard_fingerprint(tc.get("name", ""), tc.get("args", {}))
+                tc_map[tc.get("id")] = tc_fp
+            continue
+        if m.role != "tool":
+            continue
+        if tc_map.get(m.tool_call_id) != fp:
+            continue
+        if str(m.content or "") == output:
+            count += 1
+    return count
+
+
 def guard_repeat_calls(fn):
     sig = inspect.signature(fn)
     params = list(sig.parameters.values())
@@ -1150,18 +1168,11 @@ def guard_repeat_calls(fn):
 
         call_kwargs = {k: v for k, v in bound.arguments.items() if k != params[0].name}
         fp = _guard_fingerprint(fn.__name__, call_kwargs)
-        state = ctx.data_volatile.setdefault("tool_repeat_guard", {})
-        row = state.get(fp)
-        if row is None:
-            row = {"count": 0, "result": ""}
-            state[fp] = row
-        row["count"] += 1
-
-        if row["count"] >= 3:
-            return f"ERROR: blocked repeated tool call ({fn.__name__}) with same args. Use previous tool output already in context."
 
         out = fn(*args, **kwargs)
-        row["result"] = str(out or "")
+        out_str = str(out or "")
+        if _count_matching_tool_outputs(ctx, fp, out_str) >= 2:
+            return f"ERROR: blocked repeated tool call ({fn.__name__}) with same args+output. Use previous tool output already in context."
         return out
 
     wrapped.__signature__ = sig
