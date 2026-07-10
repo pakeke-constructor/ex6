@@ -21,15 +21,15 @@ class M:
     SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       200_000, 3,    15,   0.3,  3.75)
     SONNET_5        = ModelInfo("anthropic/claude-sonnet-5",         200_000, 2,    10,   0.3,  3.75)
     HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",        200_000, 1,    5,    0.1,  1.25)
-    GPT5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
-    GPT54            = ModelInfo("openai/gpt-5.4",                  1_050_000, 2.5,  15,   0.25)
-    GPT55            = ModelInfo("openai/gpt-5.5",                  1_050_000, 5,    30,   0.5)
+    GPT_5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
+    GPT_54            = ModelInfo("openai/gpt-5.4",                  1_050_000, 2.5,  15,   0.25)
+    GPT_55            = ModelInfo("openai/gpt-5.5",                  1_050_000, 5,    30,   0.5)
     GPT_56_SOL      = ModelInfo("openai/gpt-5.6-sol",               250_000, 5, 30, 0.5)
-    GPT5_MINI        = ModelInfo("openai/gpt-5-mini",                 400_000, 0.25, 2,    0.025)
-    GPT5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
-    GPT52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
-    GPT53_CODEX      = ModelInfo("openai/gpt-5.3-codex",              400_000, 1.75, 14,   0.175)
-    GPT51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",         400_000, 0.25, 2,    0.025)
+    GPT_5_MINI        = ModelInfo("openai/gpt-5-mini",                 400_000, 0.25, 2,    0.025)
+    GPT_5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
+    GPT_52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
+    GPT_53_CODEX      = ModelInfo("openai/gpt-5.3-codex",              400_000, 1.75, 14,   0.175)
+    GPT_51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",         400_000, 0.25, 2,    0.025)
     CODEX_MINI       = ModelInfo("openai/codex-mini",                 200_000, 1.5,  6,    0.375)
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
     GEMINI3_PRO      = ModelInfo("google/gemini-3-pro-preview",     1_048_576, 2,    12,   0.2)
@@ -67,8 +67,8 @@ class M:
 
 M.OPUS_LATEST = M.OPUS_48
 M.SONNET_LATEST = M.SONNET_5
-M.GPT_LATEST = M.GPT55
-M.CODEX_LATEST = M.GPT53_CODEX
+M.GPT_LATEST = M.GPT_56_SOL
+M.CODEX_LATEST = M.GPT_53_CODEX
 M.GEMINI_LATEST = M.GEMINI35_FLASH
 M.DEEPSEEK_LATEST = M.DEEPSEEK_V4_PRO
 M.GLM_LATEST = M.GLM_52

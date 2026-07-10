@@ -62,6 +62,24 @@ def _refresh_codex_token():
     return tokens["access_token"]
 
 
+# Subscription usage, scraped from the Codex rate-limit response headers.
+# primary = 5h window. Populated on every invoke; read by the footer override.
+_usage = {}  # {"percent", "reset_after", "ts"}
+
+
+def _capture_usage(headers):
+    import time
+    pct = headers.get("x-codex-primary-used-percent")
+    if pct is None:
+        return
+    _usage.update(
+        percent=float(pct),
+        reset_after=float(headers.get("x-codex-primary-reset-after-seconds", 0)),
+        weekly=float(headers.get("x-codex-secondary-used-percent", 0)),
+        ts=time.time(),
+    )
+
+
 def _codex_client(access_token, account_id):
     return openai.OpenAI(
         base_url="https://chatgpt.com/backend-api/codex",
@@ -115,7 +133,7 @@ def invoke_llm(ctx: ex6.Context):
         kw["reasoning"] = {"effort": ctx.reasoning, "summary": "auto"}
 
     def start(token):
-        return _codex_client(token, account_id).responses.create(
+        raw = _codex_client(token, account_id).responses.with_raw_response.create(
             model=ctx.model.split("/", 1)[1],
             instructions=instructions or "You are a helpful coding assistant.",
             input=input_items,
@@ -125,6 +143,8 @@ def invoke_llm(ctx: ex6.Context):
             timeout=120,
             **kw,
         )
+        _capture_usage(raw.headers)
+        return raw.parse()
 
     ex6.debug_print(f"[codex] model={ctx.model} items={len(input_items)}")
     try:
@@ -185,4 +205,35 @@ def invoke_llm(ctx: ex6.Context):
     ex6.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)}")
     _log_invoke(ctx, input_items, result, cached_tokens)
     yield result
+
+
+def _fmt_reset(secs):
+    secs = max(0, int(secs))
+    h, m = secs // 3600, (secs % 3600) // 60
+    return f"{h}h{m:02d}m" if h else f"{m}m"
+
+
+@ex6.override
+def render_work_mode_footer(tui, buf, r, ctx):
+    """Default yolo indicator, plus a subscription-usage bar for codex contexts."""
+    import time
+    x, y, w, h = r
+    th = ex6.get_theme()
+    on = ctx.yolo
+    buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
+             txt_color=th.success if on else th.muted)
+
+    if ctx.invoke_llm is not invoke_llm or "percent" not in _usage:
+        return
+
+    pct = _usage["percent"]
+    remaining = _usage["reset_after"] - (time.time() - _usage["ts"])
+    filled = min(10, max(0, round(pct / 10)))
+    mid = f" {pct:.0f}% resets in {_fmt_reset(remaining)}"
+    weekly = f"  ({_usage['weekly']:.0f}% weekly used)"
+    bx = x + w - (10 + len(mid) + len(weekly)) - 2
+    buf.puts(bx, y, "█" * filled, txt_color=th.accent)
+    buf.puts(bx + filled, y, "░" * (10 - filled), txt_color=th.muted)
+    buf.puts(bx + 10, y, mid, txt_color=th.accent_alt)
+    buf.puts(bx + 10 + len(mid), y, weekly, txt_color=th.muted)
 
