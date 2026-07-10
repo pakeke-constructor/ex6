@@ -143,8 +143,8 @@ Be kinda like claude-code.
 
 - **COOL IDEA:** Make ex6 a generic runtime; not just a TUI. Make the tui completely optional - a thing you explicitly (hah) enable.
 
-THEN: Oli, you should use ex6 to optimize and organize your life a bit more.
-Make a discord bot for ex6, making checklists, tracking goals, running stuff in background, etc
+THEN: Oli, you could use ex6 to optimize and organize your life a bit more.
+Discord bot for ex6? checklists / goal tracking? running stuff in background, etc
 
 <cwd-agents>
 Overarching goal: make an agent that has reference to ex6 codebase;

@@ -1673,7 +1673,6 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 
 @overridable
 def render_work_mode_footer(tui, buf, r, ctx):
-    """Draw into the 3 padding rows below the input divider."""
     th = get_theme()
     x, y, w, h = r
     text = ctx.get_input_box().get_text()
@@ -1702,6 +1701,8 @@ def render_work_mode_footer(tui, buf, r, ctx):
         return
 
     for i, name in enumerate(matches):
+        if i >= h:
+            break
         fn, spec = _commands[name]
         args = " ".join(f"<{a}>" for a, _ in spec)
         doc = (fn.__doc__ or "").strip()
@@ -1847,11 +1848,16 @@ def _tui_loop(tui: TUI):
     if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
         tui.ui_panel_stack.pop()
 
+    footer_r = Region()
+
     if tui.mode == "work":
         input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
-        divider_y = term.height - 4 - input_h - 1
-        input_r = Region(0, divider_y + 1, term.width, input_h)
-        main_r = Region(0, 0, term.width, divider_y)
+        space_below_input = 2
+        reserved_h = 1 + input_h + 1 + space_below_input
+        main_h = max(0, term.height - reserved_h)
+        main_r = Region(0, 0, term.width, main_h)
+        input_r = Region(0, main_r[1] + main_r[3] + 1, term.width, input_h)
+        footer_r = Region(0, input_r[1] + input_r[3] + 1, term.width, space_below_input)
     else:
         input_h = 3
         input_r = Region(0, term.height - input_h, term.width, input_h)
@@ -1868,11 +1874,10 @@ def _tui_loop(tui: TUI):
         th = get_theme()
         render_work_mode(tui, buf, inpt, main_r)
         div_color = th.invoking if state.current.is_running() else th.muted
-        buf.hline((0, divider_y, term.width, 1), txt_color=div_color)
+        buf.hline((0, main_r[1] + main_r[3], term.width, 1), txt_color=div_color)
         if not state.current.ui_stack and not tui.ui_panel_stack:
             render_work_mode_input(tui, buf, inpt, input_r, input_box)
-        buf.hline((0, divider_y + 1 + input_h, term.width, 1), txt_color=div_color)
-        footer_r = Region(0, divider_y + 2 + input_h, term.width, 3)
+        buf.hline((0, input_r[1] + input_r[3], term.width, 1), txt_color=div_color)
         render_work_mode_footer(tui, buf, footer_r, state.current)
         if inpt.consume('KEY_ESCAPE'):
             tui.mode = "selection"
