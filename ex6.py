@@ -1671,7 +1671,16 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         input_box(buf, inpt, input_r)
 
 
+
+
 @overridable
+def render_work_mode_footer_widget(tui, buf, r, ctx):
+    x, y, w, h = r
+    th = get_theme()
+    on = ctx.yolo
+    buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
+                txt_color=th.success if on else th.muted)
+
 def render_work_mode_footer(tui, buf, r, ctx):
     th = get_theme()
     x, y, w, h = r
@@ -1686,9 +1695,7 @@ def render_work_mode_footer(tui, buf, r, ctx):
     """
 
     if not text.startswith("/"):
-        on = ctx.yolo
-        buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
-                 txt_color=th.success if on else th.muted)
+        render_work_mode_footer_widget(tui,buf,r,ctx)
         return
 
     query = text[1:].split(" ")[0]
