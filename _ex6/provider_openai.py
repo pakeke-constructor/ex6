@@ -12,6 +12,13 @@ from _ex6.provider import _log_invoke
 # ---------------------------------------------------------------------------
 
 _CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"  # OpenAI's public Codex OAuth app
+_CODEX_VERSION = "0.81.0"  # codex_cli_rs version we impersonate; bump occasionally
+
+
+def _user_agent():
+    import platform
+    return (f"codex_cli_rs/{_CODEX_VERSION} "
+            f"({platform.system()} {platform.release()}; {platform.machine()})")
 
 
 def _auth_path():
@@ -88,7 +95,7 @@ def _codex_client(access_token, account_id):
             "chatgpt-account-id": account_id,
             "OpenAI-Beta": "responses=experimental",
             "originator": "codex_cli_rs",
-            "User-Agent": "codex_cli_rs/0.81.0 (Windows 11; x86_64)",
+            "User-Agent": _user_agent(),
         },
     )
 

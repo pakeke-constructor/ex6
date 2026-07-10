@@ -68,7 +68,7 @@ GOOD: "Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:"
 # SMART_MODEL = "openai/gpt-5.1-codex-mini"
 # SMART_MODEL = M.SONNET_46.id
 SMART_MODEL = M.OPUS_46.id
-ANALYTICAL_MODEL = M.GPT52_CODEX.id
+ANALYTICAL_MODEL = M.GPT_52_CODEX.id
 
 
 PLANNER_MODEL = M.OPUS_46.id
