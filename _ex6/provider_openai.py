@@ -230,7 +230,12 @@ def render_work_mode_footer(tui, buf, r, ctx):
     buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
              txt_color=th.success if on else th.muted)
 
-    if ctx.invoke_llm is not invoke_llm or "percent" not in _usage:
+    if ctx.invoke_llm is not invoke_llm:
+        return
+
+    if "percent" not in _usage:  # no invoke yet — usage headers unknown
+        msg = "(unknown usage)"
+        buf.puts(x + w - len(msg) - 2, y, msg, txt_color=th.muted)
         return
 
     pct = _usage["percent"]
