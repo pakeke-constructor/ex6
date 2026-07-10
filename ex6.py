@@ -792,6 +792,7 @@ class Context:
     name: str
     model: str
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
+    invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
     messages: list = field(default_factory=list)
     max_tokens: int = 200000
     llm_is_running: bool = False
@@ -885,7 +886,7 @@ class Context:
         return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
     def invoke(self, text, llm_fn=None):
-        llm_fn = llm_fn or invoke_llm
+        llm_fn = llm_fn or self.invoke_llm or invoke_llm
         self.messages.append(Message(role="user", content=text))
         self.llm_is_running = True
         self.stop_early = False

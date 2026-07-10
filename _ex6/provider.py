@@ -188,10 +188,6 @@ def invoke_claude_code(ctx: ex6.Context):
 
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
-    if ctx.model.startswith("cc/"):
-        yield from invoke_claude_code(ctx)
-        return
-
     messages = [msg_to_dict(m, ctx) for m in ctx.messages]
 
     if ex6.is_over_budget():

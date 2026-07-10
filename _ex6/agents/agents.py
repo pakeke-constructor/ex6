@@ -33,7 +33,7 @@ Use context-management only when it buys clarity or recovery.
 - Small/local: read target code, implement, test, done.
 - Broad/ambiguous: understand/map-out problem, think, then implement.
 
-Always check changes afterwards. (Check git diff, run tests, or just read the file(s))
+ALWAYS check changes afterwards. (Check git diff and/or run tests)
 </agent_strategy>
 
 <output_rules>
