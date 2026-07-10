@@ -1394,8 +1394,13 @@ class InputBox:
             self.text = self.text[:self.cursor] + self.text[self._next_word(self.cursor):]
         if inpt.consume('KEY_CTRL_LEFT'): self.cursor = self._prev_word(self.cursor)
         if inpt.consume('KEY_CTRL_RIGHT'): self.cursor = self._next_word(self.cursor)
-        if inpt.consume('KEY_HOME'): self.cursor = 0
-        if inpt.consume('KEY_END'): self.cursor = len(self.text)
+        if inpt.consume('KEY_HOME'):
+            cy, cx = self._cursor_visual(inner_w)
+            self.cursor -= cx
+        if inpt.consume('KEY_END'):
+            cy, cx = self._cursor_visual(inner_w)
+            line = self._wrap(self.text, inner_w)[cy]
+            self.cursor += len(line) - cx
         if inpt.consume('KEY_ENTER') and self.text:
             self.on_submit(self.text)
             self.text, self.cursor = "", 0
