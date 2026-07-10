@@ -247,8 +247,8 @@ def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):
         "=== CONTEXT ===",
     ]
     for m in messages:
-        lines.append(f"[{m['role']}]")
-        c = m['content']
+        lines.append(f"[{m.get('role', m.get('type', '?'))}]")
+        c = m.get('content', m)
         lines.append(c if isinstance(c, str) else json.dumps(c))
         lines.append("")
 

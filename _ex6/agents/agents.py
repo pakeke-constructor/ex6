@@ -1,4 +1,5 @@
 
+from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, ask_user_question, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
@@ -89,24 +90,36 @@ MAIN_TOOLS = [
 
 
 def auto_setup():
-    coder_opus = Context("coder_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=[
+    coder_opus = Context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ])
     cache_manually(coder_opus)
 
-    Context("coder_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
+    Context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ])
 
-    Context("coder_glm", model=M.GLM_LATEST.id, reasoning="high", messages=[
+    Context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=[
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ])
+
+    Context("sub_GPT", model=M.GPT_LATEST.id, reasoning="high", messages=[
+        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ], invoke_llm=invoke_llm_openai)
+
+    Context("sub_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=[
+        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ], invoke_llm=invoke_llm_openai)
 
     # coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
     #     MAIN_SYSTEM_PROMPT,
