@@ -1674,14 +1674,14 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 
 
 @overridable
-def render_work_mode_footer_widget(tui, buf, r, ctx):
+def render_work_mode_footer(tui, buf, r, ctx):
     x, y, w, h = r
     th = get_theme()
     on = ctx.yolo
     buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
                 txt_color=th.success if on else th.muted)
 
-def render_work_mode_footer(tui, buf, r, ctx):
+def render_workmodefooter_and_commands(tui, buf, r, ctx):
     th = get_theme()
     x, y, w, h = r
     text = ctx.get_input_box().get_text()
@@ -1695,7 +1695,7 @@ def render_work_mode_footer(tui, buf, r, ctx):
     """
 
     if not text.startswith("/"):
-        render_work_mode_footer_widget(tui,buf,r,ctx)
+        render_work_mode_footer(tui,buf,r,ctx)
         return
 
     query = text[1:].split(" ")[0]
@@ -1885,7 +1885,7 @@ def _tui_loop(tui: TUI):
         if not state.current.ui_stack and not tui.ui_panel_stack:
             render_work_mode_input(tui, buf, inpt, input_r, input_box)
         buf.hline((0, input_r[1] + input_r[3], term.width, 1), txt_color=div_color)
-        render_work_mode_footer(tui, buf, footer_r, state.current)
+        render_workmodefooter_and_commands(tui, buf, footer_r, state.current)
         if inpt.consume('KEY_ESCAPE'):
             tui.mode = "selection"
         if inpt.consume('KEY_CTRL_X') and state.current.is_running():
