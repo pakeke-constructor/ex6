@@ -366,18 +366,17 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
             if expected != actual:
                 raise ValueError(f"Line {L} has shifted since last read, re-read the file.")
 
-        # assert that 
-        assert_line(start)
-        assert_line(end)
-
         if end == 0:
             if start < 1 or start > len(lines) + 1:
                 raise ValueError(f"Invalid insert position {start} (file has {len(lines)} lines)")
+            assert_line(start)
             new_lines = lines[:]
             new_lines.insert(start - 1, content + '\n')
         else:
             if start < 1 or end > len(lines) or start > end:
                 raise ValueError(f"Invalid range {start}..{end} (file has {len(lines)} lines)")
+            assert_line(start)
+            assert_line(end)
             new_lines = lines[:]
             if content == "":
                 new_lines[start - 1:end] = []
@@ -391,9 +390,12 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
         with open(p, "w") as f:
             f.writelines(new_lines)
-        ctx.mark_file_read(file, list(range(1, len(new_lines) + 1)))
+        ctx.mark_file_read(file)
+        snapshot = ctx.get_line_snapshot(file)
+        for line_no in list(snapshot):
+            if line_no > start:
+                del snapshot[line_no]
         return f"Edited {file}"
-
 
 def glob(ctx: ex6.Context, pattern: str) -> str:
     """Find files matching a glob pattern (recursive). Returns newline-separated paths."""
