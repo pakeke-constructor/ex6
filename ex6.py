@@ -1055,8 +1055,13 @@ class ScreenBuffer:
 
     def puts(self, x, y, text, style=None, txt_color=None, bg_color=None):
         assert '\n' not in text and '\r' not in text, f"puts() got newline in text: {text!r}"
-        for i, c in enumerate(text):
-            self.put(x + i, y, c, style, txt_color, bg_color)
+        if not 0 <= y < self.h: return
+        for i in range(max(0, -x), min(len(text), self.w - x)):
+            xx = x + i
+            self.chars[y][xx] = text[i]
+            self.styles[y][xx] = style
+            self.txt_colors[y][xx] = txt_color
+            self.bg_colors[y][xx] = bg_color
 
     def invalidate(self):
         self._invalidated = True
