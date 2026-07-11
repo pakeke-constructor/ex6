@@ -858,7 +858,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
         cx = x + 3
         cy = y + 1
         description_line = description.replace('\r', ' ').replace('\n', ' ')
-        buf.puts(cx, cy, description_line[:w - 6], txt_color=th.accent_alt, bg_color=None)
+        buf.puts(cx, cy, description_line[:max(0, w - 6)], txt_color=th.accent_alt, bg_color=None)
         buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color=th.text, bg_color=None)
         if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
             result[0] = True
