@@ -24,7 +24,9 @@ class M:
     GPT_5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
     GPT_54            = ModelInfo("openai/gpt-5.4",                  1_050_000, 2.5,  15,   0.25)
     GPT_55            = ModelInfo("openai/gpt-5.5",                  1_050_000, 5,    30,   0.5)
-    GPT_56_SOL      = ModelInfo("openai/gpt-5.6-sol",               250_000, 5, 30, 0.5)
+    GPT_56_SOL        = ModelInfo("openai/gpt-5.6-sol",                250_000, 5,   30, 0.5)
+    GPT_56_TERRA      = ModelInfo("openai/gpt-5.6-terra",              250_000, 2.5, 15, 0.25)
+    GPT_56_LUNA       = ModelInfo("openai/gpt-5.6-luna",               250_000, 1,    6, 0.1)
     GPT_5_MINI        = ModelInfo("openai/gpt-5-mini",                 400_000, 0.25, 2,    0.025)
     GPT_5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
     GPT_52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
@@ -52,6 +54,8 @@ class M:
     OPUS_LATEST: ModelInfo
     SONNET_LATEST: ModelInfo
     GPT_LATEST: ModelInfo
+    GPT_TERRA_LATEST: ModelInfo
+    GPT_LUNA_LATEST: ModelInfo
     CODEX_LATEST: ModelInfo
     GEMINI_LATEST: ModelInfo
     DEEPSEEK_LATEST: ModelInfo
@@ -68,6 +72,8 @@ class M:
 M.OPUS_LATEST = M.OPUS_48
 M.SONNET_LATEST = M.SONNET_5
 M.GPT_LATEST = M.GPT_56_SOL
+M.GPT_TERRA_LATEST = M.GPT_56_TERRA
+M.GPT_LUNA_LATEST = M.GPT_56_LUNA
 M.CODEX_LATEST = M.GPT_53_CODEX
 M.GEMINI_LATEST = M.GEMINI35_FLASH
 M.DEEPSEEK_LATEST = M.DEEPSEEK_V4_PRO

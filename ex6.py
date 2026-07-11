@@ -567,14 +567,17 @@ def _coerce_to_type_hint(val, type_hint):
         except Exception:
             return val, False
 
-    if origin is not tuple:
-        return val, False
+    if (origin is list or type_hint is list) and isinstance(val, tuple):
+        val = list(val)
+        return val, _strong_isinstance(val, type_hint)
 
+    if origin is not tuple and type_hint is not tuple:
+        return val, False
     if isinstance(val, list):
         val = tuple(val)
     if not isinstance(val, tuple):
         return val, False
-    if not args:
+    if not val or not args:
         return val, True
 
     item_hints = args
