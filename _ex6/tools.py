@@ -977,6 +977,8 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     bp = _get_bash()
     if not bp:
         return "ERROR: bash not found (install Git for Windows)"
+    denial = approve(ctx, f"Run bash: {command}")
+    if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
     try:
         result = subprocess.run([bp, "-c", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
         out = result.stdout + result.stderr
@@ -995,6 +997,8 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     exe = shutil.which("pwsh") or shutil.which("powershell")
     if not exe:
         return "ERROR: powershell not found"
+    denial = approve(ctx, f"Run PowerShell: {command}")
+    if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
     try:
         result = subprocess.run([exe, "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
         out = result.stdout + result.stderr
