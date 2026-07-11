@@ -254,7 +254,7 @@ def set_daily_limit(limit: float):
     _daily_limit = limit
 
 def get_daily_limit() -> float:
-    return _daily_limit or 1000
+    return 1000 if _daily_limit is None else _daily_limit
 
 def _ensure_cost_loaded():
     """Load/reset daily cost from disk. Must be called under _cost_lock."""
