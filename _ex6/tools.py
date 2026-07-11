@@ -836,7 +836,7 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     return len(visible) + (1 if truncated else 0)
 
 
-def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None:
+def approve(ctx: ex6.Context, description: str, render_extra=None, height=None) -> str | None:
     """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason).
     render_extra: optional fn(buf, x, y, w, h) called below the chrome to render extra info."""
     if ctx.yolo:
@@ -851,25 +851,26 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
     input_draw = ex6.make_input(on_submit)
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
-        x, y, w, h = r
         th = ex6.get_theme()
-        buf.fill(r, char=' ', bg_color=None)
-        buf.rect(r, txt_color=th.muted)
-        cx = x + 3
-        cy = y + 1
-        description_line = description.replace('\r', ' ').replace('\n', ' ')
-        buf.puts(cx, cy, description_line[:max(0, w - 6)], txt_color=th.accent_alt, bg_color=None)
-        buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color=th.text, bg_color=None)
+        panel = ex6.Region(*r)
+        if height is not None:
+            panel = ex6.Region(panel[0], panel[1], panel[2], min(panel[3], height))
+        content = panel.shrink(3, 1)
+
+        buf.fill(panel, char=' ', bg_color=None)
+        buf.rect_line(panel, txt_color=th.accent)
+        buf.puts(content[0], content[1], description[:content[2]], txt_color=th.accent_alt, style='bold')
+        buf.puts(content[0], content[1] + 1, "ENTER approve | type reason + ENTER to deny"[:content[2]], txt_color=th.muted)
         if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
             result[0] = True
             ctx.ui_stack.pop()
             return
-        input_draw(buf, inpt, (cx, cy + 2, w - 6, 1))
+        input_r = ex6.Region(content[0], content[1] + 2, content[2], 1)
+        input_draw(buf, inpt, input_r, txt_color=th.warning)
         if render_extra:
-            extra_y = cy + 4
-            extra_h = h - extra_y + y - 1
-            if extra_h > 0:
-                render_extra(buf, cx, extra_y, w - 6, extra_h)
+            extra_r = ex6.Region(content[0], content[1] + 4, content[2], max(0, content[3] - 4))
+            if extra_r[3] > 0:
+                render_extra(buf, *extra_r)
 
     ctx.push_ui(draw)
 
@@ -971,6 +972,21 @@ Usage: safe_cwd("tag_name")"""
     return safe_cwd
 
 
+def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
+    command_lines = command.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+
+    def render_command(buf, x, y, w, h):
+        th = ex6.get_theme()
+        area = ex6.Region(x, y, w, h)
+        label_r, command_r = area.split_vertical(1, max(2, len(command_lines) + 2))
+        buf.puts(label_r[0], label_r[1], "COMMAND", txt_color=th.muted, style='bold')
+        command_r = ex6.Region(command_r[0], command_r[1], command_r[2], min(command_r[3], len(command_lines) + 2))
+        buf.rect_line(command_r, txt_color=th.warning)
+        buf.print_contained('\n'.join(command_lines), command_r.shrink(2, 1), txt_color=th.warning, wrap=False)
+
+    return approve(ctx, f"{shell.upper()} APPROVAL", render_extra=render_command, height=len(command_lines) + 9)
+
+
 def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     """Run a bash/shell command and return its output (stdout + stderr combined).
     Use for: running tests, checking git status, installing packages, etc.
@@ -978,7 +994,7 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     bp = _get_bash()
     if not bp:
         return "ERROR: bash not found (install Git for Windows)"
-    denial = approve(ctx, f"Run bash: {command}")
+    denial = _approve_command(ctx, "bash", command)
     if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
     try:
         result = subprocess.run([bp, "-c", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
@@ -998,7 +1014,7 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     exe = shutil.which("pwsh") or shutil.which("powershell")
     if not exe:
         return "ERROR: powershell not found"
-    denial = approve(ctx, f"Run PowerShell: {command}")
+    denial = _approve_command(ctx, "PowerShell", command)
     if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
     try:
         result = subprocess.run([exe, "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
