@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from blessed import Terminal
 from typing import Union, Tuple, List, Optional, Literal, Callable
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from typing import Optional,Any
 import threading
 import inspect
@@ -78,12 +78,12 @@ OutputRendererFn = Callable[[list, 'Message', 'Context'], None]  # fn(lines, msg
 def after_tool_calls(fn):
     """
     Called after tool execution, before the next LLM turn.
-    fn(ctx) -> None. Append messages to ctx.messages to inject reminders, etc.
+    fn(ctx) -> None. Use ctx.append_message() to inject reminders, etc.
 
     @ex6.after_tool_calls
     def token_reminder(ctx):
         if ctx.llm_result and ctx.llm_result.input_tokens > 150000:
-            ctx.messages.append(ex6.Message(role="user", content="Wrap it up."))
+            ctx.append_message(ex6.Message(role="user", content="Wrap it up."))
     """
     _after_tool_calls.append(fn)
     return fn
@@ -184,7 +184,7 @@ def _build_ctx_dump_lines(ctx, leading_blanks=0):
     if leading_blanks:
         lines.extend([""] * leading_blanks)
     lines.append(f"=== Context: {ctx.name} ({ctx.model}) ===\n")
-    for i, msg in enumerate(ctx.messages):
+    for i, msg in enumerate(ctx.get_messages()):
         label = msg.role
         if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
         lines.append(f"--- [{i}] {label} ---")
@@ -729,9 +729,13 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     try:
         for tc in llm_result.tool_calls:
             fn = tools.get(tc["name"])
-            if not fn: continue
             result = {"id": tc["id"], "value": None, "error": None}
             results.append(result)
+            if not fn:
+                err = f"Unknown tool: {tc['name']}"
+                result["value"] = f"ERROR: {err}"
+                result["error"] = err
+                continue
             def run_tool(fn=fn, tc=tc, result=result):
                 try:
                     args = tc["args"]
@@ -764,7 +768,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
         if len(val) > MAX_TOOL_OUTPUT_CHARACTERS:
             val = f"ERROR: Tool output too large ({len(val)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS})."
             r["error"] = val
-        ctx.messages.append(Message(role="tool", content=val, tool_call_id=r["id"]))
+        ctx.append_message(Message(role="tool", content=val, tool_call_id=r["id"]))
     return True
 
 
@@ -796,7 +800,7 @@ class Context:
     model: str
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
     invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
-    messages: list = field(default_factory=list)
+    messages: InitVar[Optional[list[Message]]] = None
     max_tokens: int = 200000
     llm_is_running: bool = False
     llm_current_output: list = field(default_factory=list)
@@ -816,7 +820,8 @@ class Context:
     data: StrictDataDict = field(default_factory=StrictDataDict) # str/int/float/bool/None only. Use data_volatile for complex objects.
     data_volatile: dict = field(default_factory=dict) # cleared on fork/clear. For complex/mutable objects.
 
-    _msg_lock: threading.Lock = field(default_factory=threading.Lock)
+    _messages: list = field(default_factory=list, init=False, repr=False)
+    _msg_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
@@ -826,16 +831,30 @@ class Context:
     _input_box: Optional['InputBox'] = None
     _tools_invalidated: bool = False
 
+    def get_messages(self) -> tuple:
+        with self._msg_lock:
+            return tuple(self._messages)
+
+    def edit_messages(self, fn):
+        with self._msg_lock:
+            fn(self._messages)
+
+    def append_message(self, message: Message):
+        with self._msg_lock:
+            self._messages.append(message)
+
     def token_count(self) -> int:
         if self.llm_result:
             return self.llm_result.input_tokens + self.llm_result.output_tokens
-        return sum(get_token_estimate(m.content) for m in self.messages if isinstance(m.content, str))
+        return sum(get_token_estimate(m.content) for m in self.get_messages() if isinstance(m.content, str))
 
     def is_token_count_estimate(self) -> bool:
         "If no llmResult, then we are estimating the token-count via the //3 trick."
         return not self.llm_result
 
-    def __post_init__(self):
+    def __post_init__(self, messages):
+        if messages:
+            self._messages.extend(messages)
         state.contexts[self.name] = self
 
     def get_input_box(self):
@@ -880,7 +899,7 @@ class Context:
 
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
-        for m in self.messages:
+        for m in self.get_messages():
             for fn in m.tools:
                 tools[fn.__name__] = fn
         return tools
@@ -890,7 +909,7 @@ class Context:
 
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or self.invoke_llm or invoke_llm
-        self.messages.append(Message(role="user", content=text))
+        self.append_message(Message(role="user", content=text))
         self.llm_is_running = True
         self.stop_early = False
         self._tools_invalidated = False
@@ -907,7 +926,7 @@ class Context:
                     self.llm_result = item
             content = "".join(c.content for c in self.llm_current_output if c.type == "text")
             tool_calls = self.llm_result.tool_calls if self.llm_result else None
-            self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
+            self.append_message(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
 
         def run():
             try:
@@ -933,10 +952,12 @@ class Context:
         Raises if LLM is actively streaming."""
         if self.llm_is_running and not self.llm_suspended:
             raise RuntimeError("Cannot truncate while LLM is streaming")
-        removed = self.messages[index:]
-        self.messages = self.messages[:index]
+        def truncate_messages(messages):
+            removed = messages[index:]
+            del messages[index:]
+            self._drop_tool_rows(removed)
+        self.edit_messages(truncate_messages)
         self._tools_invalidated = True
-        self._drop_tool_rows(removed)
 
     def _drop_tool_rows(self, removed):
         for m in removed:
@@ -946,13 +967,14 @@ class Context:
     def clear(self):
         self.stop_early = True
         self._tools_invalidated = True
-        i = 0
-        while i < len(self.messages) and self.messages[i].role == "system":
-            i += 1
-        # Hard reset — bypass truncate() guard, clear() is a forced wipe
-        removed = self.messages[i:]
-        self.messages = self.messages[:i]
-        self._drop_tool_rows(removed)
+        def clear_messages(messages):
+            i = 0
+            while i < len(messages) and messages[i].role == "system":
+                i += 1
+            removed = messages[i:]
+            del messages[i:]
+            self._drop_tool_rows(removed)
+        self.edit_messages(clear_messages)
         self.ui_stack = []
         self.llm_is_running = False
         self.llm_suspended = False
@@ -965,8 +987,10 @@ class Context:
         self.data_volatile = {}
 
     def fork(self, new_name: Optional[str] = None) -> 'Context':
+        messages = copy.deepcopy(self.get_messages())
         cpy = copy.copy(self)
-        cpy.messages = copy.deepcopy(self.messages)
+        cpy._msg_lock = threading.Lock()
+        cpy._messages = list(messages)
         cpy._read_hashes = dict(self._read_hashes)
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
         cpy.data = StrictDataDict(self.data)
@@ -978,7 +1002,7 @@ class Context:
         cpy.llm_is_running = False
         cpy.name = _ensure_unique_name(new_name or self.name)
         cpy.parent = self.name
-        cpy.__post_init__()
+        cpy.__post_init__(None)
         return cpy
 
     def push_ui(self, draw_fn):
@@ -1527,7 +1551,7 @@ def render_selection_right(tui, buf, r):
 
     buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
     row = y + 4
-    msgs = ctx.messages or []
+    msgs = ctx.get_messages()
     for msg in msgs:
         if row >= y + h - 1: break
         label = msg.overview or msg.role
@@ -1575,10 +1599,11 @@ def render_work_mode(tui, buf, inpt, r):
     ctx = state.current
     th = get_theme()
 
-    tool_msgs = {m.tool_call_id: m for m in ctx.messages if m.role == "tool"}
+    messages = ctx.get_messages()
+    tool_msgs = {m.tool_call_id: m for m in messages if m.role == "tool"}
 
     message_outputs = []
-    for msg in ctx.messages:
+    for msg in messages:
         if msg.role == "tool":
             continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)

@@ -100,7 +100,8 @@ def websearch_agent(ctx: ex6.Context, question: str) -> str:
     sub.invoke(question)
     while sub.llm_is_running:
         time.sleep(0.05)
-    result = sub.messages[-1].content if sub.messages else "No answer."
+    messages = sub.get_messages()
+    result = messages[-1].content if messages else "No answer."
     del ex6.state.contexts[sub.name]
     return result
 

@@ -21,7 +21,7 @@ def pop(n: Optional[int]):
     if not ctx or ctx.is_running(): return
     if n is None: n = 1
     if n <= 0: return
-    user_idxs = [i for i, m in enumerate(ctx.messages) if m.role == "user"]
+    user_idxs = [i for i, m in enumerate(ctx.get_messages()) if m.role == "user"]
     n = min(n, len(user_idxs))
     if n == 0: return
     ctx.truncate(user_idxs[-n])
@@ -70,8 +70,8 @@ def crash():
 def _llm_one_shot(model: str, system: str, user: str) -> str:
     """Synchronously run one LLM call. Returns assistant text."""
     ctx = ex6.Context(name="__tmp_cm__", model=model, reasoning="none")
-    ctx.messages.append(ex6.Message(role="system", content=system))
-    ctx.messages.append(ex6.Message(role="user", content=user))
+    ctx.append_message(ex6.Message(role="system", content=system))
+    ctx.append_message(ex6.Message(role="user", content=user))
     result_text = []
     for item in ex6.invoke_llm(ctx):
         if isinstance(item, ex6.ResponseChunk) and item.type == "text":

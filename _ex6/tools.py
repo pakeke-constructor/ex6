@@ -857,7 +857,8 @@ def approve(ctx: ex6.Context, description: str, render_extra=None) -> str | None
         buf.rect(r, txt_color=th.muted)
         cx = x + 3
         cy = y + 1
-        buf.puts(cx, cy,   description, txt_color=th.accent_alt, bg_color=None)
+        description_line = description.replace('\r', ' ').replace('\n', ' ')
+        buf.puts(cx, cy, description_line[:w - 6], txt_color=th.accent_alt, bg_color=None)
         buf.puts(cx, cy+1, "ENTER approve | type reason + ENTER to deny", txt_color=th.text, bg_color=None)
         if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
             result[0] = True
@@ -1117,7 +1118,8 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
     try:
         if sub.llm_result and sub.llm_result.error:
             raise RuntimeError(f"explore_agent failed: {sub.llm_result.error}")
-        return sub.messages[-1].content if sub.messages else ""
+        messages = sub.get_messages()
+        return messages[-1].content if messages else ""
     finally:
         ex6.state.contexts.pop(sub.name, None)
 
@@ -1143,7 +1145,7 @@ def _guard_fingerprint(tool_name: str, kwargs: dict) -> str:
 def _count_matching_tool_outputs(ctx: ex6.Context, fp: str, output: str) -> int:
     tc_map = {}
     count = 0
-    for m in ctx.messages:
+    for m in ctx.get_messages():
         if m.role == "assistant" and m.tool_calls:
             for tc in m.tool_calls:
                 tc_fp = _guard_fingerprint(tc.get("name", ""), tc.get("args", {}))
@@ -1192,7 +1194,7 @@ def guard_repeat_calls(fn):
 def add_tool_repetition_guard(ctx: ex6.Context, guard: Optional[list] = None):
     """Wrap selected tools in this context to block repeated identical calls (3rd+)."""
     names = None if guard is None else {fn.__name__ for fn in guard}
-    for m in ctx.messages:
+    for m in ctx.get_messages():
         if not getattr(m, "tools", None):
             continue
         new_tools = []

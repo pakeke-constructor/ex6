@@ -23,7 +23,7 @@ def cache_manually(ctx: ex6.Context, ttl="1h"):
     import time
     # Fingerprint: hash system messages + tools
     parts = []
-    for m in ctx.messages:
+    for m in ctx.get_messages():
         if m.role == "system":
             c = m.get_msg(ctx)
             parts.append(c if isinstance(c, str) else json.dumps(c))
@@ -71,7 +71,7 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 @ex6.override
 def invoke_llm(ctx: ex6.Context):
-    messages = [msg_to_dict(m, ctx) for m in ctx.messages]
+    messages = [msg_to_dict(m, ctx) for m in ctx.get_messages()]
 
     if ex6.is_over_budget():
         result = ex6.LLMResult(error=f"daily budget exceeded (${ex6.get_daily_cost():.2f}/${ex6.get_daily_limit():.2f})")

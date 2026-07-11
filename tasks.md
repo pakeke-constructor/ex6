@@ -145,6 +145,10 @@ Be kinda like claude-code.
 
 - Enforce invariant: only UI thread mutates UI stacks/panels.
 - Enforce invariant: mutating tools are serialized or explicitly marked safe for concurrency.
+
+- `description_line[:w - 6]` (`_ex6/tools.py:861`) behaves incorrectly when `w < 6` because negative slice retains most text. Use `[:
+max(0, w - 6)]`.
+
 - Return tool error messages for unknown tool calls instead of silently ignoring.
 - Make gitignore handling per `ctx.cwd`, not import-time process cwd.
 - Update README: `_ex6` plugin folder, current features, remove stale cut-off text.

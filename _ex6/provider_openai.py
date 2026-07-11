@@ -104,7 +104,7 @@ def _to_responses_input(ctx: ex6.Context):
     """Convert ex6 chat messages -> (instructions, Responses `input` items)."""
     instructions = []
     items = []
-    for m in ctx.messages:
+    for m in ctx.get_messages():
         c = m.get_msg(ctx)
         if m.role == "system":
             instructions.append(c if isinstance(c, str) else json.dumps(c))
