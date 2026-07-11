@@ -910,17 +910,20 @@ class Context:
             self.messages.append(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
 
         def run():
-            should_loop = True
-            while should_loop and not self.stop_early:
-                do_llm()
-                if not self.llm_result: break
-                self.llm_suspended = True
-                should_loop = call_tools(self, self.llm_result)
-                if should_loop:
-                    for fn in _after_tool_calls: fn(self)
+            try:
+                should_loop = True
+                while should_loop and not self.stop_early:
+                    do_llm()
+                    if not self.llm_result: break
+                    self.llm_suspended = True
+                    should_loop = call_tools(self, self.llm_result)
+                    if should_loop:
+                        for fn in _after_tool_calls: fn(self)
+                    self.llm_suspended = False
+            finally:
+                self.llm_is_running = False
                 self.llm_suspended = False
-            self.llm_is_running = False
-            self.last_invoke_time_end = time.time()
+                self.last_invoke_time_end = time.time()
 
         threading.Thread(target=run, daemon=True).start()
     
