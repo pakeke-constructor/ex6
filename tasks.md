@@ -3,7 +3,8 @@
 # tasks / goals:
 
 Overarching goal:  
-Be kinda like claude-code.
+Be a harness where every token is 100% explicit.
+Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
