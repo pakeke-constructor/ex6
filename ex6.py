@@ -1521,11 +1521,12 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
 @overridable
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
     th = get_theme()
-    ratio = ctx.token_count() / ctx.max_tokens if ctx.max_tokens else 0
+    token_count = ctx.token_count()
+    ratio = token_count / ctx.max_tokens if ctx.max_tokens else 0
     filled = int(ratio * (bar_w - 2))
     empty = (bar_w - 2) - filled
     approx = "~" if ctx.is_token_count_estimate() else ""
-    tok_str = f"{approx}{ctx.token_count()//1000}k/{ctx.max_tokens//1000}k"
+    tok_str = f"{approx}{token_count//1000}k/{ctx.max_tokens//1000}k"
     buf.puts(x, y, "[", txt_color=th.muted)
     buf.puts(x + 1, y, "█" * filled, txt_color=th.accent_alt)
     buf.puts(x + 1 + filled, y, "-" * empty, txt_color=th.muted)

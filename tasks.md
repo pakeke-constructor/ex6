@@ -151,8 +151,6 @@ max(0, w - 6)]`.
 
 - Return tool error messages for unknown tool calls instead of silently ignoring.
 - Make gitignore handling per `ctx.cwd`, not import-time process cwd.
-- Update README: `_ex6` plugin folder, current features, remove stale cut-off text.
-- Add tiny tests for command dispatch, type/schema conversion, `edit_file_lines`, plugin loading order.
 
 
 THEN: Oli, you could use ex6 to optimize and organize your life a bit more.
