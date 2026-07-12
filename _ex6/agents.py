@@ -4,7 +4,7 @@ from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, ask_user_question, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.skills import load_skill
-from _ex6.web.web_tools import web_search, websearch_agent
+from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
 import ex6
 from ex6 import Context, Message
@@ -81,7 +81,7 @@ MAIN_TOOLS = [
     read_file, glob, search, read_headers, read_body,
     write_file, edit_file, edit_file_lines,
     ask_user_question,
-    COMMANDLINE_TOOL, explore_agent, web_search, websearch_agent,
+    COMMANDLINE_TOOL, explore_agent, websearch_agent,
     git_working_tree,
     plan_read, plan_done, plan_list,
     load_skill,

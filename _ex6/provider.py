@@ -199,7 +199,7 @@ def invoke_llm(ctx: ex6.Context):
     if provider_cost is not None:
         cost = provider_cost
     else:
-        info = M.get(ctx.model)
+        info = M.get(ctx.model.split(":")[0])  # strip ":online" web-search suffix
         if info is None:
             raise ValueError(f"no pricing for model '{ctx.model}' — add it to M in provider.py")
         uncached_input = input_tokens - cached_tokens - cache_write_tokens
