@@ -836,7 +836,7 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     return len(visible) + (1 if truncated else 0)
 
 
-def approve(ctx: ex6.Context, description: str, render_extra=None, height=None) -> str | None:
+def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, bottom=False) -> str | None:
     """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason).
     render_extra: optional fn(buf, x, y, w, h) called below the chrome to render extra info."""
     if ctx.yolo:
@@ -854,7 +854,9 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None) 
         th = ex6.get_theme()
         panel = ex6.Region(*r)
         if height is not None:
-            panel = ex6.Region(panel[0], panel[1], panel[2], min(panel[3], height))
+            panel_h = min(panel[3], height)
+            panel_y = panel[1] + panel[3] - panel_h if bottom else panel[1]
+            panel = ex6.Region(panel[0], panel_y, panel[2], panel_h)
         content = panel.shrink(3, 1)
 
         buf.fill(panel, char=' ', bg_color=None)
@@ -984,7 +986,7 @@ def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
         buf.rect_line(command_r, txt_color=th.warning)
         buf.print_contained('\n'.join(command_lines), command_r.shrink(2, 1), txt_color=th.warning, wrap=False)
 
-    return approve(ctx, f"{shell.upper()} APPROVAL", render_extra=render_command, height=len(command_lines) + 9)
+    return approve(ctx, f"{shell.upper()} APPROVAL", render_extra=render_command, height=len(command_lines) + 9, bottom=True)
 
 
 def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
