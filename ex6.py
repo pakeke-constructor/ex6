@@ -684,13 +684,19 @@ SPIN = "/-\\|"
 
 def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwargs=None):
     th = get_theme()
-    icon, color = {'running': (SPIN[int(time.time()*8)%4], th.warning), 'error': ('x', th.error)}.get(status, ('v', th.success))
+    if status == 'running':
+        icon, color = SPIN[int(time.time() * 8) % 4], th.warning
+    elif status == 'error':
+        icon, color = 'x', th.error
+    else:
+        icon, color = 'v', th.success
     buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
     col = x + 4
+    end = x + w
     def _put(s, clr):
         nonlocal col
         for ch in s:
-            if col >= x + w: return
+            if col >= end: return
             buf.put(col, y, ch, txt_color=clr)
             col += 1
     _put(name + '(', th.accent)
@@ -701,14 +707,15 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
         if len(s) > 40: s = s[:40] + '...'
         _put(s, value_color)
     if args and kwargs: _put(', ', th.accent)
-    for i, (k, v) in enumerate(kwargs.items() if kwargs else []):
-        if i: _put(', ', th.accent)
-        _put(f'{k}=', th.accent)
-        s = repr(v)
-        if len(s) > 40: s = s[:40] + '...'
-        _put(s, value_color)
+    if kwargs:
+        for i, (k, v) in enumerate(kwargs.items()):
+            if i: _put(', ', th.accent)
+            _put(f'{k}=', th.accent)
+            s = repr(v)
+            if len(s) > 40: s = s[:40] + '...'
+            _put(s, value_color)
     _put(')', th.accent)
-    if detail:
+    if detail and '\n' not in detail:
         col += 1
         buf.print_contained(str(detail), (col, y, x + w - col, 1), txt_color=th.muted, wrap=False, newlines=False)
 
