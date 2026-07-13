@@ -70,8 +70,8 @@ def _refresh_codex_token():
 
 
 # Subscription usage, scraped from the Codex rate-limit response headers.
-# primary = 5h window. Populated on every invoke; read by the footer override.
-_usage = {}  # {"percent", "reset_after", "ts"}
+# Window lengths vary by active limit. Populated on every invoke; read by footer.
+_usage = {}
 
 
 def _capture_usage(headers):
@@ -82,7 +82,9 @@ def _capture_usage(headers):
     _usage.update(
         percent=float(pct),
         reset_after=float(headers.get("x-codex-primary-reset-after-seconds", 0)),
-        weekly=float(headers.get("x-codex-secondary-used-percent", 0)),
+        window=float(headers.get("x-codex-primary-window-minutes", 0)),
+        secondary=float(headers.get("x-codex-secondary-used-percent", 0)),
+        secondary_window=float(headers.get("x-codex-secondary-window-minutes", 0)),
         ts=time.time(),
     )
 
@@ -216,7 +218,10 @@ def invoke_llm(ctx: ex6.Context):
 
 def _fmt_reset(secs):
     secs = max(0, int(secs))
-    h, m = secs // 3600, (secs % 3600) // 60
+    days, remainder = divmod(secs, 86400)
+    h, m = remainder // 3600, (remainder % 3600) // 60
+    if days:
+        return f"{days}d {h}h"
     return f"{h}h{m:02d}m" if h else f"{m}m"
 
 
@@ -241,11 +246,15 @@ def render_work_mode_footer(tui, buf, r, ctx):
     pct = _usage["percent"]
     remaining = _usage["reset_after"] - (time.time() - _usage["ts"])
     filled = min(10, max(0, round(pct / 10)))
-    mid = f" {pct:.0f}% resets in {_fmt_reset(remaining)}"
-    weekly = f"  ({_usage['weekly']:.0f}% weekly used)"
-    bx = x + w - (10 + len(mid) + len(weekly)) - 2
+    days = _usage["window"] / 1440
+    window = f"{days:g}d" if days >= 1 else f"{_usage['window'] / 60:g}h"
+    mid = f" {pct:.0f}% used / {window}, resets in {_fmt_reset(remaining)}"
+    secondary = ""
+    if _usage["secondary_window"]:
+        secondary = f"  ({_usage['secondary']:.0f}% secondary used)"
+    bx = x + w - (10 + len(mid) + len(secondary)) - 2
     buf.puts(bx, y, "█" * filled, txt_color=th.accent)
     buf.puts(bx + filled, y, "░" * (10 - filled), txt_color=th.muted)
     buf.puts(bx + 10, y, mid, txt_color=th.accent_alt)
-    buf.puts(bx + 10 + len(mid), y, weekly, txt_color=th.muted)
+    buf.puts(bx + 10 + len(mid), y, secondary, txt_color=th.muted)
 
