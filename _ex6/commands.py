@@ -9,7 +9,7 @@ import ex6
 @ex6.command
 def clr(name: Optional[str]):
     'Clear context messages.'
-    ctx = ex6.state.contexts.get(name) if name else ex6.state.current
+    ctx = ex6.get_context(name) if name else ex6.get_current()
     if not ctx: return
     ctx.clear()
 
@@ -17,7 +17,7 @@ def clr(name: Optional[str]):
 @ex6.command
 def pop(n: Optional[int]):
     'Pop last N user messages and everything after each cutoff.'
-    ctx = ex6.state.current
+    ctx = ex6.get_current()
     if not ctx or ctx.is_running(): return
     if n is None: n = 1
     if n <= 0: return
@@ -30,17 +30,15 @@ def pop(n: Optional[int]):
 @ex6.command
 def delete(name: Optional[str]):
     'Delete a context.'
-    ctx = ex6.state.contexts.get(name) if name else ex6.state.current
+    ctx = ex6.get_context(name) if name else ex6.get_current()
     if not ctx: return
-    del ex6.state.contexts[ctx.name]
-    if ex6.state.current is ctx:
-        ex6.state.current = None
+    ex6.remove_context(ctx)
 
 
 @ex6.command
 def fork(name: Optional[str]):
     'Fork current context.'
-    ctx = ex6.state.current
+    ctx = ex6.get_current()
     if not ctx: return
     ctx.fork(name)
 
@@ -48,7 +46,7 @@ def fork(name: Optional[str]):
 @ex6.command
 def stop():
     'Stop running LLM.'
-    ctx = ex6.state.current
+    ctx = ex6.get_current()
     if ctx and ctx.is_running():
         ctx.stop_early = True
 
@@ -56,7 +54,7 @@ def stop():
 @ex6.command
 def yolo():
     'Toggle auto-approve tools.'
-    ctx = ex6.state.current
+    ctx = ex6.get_current()
     if not ctx: return
     ctx.yolo = not ctx.yolo
 
@@ -76,7 +74,7 @@ def _llm_one_shot(model: str, system: str, user: str) -> str:
     for item in ex6.invoke_llm(ctx):
         if isinstance(item, ex6.ResponseChunk) and item.type == "text":
             result_text.append(item.content)
-    del ex6.state.contexts["__tmp_cm__"]
+    ex6.remove_context(ctx)
     return "".join(result_text).strip()
 
 
@@ -135,7 +133,7 @@ Summarize ALL important findings, decisions, and file locations. Keep any files 
 @ex6.command
 def c(additional_msg: Optional[str]):
     'Invokes agent, asking it to compact/condense itself.'
-    ctx = ex6.state.current
+    ctx = ex6.get_current()
     if not ctx: return
     tokens = ctx.token_count()
     estimate_note = " (estimated)" if ctx.is_token_count_estimate() else ""
@@ -155,7 +153,7 @@ Otherwise, if the code is clean and minimal; that's fine, carry on.
 @ex6.command
 def smp(additional_msg: Optional[str]):
     'Invokes agent, asking it to attempt to simpllfy or shorten recent code'
-    ctx = ex6.state.current
+    ctx = ex6.get_current()
     if not ctx: return
     msg = SMP
     if additional_msg:

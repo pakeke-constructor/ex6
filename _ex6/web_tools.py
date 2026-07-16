@@ -34,4 +34,4 @@ def websearch_agent(ctx: ex6.Context, question: str) -> str:
         messages = sub.get_messages()
         return messages[-1].content if messages else "No answer."
     finally:
-        ex6.state.contexts.pop(sub.name, None)
+        ex6.remove_context(sub)

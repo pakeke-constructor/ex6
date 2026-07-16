@@ -58,7 +58,7 @@ Context("coder", messages=[
 
 
 
-ex6.state.current = c1
+ex6.set_current(c1)
 
 
 

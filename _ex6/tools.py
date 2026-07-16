@@ -1139,7 +1139,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         messages = sub.get_messages()
         return messages[-1].content if messages else ""
     finally:
-        ex6.state.contexts.pop(sub.name, None)
+        ex6.remove_context(sub)
 
 
 def _normalize_guard_value(v):

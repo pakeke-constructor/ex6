@@ -64,7 +64,7 @@ def draw_cube(buf, cx, cy, size, t, bg='black'):
 def render_work_mode(tui, buf, inpt, r):
     _orig_render_work_mode(tui, buf, inpt, r)
 
-    ctx = ex6.state.current
+    ctx = tui.current
     if not ctx.is_running():
         return
 

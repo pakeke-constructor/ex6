@@ -173,7 +173,7 @@ def dbg():
 @command
 def ctx():
     enter_scroll_mode()
-    ctx = state.current
+    ctx = get_current()
     if not ctx:
         print("No active context."); return
     print("\n".join(_build_ctx_dump_lines(ctx, leading_blanks=5)))
@@ -212,7 +212,7 @@ def _build_ctx_dump_lines(ctx, leading_blanks=0):
 
 @command
 def dmp():
-    ctx = state.current
+    ctx = get_current()
     if not ctx: return
     lines = _build_ctx_dump_lines(ctx)
     with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
@@ -351,12 +351,6 @@ class Theme:
     md_bold: str = "bright_white"
 
 
-@dataclass
-class AppState:
-    contexts: dict[str,Context] = field(default_factory=dict)
-    current: 'Context' = None  # pyright: ignore - always valid when contexts is non-empty
-
-
 
 _tui = None
 _theme = Theme()
@@ -367,6 +361,7 @@ def run_tui():
     assert _tui is None, "TUI already running"
     _tui = TUI()
     try:
+        _load_plugins()
         _run_tui_loop(_tui)
     finally:
         _tui = None
@@ -374,6 +369,40 @@ def run_tui():
 
 def get_tui():
     return _tui
+
+
+def get_current():
+    tui = get_tui()
+    return tui.current if tui is not None else None
+
+
+def set_current(ctx):
+    tui = get_tui()
+    if tui is not None:
+        tui.current = ctx
+
+
+def add_context(ctx):
+    tui = get_tui()
+    if tui is not None and ctx not in tui.contexts:
+        tui.contexts.append(ctx)
+
+
+def get_context(name):
+    tui = get_tui()
+    if tui is None:
+        return None
+    return next((c for c in tui.contexts if c.name == name), None)
+
+
+def remove_context(ctx):
+    tui = get_tui()
+    if tui is None:
+        return
+    if ctx in tui.contexts:
+        tui.contexts.remove(ctx)
+    if tui.current is ctx:
+        tui.current = tui.contexts[0] if tui.contexts else None
 
 
 def get_theme() -> Theme:
@@ -385,9 +414,6 @@ def set_theme(th):
     _theme = th
 
 
-
-
-state = AppState()
 
 def push_ui_panel(draw_fn):
     tui = get_tui()
@@ -473,18 +499,6 @@ class ToolCall:
     status: str = "running"
     detail: Optional[str] = None
 
-
-def _ensure_unique_name(name):
-    if name not in state.contexts:
-        return name
-    # otherwise, search for new name
-    while True:
-        last = name[-1]
-        if last.isdigit() and last != '9': name = name[:-1] + str(int(last) + 1)
-        elif last == '9': name = name + '0'
-        else: name = name + '1'
-        if name not in state.contexts: break
-    return name
 
 
 def _resolve_type_hint(h):
@@ -862,7 +876,7 @@ class Context:
     def __post_init__(self, messages):
         if messages:
             self._messages.extend(messages)
-        state.contexts[self.name] = self
+        add_context(self)
 
     def get_input_box(self):
         if self._input_box is None:
@@ -1007,7 +1021,7 @@ class Context:
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
-        cpy.name = _ensure_unique_name(new_name or self.name)
+        cpy.name = new_name or self.name
         cpy.parent = self.name
         cpy.__post_init__(None)
         return cpy
@@ -1021,8 +1035,6 @@ def _ctx_input_submit(ctx, text):
         dispatch_command(text)
     elif not ctx.is_running():
         ctx.invoke(text)
-
-
 
 
 
@@ -1487,7 +1499,7 @@ def make_input(on_submit):
 @overridable
 def render_selection_mode_context_name(tui, buf, ctx, x, y):
     th = get_theme()
-    selected = ctx is state.current
+    selected = ctx is tui.current
     approx = "~" if ctx.is_token_count_estimate() else ""
     toks = f" ({approx}{ctx.token_count()//1000}k)"
     spin = "/—\\|"[int(time.time() * 12) % 4]
@@ -1509,22 +1521,22 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
     th = get_theme()
     buf.rect_line(r, txt_color=th.accent)
 
-    ctxs = sorted(state.contexts.values(), key=lambda c: c.name)
-    idx = next((i for i, c in enumerate(ctxs) if c is state.current), 0)
+    ctxs = sorted(tui.contexts, key=lambda c: c.name)
+    idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
 
     if allow_nav:
         if inpt.consume('KEY_UP') and idx > 0:
-            state.current = ctxs[idx - 1]
+            tui.current = ctxs[idx - 1]
         if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
-            state.current = ctxs[idx + 1]
+            tui.current = ctxs[idx + 1]
         if inpt.consume('k', 'w') and idx > 0:
-            state.current = ctxs[idx - 1]
+            tui.current = ctxs[idx - 1]
         if inpt.consume('j', 's') and idx < len(ctxs) - 1:
-            state.current = ctxs[idx + 1]
+            tui.current = ctxs[idx + 1]
 
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
-        selected = (ctx is state.current)
+        selected = (ctx is tui.current)
         prefix = ">> " if selected else "   "
         row = y + 1 + i
         buf.puts(x + 1, row, prefix, txt_color=th.selection if selected else None)
@@ -1551,7 +1563,7 @@ def render_selection_right(tui, buf, r):
     th = get_theme()
     buf.rect_line(r, txt_color=th.accent)
 
-    ctx = state.current
+    ctx = tui.current
     buf.puts(x + 2, y + 1, ctx.name, style='bold')
     model_x = x + 2 + len(ctx.name) + 2
     buf.puts(model_x, y + 1, ctx.model, style='dim')
@@ -1609,7 +1621,7 @@ def _default_tool_row(ctx, tc, tool_msg):
 @overridable
 def render_work_mode(tui, buf, inpt, r):
     x, y, w, h = r
-    ctx = state.current
+    ctx = tui.current
     th = get_theme()
 
     messages = ctx.get_messages()
@@ -1690,7 +1702,7 @@ def render_work_mode(tui, buf, inpt, r):
 
 @overridable
 def render_work_mode_input(tui, buf, inpt, input_r, input_box):
-    ctx = state.current
+    ctx = tui.current
     th = get_theme()
     if ctx.is_running():
         input_box(buf, inpt, input_r, txt_color=th.accent)
@@ -1825,6 +1837,8 @@ class TUI:
     input_box: Any = None  # per-context; resolved each frame
     stdout_sink: Any = None
     show_cot: bool = True
+    contexts: list = field(default_factory=list)
+    current: Any = None  # pyright: ignore - always valid when contexts is non-empty
 
     def __post_init__(self):
         from blessed import Terminal
@@ -1881,7 +1895,7 @@ def _tui_loop(tui: TUI):
 
     buf.clear()
 
-    if not state.contexts:
+    if not tui.contexts:
         th = get_theme()
         msg = "You must create a plugin with Contexts for ex6 to work."
         mx = (term.width - len(msg)) // 2
@@ -1890,9 +1904,9 @@ def _tui_loop(tui: TUI):
         buf.flush(term)
         return
 
-    if state.current not in state.contexts.values():
-        state.current = next(iter(state.contexts.values()))
-    input_box = tui.input_box = state.current.get_input_box()
+    if tui.current not in tui.contexts:
+        tui.current = tui.contexts[0]
+    input_box = tui.input_box = tui.current.get_input_box()
 
     prev_mode = tui.mode
 
@@ -1924,16 +1938,16 @@ def _tui_loop(tui: TUI):
     elif tui.mode == "work":
         th = get_theme()
         render_work_mode(tui, buf, inpt, main_r)
-        div_color = th.invoking if state.current.is_running() else th.muted
+        div_color = th.invoking if tui.current.is_running() else th.muted
         buf.hline((0, main_r[1] + main_r[3], term.width, 1), txt_color=div_color)
-        if not state.current.ui_stack and not tui.ui_panel_stack:
+        if not tui.current.ui_stack and not tui.ui_panel_stack:
             render_work_mode_input(tui, buf, inpt, input_r, input_box)
         buf.hline((0, input_r[1] + input_r[3], term.width, 1), txt_color=div_color)
-        render_workmodefooter_and_commands(tui, buf, footer_r, state.current)
+        render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
         if inpt.consume('KEY_ESCAPE'):
             tui.mode = "selection"
-        if inpt.consume('KEY_CTRL_X') and state.current.is_running():
-            state.current.stop_early = True
+        if inpt.consume('KEY_CTRL_X') and tui.current.is_running():
+            tui.current.stop_early = True
     elif tui.mode == "selection":
         th = get_theme()
         if not tui.sel_input_open and inpt.consume("KEY_ENTER"):
@@ -1962,9 +1976,9 @@ def _tui_loop(tui: TUI):
         if tui.ui_panel_stack:
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.ui_panel_stack[-1](buf, inpt, r)
-        elif tui.mode == "work" and state.current and state.current.ui_stack:
+        elif tui.mode == "work" and tui.current and tui.current.ui_stack:
             r = Region(3, 2, buf.w - 6, buf.h - 4)
-            state.current.ui_stack[-1](buf, inpt, r)
+            tui.current.ui_stack[-1](buf, inpt, r)
         if tui.mode != prev_mode:
             buf.invalidate()
         buf.flush(term)
@@ -1993,5 +2007,4 @@ def _run_tui_loop(tui: TUI):
 
 
 if __name__ == "__main__":
-    _load_plugins()
     run_tui()

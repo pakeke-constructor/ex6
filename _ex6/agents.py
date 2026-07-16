@@ -132,7 +132,7 @@ def auto_setup():
     #     CLAUDE_MD,
     # ])
 
-    ex6.state.current = coder_opus
+    ex6.set_current(coder_opus)
 
 
 
