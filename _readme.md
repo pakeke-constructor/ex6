@@ -23,8 +23,8 @@ A lot of the UX/UI wi
 
 ## Plugins:
 "Plugins" are just python files.  
-"Installation?" Nope- just copy paste them into your `.ex6/` folder.  
-All python files inside `.ex6` are loaded automatically.
+"Installation?" Nope- just copy paste them into your `_ex6/` folder.  
+All python files inside `_ex6` are loaded automatically.
 
 
 

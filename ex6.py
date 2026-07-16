@@ -354,6 +354,7 @@ class Theme:
 
 _tui = None
 _theme = Theme()
+_context_schemas = {}
 
 
 def run_tui():
@@ -393,6 +394,7 @@ def get_context(name):
     if tui is None:
         return None
     return next((c for c in tui.contexts if c.name == name), None)
+
 
 
 def remove_context(ctx):
@@ -822,6 +824,7 @@ class Context:
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
     invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
     messages: InitVar[Optional[list[Message]]] = None
+    schema_id: Optional[str] = None
     max_tokens: int = 200000
     llm_is_running: bool = False
     llm_current_output: list = field(default_factory=list)
@@ -876,6 +879,8 @@ class Context:
     def __post_init__(self, messages):
         if messages:
             self._messages.extend(messages)
+        if self.schema_id:
+            _context_schemas.setdefault(self.schema_id, self)
         add_context(self)
 
     def get_input_box(self):
@@ -1007,11 +1012,55 @@ class Context:
         self._line_snapshots = {}
         self.data_volatile = {}
 
-    def fork(self, new_name: Optional[str] = None) -> 'Context':
-        messages = copy.deepcopy(self.get_messages())
+    def dump_context(self) -> str:
+        if not self.schema_id:
+            raise RuntimeError("Context has no schema_id")
+        messages = []
+        for message in self.get_messages():
+            messages.append({
+                "role": message.role,
+                "content": message.get_msg(self),
+                "tools": [fn.__name__ for fn in message.tools],
+                "tool_calls": message.tool_calls,
+                "tool_call_id": message.tool_call_id,
+                "overview": message.overview,
+            })
+        return json.dumps({
+            "format": 1,
+            "schema_id": self.schema_id,
+            "name": self.name,
+            "messages": messages,
+            "data": dict(self.data),
+        }, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def load_context(cls, serialized_context: str) -> 'Context':
+        payload = json.loads(serialized_context)
+        schema_id = payload.get("schema_id")
+        if schema_id not in _context_schemas:
+            raise ValueError(f"Unknown context schema: {schema_id!r}")
+        return _context_schemas[schema_id].clone_with_context(serialized_context)
+
+    def clone_with_context(self, serialized_context: str) -> 'Context':
+        payload = json.loads(serialized_context)
+        if payload.get("format") != 1:
+            raise ValueError("Unsupported context format")
+        if payload.get("schema_id") != self.schema_id:
+            raise ValueError(f"Context schema mismatch: {payload.get('schema_id')!r}")
+        tools = self.get_tools()
+        messages = []
+        for item in payload["messages"]:
+            item = dict(item)
+            item["tools"] = [tools[name] for name in item.get("tools", [])]
+            messages.append(Message(**item))
+        cpy = self._clone(payload.get("name") or self.name, messages)
+        cpy.data = StrictDataDict(payload.get("data", {}))
+        return cpy
+
+    def _clone(self, new_name: str, messages: list[Message]) -> 'Context':
         cpy = copy.copy(self)
-        cpy._msg_lock = threading.Lock()
-        cpy._messages = list(messages)
+        cpy._msg_lock = threading.RLock()
+        cpy._messages = messages
         cpy._read_hashes = dict(self._read_hashes)
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
         cpy.data = StrictDataDict(self.data)
@@ -1021,10 +1070,14 @@ class Context:
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
-        cpy.name = new_name or self.name
+        cpy.name = new_name
         cpy.parent = self.name
         cpy.__post_init__(None)
         return cpy
+
+    def fork(self, new_name: Optional[str] = None) -> 'Context':
+        messages = copy.deepcopy(self.get_messages())
+        return self._clone(new_name or self.name, list(messages))
 
     def push_ui(self, draw_fn):
         self.ui_stack.append(draw_fn)
