@@ -198,9 +198,14 @@ def cm(msg: Optional[str]):
         model = M.GEMINI31_FLASH_LITE.id
 
         hint = f"User hint: {msg}" if msg else ""
+        diff_lines = diff.splitlines()
+        diff_for_llm = "\n".join(diff_lines[:2000])
+        if len(diff_lines) > 2000:
+            diff_for_llm += "\n\n[Diff truncated after 2000 lines.]"
+        if len(diff_for_llm) > 8000:
+            diff_for_llm = diff_for_llm[:8000] + "\n\n[Diff truncated after 8000 characters.]"
         system = CM_SYSTEM_PROMPT
-        user = f"Write a commit message for this diff:{hint}\n\n{diff[:8000]}"
-
+        user = f"Write a commit message for this diff:{hint}\n\n{diff_for_llm}"
         commit_msg = _llm_one_shot(model, system, user)
         output_lines.append(f"Commit: {commit_msg}")
 
