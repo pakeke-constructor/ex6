@@ -1032,6 +1032,17 @@ COMMANDLINE_TOOL = powershell if _IS_WINDOWS else bash
 
 
 
+def read_warnings(ctx: ex6.Context, path: str) -> str:
+    """Run pyright on a file and return its warnings and errors."""
+    result = subprocess.run(
+        ["pyright", ctx.resolve(path)],
+        capture_output=True,
+        text=True,
+        cwd=ctx.cwd,
+    )
+    return (result.stdout + result.stderr).strip() or "No warnings."
+
+
 def git_working_tree(ctx: ex6.Context) -> str:
     """Show working tree changes: status + unstaged/staged diffs."""
     try:
