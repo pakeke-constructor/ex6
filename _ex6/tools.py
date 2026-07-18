@@ -254,29 +254,6 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     - ALWAYS Prefer edit_file_lines for edits larger than 3 lines, but only when you know the lines. If you need to delete a lot of code, edit_file_lines is better because it avoids you rewriting the entire code.
     - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
     """
-    return edit_file_codemode(ctx, file, search, replace)
-
-
-def edit_file_codemode(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
-    """Edit a file by searching and replacing a unique string.
-    Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
-    search must match exactly one location. errors if zero or multiple matches.
-
-    Usage:
-    - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
-    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines. but only when you know the lines. If you need to delete a lot of code; edit_file_lines is better because it avoids you rewriting the entire code.
-    - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
-
-    Argument Formatting:
-    - For multiline editing, you MUST use raw triple-backtick strings, (using r'''). Otherwise, \\n sequences will wreck the strings, and you will find it hard to code.
-    - Do NOT use random \\ characters to escape ' or " characters. Python allows you to use ' or " characters in r''' strings without escaping.
-    - For multiline edits, you MUST format over multiple lines. DO NOT use a string like r'foo\\nbar\\nbaz'.
-
-    Correct usage:
-    edit_file("file.txt",
-    r'''search''',
-    r'''replace''')
-    """
     _check_read(ctx, file)
     p = ctx.resolve(file)
 
@@ -332,6 +309,30 @@ def edit_file_codemode(ctx: ex6.Context, file: str, search: str, replace: str) -
         best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
                     for i in range(len(content_lines) - n + 1)), default=0)
         raise ValueError(f"search string not found in {file} (best match: {best:.0%})")
+
+
+
+def edit_file_codemode(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
+    """Edit a file by searching and replacing a unique string.
+    Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
+    search must match exactly one location. errors if zero or multiple matches.
+
+    Usage:
+    - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
+    - ALWAYS Prefer edit_file_lines for edits larger than 3 lines. but only when you know the lines. If you need to delete a lot of code; edit_file_lines is better because it avoids you rewriting the entire code.
+    - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
+
+    Argument Formatting:
+    - For multiline editing, you MUST use raw triple-backtick strings, (using r'''). Otherwise, \\n sequences will wreck the strings, and you will find it hard to code.
+    - Do NOT use random \\ characters to escape ' or " characters. Python allows you to use ' or " characters in r''' strings without escaping.
+    - For multiline edits, you MUST format over multiple lines. DO NOT use a string like r'foo\\nbar\\nbaz'.
+
+    Correct usage:
+    edit_file("file.txt",
+    r'''search''',
+    r'''replace''')
+    """
+    return edit_file(ctx, file, search, replace)
 
 
 
