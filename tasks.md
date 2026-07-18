@@ -50,6 +50,8 @@ when 'condense' is called, instead of instantly condensing, it should inject a b
 </compression>
 
 
+- sandboxing for ex6 agents (docker container)
+
 
 - ex6 agent skills
 
