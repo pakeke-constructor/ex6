@@ -121,6 +121,41 @@ def auto_setup():
 
 
 
+def custom_setup(messages):
+    messages = messages or [
+        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
+        ENV_PROMPT,
+        CLAUDE_MD,
+    ]
+
+    coder_opus = Context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages)
+    cache_manually(coder_opus)
+
+    Context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages)
+
+    Context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages)
+
+    _=Context("sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    t=Context("sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    _=Context("sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+
+    # coder = Context("coder_cc", model="cc/opus", reasoning="none", messages=[
+    #     MAIN_SYSTEM_PROMPT,
+    #     MAIN_SYSTEM_PROMPT.with_tools([
+    #         read_file, glob, search, read_headers, read_body,
+    #         write_file, edit_file, edit_file_lines,
+    #         explore_agent, web_search, websearch_agent
+    #     ]),
+    #     ENV_PROMPT,
+    #     CLAUDE_MD,
+    # ])
+
+    ex6.set_current(t)
+
+
+
+
+
 
 import os as _os
 import ex6 as _ex6_guard
