@@ -823,6 +823,7 @@ class Context:
     model: str
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
     invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
+    transform_user_prompt: Optional[Callable[['Context', str], str]] = None
     messages: InitVar[Optional[list[Message]]] = None
     schema_id: Optional[str] = None
     max_tokens: int = 200000
@@ -935,6 +936,8 @@ class Context:
 
     def invoke(self, text, llm_fn=None):
         llm_fn = llm_fn or self.invoke_llm or invoke_llm
+        if self.transform_user_prompt:
+            text = self.transform_user_prompt(self, text)
         self.append_message(Message(role="user", content=text))
         self.llm_is_running = True
         self.stop_early = False
