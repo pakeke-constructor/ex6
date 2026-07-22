@@ -48,7 +48,20 @@ def _load_gitignore():
                     patterns.append(line.rstrip("/"))
     return patterns
 
-_GITIGNORE_PATTERNS = _load_gitignore()
+_gitignore_stamp = None
+_gitignore_patterns = []
+
+def _get_gitignore_patterns():
+    global _gitignore_stamp, _gitignore_patterns
+    try:
+        stat = os.stat(".gitignore")
+        stamp = (stat.st_mtime_ns, stat.st_size)
+    except FileNotFoundError:
+        stamp = None
+    if stamp != _gitignore_stamp:
+        _gitignore_patterns = _load_gitignore()
+        _gitignore_stamp = stamp
+    return _gitignore_patterns
 
 _file_locks = {}
 _file_locks_lock = threading.Lock()
@@ -65,7 +78,7 @@ def _is_gitignored(path):
     parts = rel.split("/")
     if any(p in _SKIP_DIRS for p in parts):
         return True
-    for pat in _GITIGNORE_PATTERNS:
+    for pat in _get_gitignore_patterns():
         if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(os.path.basename(rel), pat):
             return True
         if any(fnmatch.fnmatch(p, pat) for p in parts):
