@@ -2,6 +2,7 @@
 from typing import Optional
 import subprocess
 import threading
+import pyperclip
 import time
 import ex6
 
@@ -25,6 +26,18 @@ def pop(n: Optional[int]):
     n = min(n, len(user_idxs))
     if n == 0: return
     ctx.truncate(user_idxs[-n])
+
+
+@ex6.command
+def yy(n: Optional[int]):
+    'Copy the Nth-last user prompt to clipboard.'
+    ctx = ex6.get_current()
+    if not ctx: return
+    if n is None: n = 1
+    if n <= 0: return
+    user_messages = [m for m in ctx.get_messages() if m.role == "user"]
+    if n > len(user_messages): return
+    pyperclip.copy(user_messages[-n].get_msg(ctx))
 
 
 @ex6.command
