@@ -1669,7 +1669,12 @@ def _default_tool_row(ctx, tc, tool_msg):
         content = tool_msg.content or ""
         status = 'error' if content.startswith("ERROR:") else 'ok'
         detail = content
-    return ToolCall(id=tc["id"], name=tc["name"], args=list(tc["args"].values()),
+    args = tc["args"]
+    if isinstance(args, dict):
+        args = list(args.values())
+    else:
+        args = [args]
+    return ToolCall(id=tc["id"], name=tc["name"], args=args,
                     status=status, detail=detail)
 
 
