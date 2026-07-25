@@ -1069,7 +1069,7 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     denial = _approve_command(ctx, "PowerShell", command)
     if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
     try:
-        result = subprocess.run([exe, "-NoProfile", "-Command", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
+        result = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-Command", command], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd, creationflags=subprocess.CREATE_NO_WINDOW)
         out = result.stdout + result.stderr
         if result.returncode != 0:
             out = f"[exit code {result.returncode}]\n" + out
