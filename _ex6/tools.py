@@ -112,7 +112,7 @@ LANG_MODULES = {
 }
 
 CONTAINER_TYPES = {
-    'class_definition', 'class_declaration', 'class_specifier',
+    'class_definition', 'class_declaration', 'abstract_class_declaration', 'class_specifier',
     'interface_declaration',
     'struct_specifier', 'struct_item',
     'enum_item', 'impl_item', 'trait_item',
@@ -124,7 +124,11 @@ CONTAINER_TYPES = {
 DEFINITION_TYPES = {
     'tree_sitter_python': ['function_definition', 'class_definition'],
     'tree_sitter_javascript': ['function_declaration', 'class_declaration', 'method_definition'],
-    'tree_sitter_typescript': ['function_declaration', 'class_declaration', 'method_definition'],
+    'tree_sitter_typescript': [
+        'function_declaration', 'function_signature', 'class_declaration',
+        'abstract_class_declaration', 'method_definition', 'method_signature',
+        'interface_declaration', 'type_alias_declaration', 'enum_declaration',
+    ],
     'tree_sitter_go': ['function_declaration', 'method_declaration', 'type_declaration'],
     'tree_sitter_rust': ['function_item', 'struct_item', 'enum_item', 'impl_item', 'trait_item'],
     'tree_sitter_c': ['function_definition', 'struct_specifier'],
@@ -143,7 +147,11 @@ def _parse_file(file):
     if not mod_name:
         raise ValueError(f"Unsupported file type: {ext}")
     mod = importlib.import_module(mod_name)
-    lang = tree_sitter.Language(mod.language())
+    if mod_name == 'tree_sitter_typescript':
+        language = mod.language_tsx() if ext == '.tsx' else mod.language_typescript()
+    else:
+        language = mod.language()
+    lang = tree_sitter.Language(language)
     parser = tree_sitter.Parser(lang)
     with open(file, "rb") as f:
         source = f.read()
@@ -198,10 +206,19 @@ def _signature_kotlin(node, source):
     return source[node.start_byte:node.end_byte].decode().split('\n')[0]
 
 
+def _signature_typescript(node, source, start_byte=None):
+    start_byte = node.start_byte if start_byte is None else start_byte
+    body = node.child_by_field_name('body')
+    if body:
+        return source[start_byte:body.start_byte].decode().rstrip()
+    return source[start_byte:node.end_byte].decode().split('\n')[0].rstrip().rstrip(';')
+
+
 _SIGNATURE_FNS = {
     'tree_sitter_python': _signature_python,
     'tree_sitter_lua': _signature_lua,
     'tree_sitter_kotlin': _signature_kotlin,
+    'tree_sitter_typescript': _signature_typescript,
 }
 
 
@@ -546,21 +563,39 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     out = []
     sig_line_nos = []
 
-    def collect(node, indent=0):
+    def collect(node, indent=0, start_byte=None):
         prefix = "  " * indent
         for child in node.children:
-            if child.type in def_types:
+            is_definition = child.type in def_types
+            if mod_name == 'tree_sitter_typescript' and child.type == 'variable_declarator':
+                value = child.child_by_field_name('value')
+                is_definition = value and value.type in ('arrow_function', 'function_expression')
+            if is_definition:
                 if indent == 0 and out:
                     out.append("")  # gap between top-level defs
-                line_no = source[:child.start_byte].count(b'\n') + 1
+                sig_start = start_byte if start_byte is not None else child.start_byte
+                line_no = source[:sig_start].count(b'\n') + 1
                 sig_line_nos.append(line_no)
-                sig = _signature(child, source, mod_name).strip()
+                if mod_name == 'tree_sitter_typescript' and child.type == 'variable_declarator':
+                    value = child.child_by_field_name('value')
+                    sig = source[sig_start:child.start_byte].decode() + child.text.decode().split('=', 1)[0].rstrip() + ' = ' + _signature_typescript(value, source)
+                elif mod_name == 'tree_sitter_typescript':
+                    sig = _signature_typescript(child, source, sig_start).strip()
+                else:
+                    sig = _signature(child, source, mod_name).strip()
                 if line_numbers:
                     out.append(f"{line_no}: {prefix}{sig}")
                 else:
                     out.append(prefix + sig)
                 if child.type in CONTAINER_TYPES:
                     collect(child, indent + 1)
+                elif mod_name == 'tree_sitter_typescript' and child.type == 'variable_declarator':
+                    continue
+            elif (
+                mod_name == 'tree_sitter_typescript'
+                and child.type in ('export_statement', 'ambient_declaration')
+            ):
+                collect(child, indent, child.start_byte)
             else:
                 collect(child, indent)
 
