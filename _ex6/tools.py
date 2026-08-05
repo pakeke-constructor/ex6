@@ -516,7 +516,19 @@ def _add_line_numbers(text: str, start: int = 1) -> str:
     w = len(str(start + len(lines) - 1))
     return "\n".join(f"{i:>{w}}: {line}" for i, line in enumerate(lines, start))
 
-def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: tuple[int,int] = None) -> str:
+
+def _read_headers_gd(source, line_numbers=False):
+    out = []
+    line_nos = []
+    for line_no, line in enumerate(source.decode().splitlines(), 1):
+        if line.startswith((' ', '\t')):
+            continue
+        out.append(f"{line_no}: {line}" if line_numbers else line)
+        line_nos.append(line_no)
+    return "\n".join(out) if out else "No classes/functions found.", line_nos
+
+
+def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: Optional[tuple[int,int]] = None) -> str:
     """
     Read and return contents of a file at the given path.
     - Prefer line_numbers=False to avoid bloat. 
@@ -554,6 +566,12 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     """
     _check_gitignore(file)
     p = ctx.resolve(file)
+    if os.path.splitext(p)[1].lower() == '.gd':
+        with open(p, 'rb') as f:
+            source = f.read()
+        result, line_nos = _read_headers_gd(source, line_numbers)
+        ctx.mark_file_read(file, line_nos)
+        return result
     tree, source, mod_name = _parse_file(p)
     if mod_name == 'tree_sitter_lua':
         result, sig_line_nos = _read_headers_lua(tree, source, line_numbers)
