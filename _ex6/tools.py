@@ -622,6 +622,36 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     return "\n".join(out) if out else "No classes/functions found."
 
 
+def _read_body_godot(ctx, file, name, line_numbers):
+    p = ctx.resolve(file)
+    with open(p, 'rb') as f:
+        source = f.read()
+    all_lines = source.decode().splitlines()
+    pattern = re.compile(rf"^[ \t]*(?:static\s+)?func\s+{re.escape(name)}\s*\(")
+
+    for start_idx, line in enumerate(all_lines):
+        if not pattern.match(line):
+            continue
+        indent = len(line) - len(line.lstrip(' \t'))
+        end_idx = start_idx + 1
+        while end_idx < len(all_lines):
+            body_line = all_lines[end_idx]
+            if body_line.strip() and len(body_line) - len(body_line.lstrip(' \t')) <= indent:
+                break
+            end_idx += 1
+        start_line = start_idx + 1
+        text = "\n".join(all_lines[start_idx:end_idx])
+        if line_numbers:
+            s = max(start_line - 1, 1)
+            e = min(end_idx + 1, len(all_lines))
+            ctx.mark_file_read(file, list(range(s, e + 1)))
+            return _add_line_numbers("\n".join(all_lines[s-1:e]), s)
+        ctx.mark_file_read(file, list(range(start_line, end_idx + 1)))
+        return text
+
+    raise ValueError(f"'{name}' not found in {file}")
+
+
 def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True) -> str:
     """
     Read a function or class body by name from a file.
@@ -629,6 +659,9 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     - Use this tool when you only need bits of information, like details about a particular function
     """
     p = ctx.resolve(file)
+    if os.path.splitext(p)[1].lower() == '.gd':
+        return _read_body_godot(ctx, file, name, line_numbers)
+
     tree, source, mod_name = _parse_file(p)
     def_types = set(DEFINITION_TYPES.get(mod_name, []))
 
