@@ -1426,7 +1426,9 @@ class InputPass:
         remaining = []
         for k in self._keys:
             s = str(k)
-            if not k.is_sequence and s.isprintable():
+            if k.name == 'BRACKETED_PASTE':
+                text += k.text.replace('\r\n', '\n').replace('\r', '\n')
+            elif not k.is_sequence and s.isprintable():
                 text += s
             elif is_paste and (s == '\n' or k.name == 'KEY_ENTER'):
                 text += '\n'
@@ -1462,10 +1464,7 @@ class InputBox:
             if not part:
                 lines.append('')
             else:
-                while len(part) > w:
-                    lines.append(part[:w])
-                    part = part[w:]
-                lines.append(part)
+                lines.extend(part[i:i + w] for i in range(0, len(part), w))
         return lines
 
     def _cursor_visual(self, w):
@@ -2050,7 +2049,7 @@ def _run_tui_loop(tui: TUI):
     term = tui.term
 
     try:
-        with term.cbreak(), term.hidden_cursor(), term.fullscreen():
+        with term.cbreak(), term.hidden_cursor(), term.fullscreen(), term.bracketed_paste():
             while True:
                 _tui_loop(tui)
     except Exception:
