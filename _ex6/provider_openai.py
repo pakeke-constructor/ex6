@@ -3,6 +3,7 @@ import json
 import ex6
 import openai
 import os
+import time
 from _ex6.provider import _log_invoke
 
 
@@ -93,6 +94,7 @@ def _codex_client(access_token, account_id):
     return openai.OpenAI(
         base_url="https://chatgpt.com/backend-api/codex",
         api_key=access_token,
+        max_retries=0,
         default_headers={
             "chatgpt-account-id": account_id,
             "OpenAI-Beta": "responses=experimental",
@@ -157,12 +159,22 @@ def invoke_llm(ctx: ex6.Context):
 
     ex6.debug_print(f"[codex] model={ctx.model} items={len(input_items)}")
     try:
-        try:
+        for delay in (8, 16, 32, 64):
+            try:
+                stream = start(access_token)
+                break
+            except openai.AuthenticationError:
+                # Access token expired — refresh via the OAuth refresh token and retry once.
+                ex6.debug_print("[codex] 401 — refreshing token")
+                stream = start(_refresh_codex_token())
+                break
+            except openai.InternalServerError as e:
+                if "servers are currently overloaded" not in str(e).lower():
+                    raise
+                ex6.debug_print(f"[codex] overloaded — retrying in {delay}s")
+                time.sleep(delay)
+        else:
             stream = start(access_token)
-        except openai.AuthenticationError:
-            # Access token expired — refresh via the OAuth refresh token and retry once.
-            ex6.debug_print("[codex] 401 — refreshing token")
-            stream = start(_refresh_codex_token())
     except Exception as e:
         ex6.debug_print(f"[codex] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
