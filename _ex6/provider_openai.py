@@ -159,7 +159,7 @@ def invoke_llm(ctx: ex6.Context):
 
     ex6.debug_print(f"[codex] model={ctx.model} items={len(input_items)}")
     try:
-        for delay in (8, 16, 32, 64):
+        for delay in (24, 48, 128):
             try:
                 stream = start(access_token)
                 break
