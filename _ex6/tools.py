@@ -101,6 +101,7 @@ LANG_MODULES = {
     '.ts': 'tree_sitter_typescript', '.tsx': 'tree_sitter_typescript',
     '.jsx': 'tree_sitter_javascript',
     '.go': 'tree_sitter_go',
+    '.sol': 'tree_sitter_solidity',
     '.rs': 'tree_sitter_rust',
     '.c': 'tree_sitter_c', '.h': 'tree_sitter_c',
     '.cpp': 'tree_sitter_cpp', '.hpp': 'tree_sitter_cpp', '.cc': 'tree_sitter_cpp',
@@ -130,6 +131,12 @@ DEFINITION_TYPES = {
         'interface_declaration', 'type_alias_declaration', 'enum_declaration',
     ],
     'tree_sitter_go': ['function_declaration', 'method_declaration', 'type_declaration'],
+    'tree_sitter_solidity': [
+        'contract_declaration', 'interface_declaration', 'library_declaration',
+        'function_definition', 'constructor_definition', 'fallback_receive_definition',
+        'modifier_definition', 'event_definition', 'error_declaration',
+        'struct_declaration', 'enum_declaration', 'user_defined_type_definition',
+    ],
     'tree_sitter_rust': ['function_item', 'struct_item', 'enum_item', 'impl_item', 'trait_item'],
     'tree_sitter_c': ['function_definition', 'struct_specifier'],
     'tree_sitter_cpp': ['function_definition', 'class_specifier', 'struct_specifier'],
@@ -510,6 +517,47 @@ def _read_headers_lua(tree, source, line_numbers=False):
 
 
 
+def _read_headers_go(tree, source, line_numbers=False):
+    out = []
+    line_nos = []
+
+    def add(node, signature, indent=0):
+        start_line = node.start_point[0] + 1
+        lines = signature.splitlines()
+        line_nos.extend(range(start_line, start_line + len(lines)))
+        for i, line in enumerate(lines):
+            text = "  " * indent + line
+            out.append(f"{start_line + i}: {text}" if line_numbers else text)
+
+    def add_type(spec):
+        type_node = spec.child_by_field_name('type')
+        if type_node and type_node.type in ('struct_type', 'interface_type'):
+            body_start = source.find(b'{', type_node.start_byte, type_node.end_byte)
+            signature = "type " + source[spec.start_byte:body_start].decode().rstrip()
+        else:
+            signature = "type " + spec.text.decode().rstrip()
+        add(spec, signature)
+
+        if type_node and type_node.type == 'interface_type':
+            for child in type_node.children:
+                if child.type == 'method_elem':
+                    add(child, child.text.decode(), 1)
+
+    for child in tree.root_node.children:
+        if child.type not in ('function_declaration', 'method_declaration', 'type_declaration'):
+            continue
+        if out:
+            out.append("")
+        if child.type == 'type_declaration':
+            for spec in child.named_children:
+                if spec.type in ('type_spec', 'type_alias'):
+                    add_type(spec)
+        else:
+            add(child, _signature_generic(child, source))
+
+    text = "\n".join(out) if out else "No classes/functions found."
+    return text, line_nos
+
 
 def _add_line_numbers(text: str, start: int = 1) -> str:
     lines = text.split('\n')
@@ -526,6 +574,41 @@ def _read_headers_gd(source, line_numbers=False):
         out.append(f"{line_no}: {line}" if line_numbers else line)
         line_nos.append(line_no)
     return "\n".join(out) if out else "No classes/functions found.", line_nos
+
+
+def _read_headers_solidity(tree, source, line_numbers=False):
+    container_types = {'contract_declaration', 'interface_declaration', 'library_declaration'}
+    definition_types = DEFINITION_TYPES['tree_sitter_solidity']
+    out = []
+    line_nos = []
+
+    def collect(node, indent=0):
+        for child in node.children:
+            if child.type not in definition_types:
+                collect(child, indent)
+                continue
+            if indent == 0 and out:
+                out.append("")
+            body = child.child_by_field_name('body')
+            if not body:
+                for candidate in child.children:
+                    if candidate.type in ('contract_body', 'function_body', 'struct_body', 'enum_body'):
+                        body = candidate
+                        break
+            end_byte = body.start_byte if body else child.end_byte
+            signature = source[child.start_byte:end_byte].decode().rstrip().rstrip(';')
+            start_line = child.start_point[0] + 1
+            for i, line in enumerate(signature.splitlines()):
+                line_no = start_line + i
+                line_nos.append(line_no)
+                text = "  " * indent + line
+                out.append(f"{line_no}: {text}" if line_numbers else text)
+            if child.type in container_types:
+                collect(child, indent + 1)
+
+    collect(tree.root_node)
+    text = "\n".join(out) if out else "No classes/functions found."
+    return text, line_nos
 
 
 def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: Optional[tuple[int,int]] = None) -> str:
@@ -575,6 +658,14 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     tree, source, mod_name = _parse_file(p)
     if mod_name == 'tree_sitter_lua':
         result, sig_line_nos = _read_headers_lua(tree, source, line_numbers)
+        ctx.mark_file_read(file, sig_line_nos)
+        return result
+    if mod_name == 'tree_sitter_go':
+        result, sig_line_nos = _read_headers_go(tree, source, line_numbers)
+        ctx.mark_file_read(file, sig_line_nos)
+        return result
+    if mod_name == 'tree_sitter_solidity':
+        result, sig_line_nos = _read_headers_solidity(tree, source, line_numbers)
         ctx.mark_file_read(file, sig_line_nos)
         return result
     def_types = DEFINITION_TYPES.get(mod_name, [])
