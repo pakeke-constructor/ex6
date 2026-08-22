@@ -756,21 +756,29 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     tree, source, mod_name = _parse_file(p)
     def_types = set(DEFINITION_TYPES.get(mod_name, []))
 
+    def name_parts(value):
+        return re.findall(r'\w+', value or '')
+
     def find(node, target):
+        target_parts = name_parts(target)
         for child in node.children:
-            if child.type in def_types and _get_name(child) == target:
+            child_name = _get_name(child) if child.type in def_types else None
+            child_parts = name_parts(child_name)
+            if child_name == target or child_parts == target_parts:
+                return child
+            if len(target_parts) == 1 and child_parts[-1:] == target_parts:
                 return child
             result = find(child, target)
             if result:
                 return result
         return None
 
-    # exact match on full name (handles Lua's "module.func" style)
+    # exact or punctuation-insensitive match on full name
     hit = find(tree.root_node, name)
 
-    # dotted nested lookup (handles Python's Class.method style)
-    if not hit and '.' in name:
-        parts = name.split('.')
+    # nested lookup (handles Class.method, Class:method, Class::method, etc.)
+    parts = name_parts(name)
+    if not hit and len(parts) > 1:
         node = tree.root_node
         for part in parts:
             node = find(node, part)
@@ -779,8 +787,8 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
         hit = node
 
     # permissive fallback: try leaf name directly
-    if not hit and '.' in name:
-        hit = find(tree.root_node, name.rsplit('.', 1)[-1])
+    if not hit and len(parts) > 1:
+        hit = find(tree.root_node, parts[-1])
 
     if not hit:
         raise ValueError(f"'{name}' not found in {file}")
