@@ -611,7 +611,7 @@ def _read_headers_solidity(tree, source, line_numbers=False):
     return text, line_nos
 
 
-def read_file(ctx: ex6.Context, path: str, line_numbers: bool = False, lines: Optional[tuple[int,int]] = None) -> str:
+def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = None, line_numbers: Optional[bool] = False) -> str:
     """
     Read and return contents of a file at the given path.
     - Prefer line_numbers=False to avoid bloat. 
