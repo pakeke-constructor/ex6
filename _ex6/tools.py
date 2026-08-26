@@ -444,6 +444,13 @@ def glob(ctx: ex6.Context, pattern: str) -> str:
 
 _SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.egg-info'}
 
+_BINARY_EXTENSIONS = {
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.pdf',
+    '.wav', '.mp3', '.flac', '.ogg', '.mp4', '.mov', '.avi', '.mkv', '.webm',
+    '.zip', '.gz', '.bz2', '.xz', '.7z', '.rar', '.exe', '.dll', '.so', '.dylib',
+    '.pyc', '.class', '.jar', '.woff', '.woff2', '.ttf', '.otf', '.sqlite', '.db',
+}
+
 
 def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results: int = 15, page: int = 1) -> str:
     """Search file contents for a regex pattern, filtered by glob.
@@ -458,33 +465,46 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
         raise ValueError("max_results must be >= 1")
 
     regex = re.compile(pattern)
+    glob_flags = re.IGNORECASE if os.name == "nt" else 0
+    glob_regex = re.compile(_glob.translate(file_glob, recursive=True, include_hidden=False), glob_flags)
     root = ctx.cwd or os.getcwd()
     start_idx = (page - 1) * max_results
     end_idx = start_idx + max_results
     seen = 0
     results = []
 
-    for f in _glob.glob(file_glob, recursive=True, root_dir=root):
-        if _is_gitignored(f):
-            continue
-        fp = os.path.join(root, f)
-        if not os.path.isfile(fp):
-            continue
-        try:
-            with open(fp, "r", errors="ignore") as fh:
-                for i, line in enumerate(fh, 1):
-                    if not regex.search(line):
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = [
+            d for d in dirnames
+            if not _is_gitignored(d if rel_dir == "." else os.path.join(rel_dir, d))
+        ]
+
+        for name in filenames:
+            f = name if rel_dir == "." else os.path.join(rel_dir, name)
+            if not glob_regex.fullmatch(f) or _is_gitignored(f):
+                continue
+            if os.path.splitext(name)[1].lower() in _BINARY_EXTENSIONS:
+                continue
+            fp = os.path.join(root, f)
+            try:
+                with open(fp, "r", errors="ignore") as fh:
+                    if "\0" in fh.read(8192):
                         continue
-                    if seen < start_idx:
+                    fh.seek(0)
+                    for i, line in enumerate(fh, 1):
+                        if not regex.search(line):
+                            continue
+                        if seen < start_idx:
+                            seen += 1
+                            continue
+                        if seen >= end_idx:
+                            return "\n".join(results) + f"\n... (page {page}, max_results {max_results})"
+                        prefix = f"{f}:{i}: "
+                        results.append(f"{prefix}{line.rstrip()}")
                         seen += 1
-                        continue
-                    if seen >= end_idx:
-                        return "\n".join(results) + f"\n... (page {page}, max_results {max_results})"
-                    prefix = f"{f}:{i}: "
-                    results.append(f"{prefix}{line.rstrip()}")
-                    seen += 1
-        except (OSError, UnicodeDecodeError):
-            continue
+            except (OSError, UnicodeDecodeError):
+                continue
 
     return "\n".join(results) if results else "No matches."
 
