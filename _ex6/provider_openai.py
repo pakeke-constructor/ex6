@@ -159,22 +159,12 @@ def invoke_llm(ctx: ex6.Context):
 
     ex6.debug_print(f"[codex] model={ctx.model} items={len(input_items)}")
     try:
-        for delay in (24, 48, 128):
-            try:
-                stream = start(access_token)
-                break
-            except openai.AuthenticationError:
-                # Access token expired — refresh via the OAuth refresh token and retry once.
-                ex6.debug_print("[codex] 401 — refreshing token")
-                stream = start(_refresh_codex_token())
-                break
-            except openai.InternalServerError as e:
-                if "servers are currently overloaded" not in str(e).lower():
-                    raise
-                ex6.debug_print(f"[codex] overloaded — retrying in {delay}s")
-                time.sleep(delay)
-        else:
+        try:
             stream = start(access_token)
+        except openai.AuthenticationError:
+            # Access token expired — refresh via the OAuth refresh token and retry once.
+            ex6.debug_print("[codex] 401 — refreshing token")
+            stream = start(_refresh_codex_token())
     except Exception as e:
         ex6.debug_print(f"[codex] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
