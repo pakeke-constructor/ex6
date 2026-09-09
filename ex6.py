@@ -1903,6 +1903,15 @@ class TUI:
     def __post_init__(self):
         from blessed import Terminal
         self.term = Terminal()
+        if os.name == "nt":
+            import msvcrt
+            def getch(decode_latin1=False):
+                # HACK/MONKEYPATCH: handle invalid chars in terminal.
+                char = msvcrt.getwch()
+                if char in {'\x00', '\xe0'}:
+                    char += msvcrt.getwch()
+                return char
+            self.term.getch = getch
         self.sel_input_box = make_input(self.sel_on_submit)
         self.buf = ScreenBuffer(self.term.width, self.term.height)
         self.stdout_sink = _StdoutSink()

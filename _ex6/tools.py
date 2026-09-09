@@ -458,6 +458,7 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
     Pagination: page is 1-indexed and returns at most max_results matches for that page.
     When you just want to check whether a pattern exists, (e.g. after a refactor) use max_results=1 to save context.
     - Make sure to use regex patterns correctly. WRONG: search("func("), malformed regex pattern. CORRECT: search("func\\(")
+    - A common mistake is to search(pattern, "*.py"). This will only search files next to root, e.g. src/a.py will be missed. You should generally use search(pattern, "**.py") if you want to do a proper codebase search.
     """
     if page < 1:
         raise ValueError("page must be >= 1")
