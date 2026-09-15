@@ -16,6 +16,13 @@ def clr(name: Optional[str]):
 
 
 @ex6.command
+def purge():
+    'Purge cached message content from current context.'
+    ctx = ex6.get_current()
+    if ctx: ctx.purge_cache()
+
+
+@ex6.command
 def pop(n: Optional[int]):
     'Pop last N user messages and everything after each cutoff.'
     ctx = ex6.get_current()

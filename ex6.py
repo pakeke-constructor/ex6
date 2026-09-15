@@ -868,6 +868,11 @@ class Context:
         with self._msg_lock:
             self._messages.append(message)
 
+    def purge_cache(self):
+        with self._msg_lock:
+            for message in self._messages:
+                message._snapshot = None
+
     def token_count(self) -> int:
         if self.llm_result:
             return self.llm_result.input_tokens + self.llm_result.output_tokens

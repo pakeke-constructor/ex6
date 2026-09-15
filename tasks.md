@@ -14,6 +14,9 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
+- Notice how messages have caching in them. This is "nice", but the issue is that sometimes we might want to refresh the cache. Can you add a `ctx.purge_cache()` method please? and then add a `/purge` command that purges the current ctx's cache.
+
+
 - Make gitignore handling per `ctx.cwd`, not import-time process cwd.
 
 
