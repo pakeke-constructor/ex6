@@ -12,16 +12,28 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 # TASKS:
 # ===============================
 
+Check out ex6.py.
 
+Notice all the weird global stuff, _commands, _output_renderers, etc etc.
+I.. would prefer it if these were refactored, and were no longer global. Global is messy.
+
+Don't write code; Can you plan, and find a good way to clean up these values thanks?
 
 - Notice how messages have caching in them. This is "nice", but the issue is that sometimes we might want to refresh the cache. Can you add a `ctx.purge_cache()` method please? and then add a `/purge` command that purges the current ctx's cache.
+
+
+
 
 
 - Make gitignore handling per `ctx.cwd`, not import-time process cwd.
 
 
+
+
+
 THEN: Oli, you could use ex6 to optimize and organize your life a bit more.
 Discord bot for ex6? checklists / goal tracking? running stuff in background, etc
+
 
 <cwd-agents>
 Overarching goal: make an agent that has reference to ex6 codebase;

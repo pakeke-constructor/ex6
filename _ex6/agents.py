@@ -2,7 +2,6 @@
 from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, ask_user_question, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
-from _ex6.tasks import plan_write, plan_read, plan_add_log, plan_done, plan_list
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
@@ -36,6 +35,15 @@ Use context-management only when it buys clarity or recovery.
 
 ALWAYS check changes afterwards. (Check git diff and/or run tests)
 </agent_strategy>
+
+<plans>
+The `.plans/**` folder is a list of markdown files, representing plans.
+
+If the user asks to plan stuff, or if you want to plan:
+you should write a concisely named `.md` file into the `.plans/` folder.
+Eg: `.plans/buffers1.md`. (Make sure the name is easy to type.)
+If the user asks you to execute a plan, you should glob/grep the `.plans/` folder.
+</plans>
 
 <output_rules>
 BE CONCISE, GRAMMATICAL CORRECTNESS IS NOT IMPORTANT.
