@@ -48,45 +48,39 @@ def _load_gitignore():
                     patterns.append(line.rstrip("/"))
     return patterns
 
-_gitignore_stamp = None
-_gitignore_patterns = []
-
-def _get_gitignore_patterns():
-    global _gitignore_stamp, _gitignore_patterns
+def _get_gitignore_patterns(ctx):
+    state = ctx.app.plugin_data.setdefault("tools:gitignore", {"stamp": None, "patterns": []})
     try:
         stat = os.stat(".gitignore")
         stamp = (stat.st_mtime_ns, stat.st_size)
     except FileNotFoundError:
         stamp = None
-    if stamp != _gitignore_stamp:
-        _gitignore_patterns = _load_gitignore()
-        _gitignore_stamp = stamp
-    return _gitignore_patterns
+    if stamp != state["stamp"]:
+        state["patterns"] = _load_gitignore()
+        state["stamp"] = stamp
+    return state["patterns"]
 
-_file_locks = {}
-_file_locks_lock = threading.Lock()
-
-def _get_file_lock(path):
+def _get_file_lock(ctx, path):
+    locks = ctx.app.plugin_data.setdefault("tools:file_locks", {})
     key = os.path.normpath(os.path.abspath(path))
-    with _file_locks_lock:
-        if key not in _file_locks:
-            _file_locks[key] = threading.Lock()
-        return _file_locks[key]
+    if key not in locks:
+        locks[key] = threading.Lock()
+    return locks[key]
 
-def _is_gitignored(path):
+def _is_gitignored(ctx, path):
     rel = os.path.relpath(path).replace("\\", "/")
     parts = rel.split("/")
     if any(p in _SKIP_DIRS for p in parts):
         return True
-    for pat in _get_gitignore_patterns():
+    for pat in _get_gitignore_patterns(ctx):
         if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(os.path.basename(rel), pat):
             return True
         if any(fnmatch.fnmatch(p, pat) for p in parts):
             return True
     return False
 
-def _check_gitignore(path):
-    if _is_gitignored(path):
+def _check_gitignore(ctx, path):
+    if _is_gitignored(ctx, path):
         raise ValueError(f"Refused: '{path}' is gitignored.")
 
 def _check_read(ctx, path):
@@ -257,7 +251,7 @@ def _signature(node, source, mod_name):
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     """Write content to a file, creating it if needed. Existing files must be read first."""
     p = ctx.resolve(file)
-    with _get_file_lock(p):
+    with _get_file_lock(ctx, p):
         if os.path.exists(p):
             _check_read(ctx, file)
             with open(p, "r") as f:
@@ -265,7 +259,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
         else:
             old = ""
         diff = _make_diff(old, content)
-        denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
+        denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
         d = os.path.dirname(p)
         if d: os.makedirs(d, exist_ok=True)
@@ -293,14 +287,14 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     _check_read(ctx, file)
     p = ctx.resolve(file)
 
-    with _get_file_lock(p):
+    with _get_file_lock(ctx, p):
         with open(p, "r") as f:
             content = f.read()
 
         def do_edit(original):
             new_content = content.replace(original, replace, 1)
             diff = _make_diff(original, replace)
-            denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
+            denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
             if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
             with open(p, "w") as f:
                 f.write(new_content)
@@ -387,7 +381,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     _check_read(ctx, file)
     p = ctx.resolve(file)
 
-    with _get_file_lock(p):
+    with _get_file_lock(ctx, p):
         with open(p, "r") as f:
             lines = f.readlines()
 
@@ -423,7 +417,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         old_text = "".join(lines)
         new_text = "".join(new_lines)
         diff = _make_diff(old_text, new_text)
-        denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(buf, diff, x, y, w, h, file))
+        denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
         with open(p, "w") as f:
             f.writelines(new_lines)
@@ -437,7 +431,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
 def glob(ctx: ex6.Context, pattern: str) -> str:
     """Find files matching a glob pattern (recursive). Returns newline-separated paths."""
     root = ctx.cwd or os.getcwd()
-    matches = [m for m in _glob.glob(pattern, recursive=True, root_dir=root) if not _is_gitignored(m)]
+    matches = [m for m in _glob.glob(pattern, recursive=True, root_dir=root) if not _is_gitignored(ctx, m)]
     return "\n".join(matches) if matches else "No matches."
 
 
@@ -478,12 +472,12 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
         rel_dir = os.path.relpath(dirpath, root)
         dirnames[:] = [
             d for d in dirnames
-            if not _is_gitignored(d if rel_dir == "." else os.path.join(rel_dir, d))
+            if not _is_gitignored(ctx, d if rel_dir == "." else os.path.join(rel_dir, d))
         ]
 
         for name in filenames:
             f = name if rel_dir == "." else os.path.join(rel_dir, name)
-            if not glob_regex.fullmatch(f) or _is_gitignored(f):
+            if not glob_regex.fullmatch(f) or _is_gitignored(ctx, f):
                 continue
             if os.path.splitext(name)[1].lower() in _BINARY_EXTENSIONS:
                 continue
@@ -639,7 +633,7 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     - lines=(start,end) to read a subset (1-indexed, inclusive). (Forces line_numbers=True)
     """
-    _check_gitignore(path)
+    _check_gitignore(ctx, path)
     p = ctx.resolve(path)
     with open(p, "r") as f:
         all_lines = f.readlines()
@@ -667,7 +661,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     You should prefer using this tool first before reading an entire file.
     read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
     """
-    _check_gitignore(file)
+    _check_gitignore(ctx, file)
     p = ctx.resolve(file)
     if os.path.splitext(p)[1].lower() == '.gd':
         with open(p, 'rb') as f:
@@ -839,11 +833,11 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
         result[0] = text
         ctx.ui_stack.pop()
 
-    input_draw = ex6.make_input(on_submit)
+    input_draw = ctx.app.call("make_input", on_submit)
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.get_theme()
+        th = ctx.app.theme
         buf.puts(x, y, f"? {question}", txt_color=th.warning)
         input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
 
@@ -869,7 +863,7 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
         result[0] = text
         ctx.ui_stack.pop()
 
-    input_draw = ex6.make_input(on_submit)
+    input_draw = ctx.app.call("make_input", on_submit)
 
     def _wrap_words(text: str, width: int) -> list[str]:
         if width < 1:
@@ -895,7 +889,7 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.get_theme()
+        th = ctx.app.theme
 
         show_options = bool(options) and not typed_mode[0]
         q_lines = _wrap_words(question, max(1, w - 8))
@@ -981,13 +975,13 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
         result[0] = text
         ctx.ui_stack.pop()
 
-    input_draw = ex6.make_input(on_submit)
+    input_draw = ctx.app.call("make_input", on_submit)
     sev_labels = {1: "INFO", 2: "BLOCKING", 3: "CRITICAL"}
     label = sev_labels.get(severity, f"SEV-{severity}")
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
-        th = ex6.get_theme()
+        th = ctx.app.theme
         buf.fill(r, char=' ', bg_color=None)
         buf.rect(r, txt_color=th.muted)
         cx = x + 3
@@ -1028,7 +1022,7 @@ def _make_diff(old: str, new: str) -> list:
     return [l.replace('\n', ' ').replace('\r', '') for l in lines]
 
 
-def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
+def _render_diff(ctx, buf, diff_lines, x, y, w, h, filename=None):
     """Render diff lines into a region, with optional syntax highlighting."""
     from _ex6.z_highlight_codeblock import render_highlighted_line
     try:
@@ -1037,7 +1031,7 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
     except:
         lexer = False
 
-    th = ex6.get_theme()
+    th = ctx.app.theme
     max_lines = h
     truncated = len(diff_lines) > max_lines
     visible = diff_lines[:max_lines - 1] if truncated else diff_lines
@@ -1046,7 +1040,7 @@ def _render_diff(buf, diff_lines, x, y, w, h, filename=None):
             buf.puts(x, y + i, line[:w], txt_color=th.accent_alt); continue
         bg = th.diff_add_bg if line.startswith('+') else th.diff_del_bg if line.startswith('-') else None
         if lexer:
-            render_highlighted_line(buf, x, y + i, w, line, lexer, bg_color=bg)
+            render_highlighted_line(buf, x, y + i, w, line, lexer, bg_color=bg, theme=th)
         else:
             buf.puts(x, y + i, line[:w], txt_color=th.text, bg_color=bg); continue
     if truncated:
@@ -1067,10 +1061,10 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, 
         result[1] = text if text.strip() else None
         ctx.ui_stack.pop()
 
-    input_draw = ex6.make_input(on_submit)
+    input_draw = ctx.app.call("make_input", on_submit)
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
-        th = ex6.get_theme()
+        th = ctx.app.theme
         panel = ex6.Region(*r)
         if height is not None:
             panel_h = min(panel[3], height)
@@ -1134,20 +1128,18 @@ ENV_PROMPT = ex6.Message(role="system", content=_env_content, overview="env")
 
 
 _IS_WINDOWS = sys.platform == "win32"
-_bash_location = None
-
-def _get_bash():
-    global _bash_location
-    if _bash_location:
-        return _bash_location
+def _get_bash(ctx):
+    bash_location = ctx.app.plugin_data.get("tools:bash_location")
+    if bash_location:
+        return bash_location
     if not _IS_WINDOWS:
-        _bash_location = "bash"
-        return _bash_location
+        ctx.app.plugin_data["tools:bash_location"] = "bash"
+        return "bash"
     # Windows: try shutil.which first, then known install paths
     b = shutil.which("bash")
     if b:
-        _bash_location = b
-        return _bash_location
+        ctx.app.plugin_data["tools:bash_location"] = b
+        return b
     git_path = shutil.which("git")
     if git_path:
         # git.exe lives in <install>/cmd/ or <install>/bin/ — walk up and check
@@ -1155,14 +1147,14 @@ def _get_bash():
         for sub in ("bin", "usr\\bin"):
             p = os.path.join(install_dir, sub, "bash.exe")
             if os.path.isfile(p):
-                _bash_location = p
-                return _bash_location
+                ctx.app.plugin_data["tools:bash_location"] = p
+                return p
     for d in (r"C:\Program Files\Git", r"C:\Program Files (x86)\Git"):
         for sub in ("bin", "usr\\bin"):
             p = os.path.join(d, sub, "bash.exe")
             if os.path.isfile(p):
-                _bash_location = p
-                return _bash_location
+                ctx.app.plugin_data["tools:bash_location"] = p
+                return p
     return None
 
 
@@ -1198,7 +1190,7 @@ def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
     command_lines = command.replace('\r\n', '\n').replace('\r', '\n').split('\n')
 
     def render_command(buf, x, y, w, h):
-        th = ex6.get_theme()
+        th = ctx.app.theme
         area = ex6.Region(x, y, w, h)
         label_r, command_r = area.split_vertical(1, max(2, len(command_lines) + 2))
         buf.puts(label_r[0], label_r[1], "COMMAND", txt_color=th.muted, style='bold')
@@ -1213,7 +1205,7 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     """Run a bash/shell command and return its output (stdout + stderr combined).
     Use for: running tests, checking git status, installing packages, etc.
     timeout: max seconds to wait (default 30)."""
-    bp = _get_bash()
+    bp = _get_bash(ctx)
     if not bp:
         return "ERROR: bash not found (install Git for Windows)"
     denial = _approve_command(ctx, "bash", command)
@@ -1346,7 +1338,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         prompt = "\n".join(parts) + "\n\n" + prompt
 
     sub_name = f"explore_{int(time.time() * 1000)}"
-    sub = Context(sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
+    sub = ctx.app.create_context(sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
     add_tool_repetition_guard(sub, [read_file, read_headers, read_body, search, glob])
     sub.parent = ctx.name
     sub.invoke(prompt)
@@ -1359,7 +1351,7 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         messages = sub.get_messages()
         return messages[-1].content if messages else ""
     finally:
-        ex6.remove_context(sub)
+        ctx.app.remove_context(sub)
 
 
 def _normalize_guard_value(v):

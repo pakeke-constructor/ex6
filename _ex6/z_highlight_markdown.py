@@ -1,22 +1,8 @@
-
-'''
-
-QUESTION: "why does this file start with a `z`?
-
-ANS: Because we want it to run LAST.
-Or else itll overwrite everything lol
-
-'''
-
-
-
 import ex6
 import re
 
 
-def get_patterns():
-    # must reconstruct every time, since theme may have changed
-    th = ex6.get_theme()
+def get_patterns(th):
     return [
         (r'^(#{1,6}\s.*)$', th.warning, 'bold'),
         (r'(\*\*[^*]+\*\*)', th.md_bold, 'bold'),
@@ -28,11 +14,10 @@ def get_patterns():
     ]
 
 
-def make_md_renderer(line: str) -> ex6.RenderFn:
-    th = ex6.get_theme()
+def make_md_renderer(line: str, th) -> ex6.RenderFn:
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         spans = []
-        for pattern, color, style in get_patterns():
+        for pattern, color, style in get_patterns(th):
             for m in re.finditer(pattern, line):
                 spans.append((m.start(), m.end(), color, style))
 
@@ -50,12 +35,12 @@ def make_md_renderer(line: str) -> ex6.RenderFn:
 
 @ex6.output_renderer
 def markdown_highlight(output: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.Context) -> None:
-    patterns = get_patterns()
+    th = ctx.app.theme
+    patterns = get_patterns(th)
     for i, line in enumerate(output):
         if not isinstance(line, str):
             continue
         for pattern, _, _ in patterns:
             if re.search(pattern, line):
-                output[i] = make_md_renderer(line)
+                output[i] = make_md_renderer(line, th)
                 break
-

@@ -34,7 +34,7 @@ def _codex_auth():
     return tokens["access_token"], tokens["account_id"]
 
 
-def _refresh_codex_token():
+def _refresh_codex_token(debug):
     """Exchange the refresh token for a fresh access token and write the rotated
     tokens back to auth.json. Returns the new access token.
 
@@ -66,21 +66,16 @@ def _refresh_codex_token():
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=2))
     tmp.replace(path)  # atomic swap; auth.json is live-read by the Codex CLI
-    ex6.debug_print("[codex] refreshed access token")
+    debug("[codex] refreshed access token")
     return tokens["access_token"]
 
 
-# Subscription usage, scraped from the Codex rate-limit response headers.
-# Window lengths vary by active limit. Populated on every invoke; read by footer.
-_usage = {}
-
-
-def _capture_usage(headers):
+def _capture_usage(headers, app):
     import time
     pct = headers.get("x-codex-primary-used-percent")
     if pct is None:
         return
-    _usage.update(
+    app.plugin_data.setdefault("openai:usage", {}).update(
         percent=float(pct),
         reset_after=float(headers.get("x-codex-primary-reset-after-seconds", 0)),
         window=float(headers.get("x-codex-primary-window-minutes", 0)),
@@ -154,19 +149,19 @@ def invoke_llm(ctx: ex6.Context):
             timeout=120,
             **kw,
         )
-        _capture_usage(raw.headers)
+        _capture_usage(raw.headers, ctx.app)
         return raw.parse()
 
-    ex6.debug_print(f"[codex] model={ctx.model} items={len(input_items)}")
+    ctx.app.debug_print(f"[codex] model={ctx.model} items={len(input_items)}")
     try:
         try:
             stream = start(access_token)
         except openai.AuthenticationError:
             # Access token expired — refresh via the OAuth refresh token and retry once.
-            ex6.debug_print("[codex] 401 — refreshing token")
-            stream = start(_refresh_codex_token())
+            ctx.app.debug_print("[codex] 401 — refreshing token")
+            stream = start(_refresh_codex_token(ctx.app.debug_print))
     except Exception as e:
-        ex6.debug_print(f"[codex] API EXCEPTION: {e}")
+        ctx.app.debug_print(f"[codex] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
         _log_invoke(ctx, input_items, result)
         yield result
@@ -200,7 +195,7 @@ def invoke_llm(ctx: ex6.Context):
                 err = getattr(getattr(event, "response", None), "error", None) or getattr(event, "message", t)
                 raise RuntimeError(err)
     except Exception as e:
-        ex6.debug_print(f"[codex] stream exception: {e}")
+        ctx.app.debug_print(f"[codex] stream exception: {e}")
         result = ex6.LLMResult(error=str(e))
         _log_invoke(ctx, input_items, result, cached_tokens)
         yield result
@@ -211,9 +206,9 @@ def invoke_llm(ctx: ex6.Context):
     if tool_calls:
         finish_reason = "tool_calls"
 
-    ex6.add_cost(0)  # subscription — no API charge
+    ctx.app.budget.add_cost(0)  # subscription — no API charge
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0)
-    ex6.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)}")
+    ctx.app.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)}")
     _log_invoke(ctx, input_items, result, cached_tokens)
     yield result
 
@@ -232,7 +227,7 @@ def render_work_mode_footer(tui, buf, r, ctx):
     """Default yolo indicator, plus a subscription-usage bar for codex contexts."""
     import time
     x, y, w, h = r
-    th = ex6.get_theme()
+    th = tui.app.theme
     on = ctx.yolo
     buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
              txt_color=th.success if on else th.muted)
@@ -240,20 +235,21 @@ def render_work_mode_footer(tui, buf, r, ctx):
     if ctx.invoke_llm is not invoke_llm:
         return
 
-    if "percent" not in _usage:  # no invoke yet — usage headers unknown
+    usage = tui.app.plugin_data.setdefault("openai:usage", {})
+    if "percent" not in usage:  # no invoke yet — usage headers unknown
         msg = "(unknown usage)"
         buf.puts(x + w - len(msg) - 2, y, msg, txt_color=th.muted)
         return
 
-    pct = _usage["percent"]
-    remaining = _usage["reset_after"] - (time.time() - _usage["ts"])
+    pct = usage["percent"]
+    remaining = usage["reset_after"] - (time.time() - usage["ts"])
     filled = min(10, max(0, round(pct / 10)))
-    days = _usage["window"] / 1440
-    window = f"{days:g}d" if days >= 1 else f"{_usage['window'] / 60:g}h"
+    days = usage["window"] / 1440
+    window = f"{days:g}d" if days >= 1 else f"{usage['window'] / 60:g}h"
     mid = f" {pct:.0f}% used / {window}, resets in {_fmt_reset(remaining)}"
     secondary = ""
-    if _usage["secondary_window"]:
-        secondary = f"  ({_usage['secondary']:.0f}% secondary used)"
+    if usage["secondary_window"]:
+        secondary = f"  ({usage['secondary']:.0f}% secondary used)"
     bx = x + w - (10 + len(mid) + len(secondary)) - 2
     buf.puts(bx, y, "█" * filled, txt_color=th.accent)
     buf.puts(bx + filled, y, "░" * (10 - filled), txt_color=th.muted)

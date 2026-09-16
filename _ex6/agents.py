@@ -96,51 +96,41 @@ MAIN_TOOLS = [
 
 
 
-def auto_setup():
+def auto_setup(app):
     messages = [
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ]
-    custom_setup(messages=messages)
+    custom_setup(app, messages=messages)
 
 
-def custom_setup(messages):
+def custom_setup(app, messages):
     messages = messages or [
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ]
 
-    Context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages)
-    Context("c_sonnet", model=M.SONNET_LATEST.id, reasoning="high", messages=messages)
+    app.create_context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages)
+    app.create_context("c_sonnet", model=M.SONNET_LATEST.id, reasoning="high", messages=messages)
 
-    Context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages)
+    app.create_context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages)
 
-    Context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages)
+    app.create_context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages)
 
-    Context("c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages)
+    app.create_context("c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages)
 
-    _=Context("sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    t=Context("sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    _=Context("sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    ex6.set_current(t)
-
-
-
-
-
-
-import os as _os
-import ex6 as _ex6_guard
-
-# only load these agents when running from the ex6 project folder
-if _os.getcwd() == _os.path.dirname(_os.path.abspath(_ex6_guard.__file__)):
-    auto_setup()
-
-del _ex6_guard, _os
+    _=app.create_context("sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    t=app.create_context("sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    _=app.create_context("sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    app.current = t
 
 
 
 
 
+
+def setup(app):
+    if os.getcwd() == os.path.dirname(os.path.abspath(ex6.__file__)):
+        auto_setup(app)

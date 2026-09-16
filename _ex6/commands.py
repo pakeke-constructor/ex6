@@ -8,24 +8,24 @@ import ex6
 
 
 @ex6.command
-def clr(name: Optional[str]):
+def clr(tui, name: Optional[str]):
     'Clear context messages.'
-    ctx = ex6.get_context(name) if name else ex6.get_current()
+    ctx = tui.app.get_context(name) if name else tui.current
     if not ctx: return
     ctx.clear()
 
 
 @ex6.command
-def purge():
+def purge(tui):
     'Purge cached message content from current context.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if ctx: ctx.purge_cache()
 
 
 @ex6.command
-def pop(n: Optional[int]):
+def pop(tui, n: Optional[int]):
     'Pop last N user messages and everything after each cutoff.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if not ctx or ctx.is_running(): return
     if n is None: n = 1
     if n <= 0: return
@@ -36,9 +36,9 @@ def pop(n: Optional[int]):
 
 
 @ex6.command
-def yy(n: Optional[int]):
+def yy(tui, n: Optional[int]):
     'Copy the Nth-last user prompt to clipboard.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if not ctx: return
     if n is None: n = 1
     if n <= 0: return
@@ -48,53 +48,53 @@ def yy(n: Optional[int]):
 
 
 @ex6.command
-def delete(name: Optional[str]):
+def delete(tui, name: Optional[str]):
     'Delete a context.'
-    ctx = ex6.get_context(name) if name else ex6.get_current()
+    ctx = tui.app.get_context(name) if name else tui.current
     if not ctx: return
-    ex6.remove_context(ctx)
+    tui.app.remove_context(ctx)
 
 
 @ex6.command
-def fork(name: Optional[str]):
+def fork(tui, name: Optional[str]):
     'Fork current context.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if not ctx: return
     ctx.fork(name)
 
 
 @ex6.command
-def stop():
+def stop(tui):
     'Stop running LLM.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if ctx and ctx.is_running():
         ctx.stop_early = True
 
 
 @ex6.command
-def yolo():
+def yolo(tui):
     'Toggle auto-approve tools.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if not ctx: return
     ctx.yolo = not ctx.yolo
 
 
 @ex6.command
-def crash():
+def crash(tui):
     'Force a crash (debug).'
     raise RuntimeError("Crash!")
 
 
-def _llm_one_shot(model: str, system: str, user: str) -> str:
+def _llm_one_shot(app, model: str, system: str, user: str) -> str:
     """Synchronously run one LLM call. Returns assistant text."""
-    ctx = ex6.Context(name="__tmp_cm__", model=model, reasoning="none")
+    ctx = app.create_context(name="__tmp_cm__", model=model, reasoning="none")
     ctx.append_message(ex6.Message(role="system", content=system))
     ctx.append_message(ex6.Message(role="user", content=user))
     result_text = []
-    for item in ex6.invoke_llm(ctx):
+    for item in app.get_implementation("invoke_llm")(ctx):
         if isinstance(item, ex6.ResponseChunk) and item.type == "text":
             result_text.append(item.content)
-    ex6.remove_context(ctx)
+    app.remove_context(ctx)
     return "".join(result_text).strip()
 
 
@@ -124,12 +124,12 @@ Be extremely concise, grammatical correctness is not important.
 """
 
 
-def _text_panel(lines):
+def _text_panel(tui, lines):
     """Push a scrollable text panel. ESC to close."""
     scroll = [0]
     def draw(buf, inpt, r):
         x, y, w, h = r
-        th = ex6.get_theme()
+        th = tui.app.theme
         buf.fill(r, ' ')
         buf.rect_line(r, txt_color=th.accent)
         if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
@@ -139,7 +139,7 @@ def _text_panel(lines):
         if scroll[0] > max_scroll: scroll[0] = max_scroll
         for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
             buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
-    ex6.push_ui_panel(draw)
+    tui.ui_panel_stack.append(draw)
 
 
 
@@ -151,9 +151,9 @@ Summarize ALL important findings, decisions, and file locations. Keep any files 
 """
 
 @ex6.command
-def c(additional_msg: Optional[str]):
+def c(tui, additional_msg: Optional[str]):
     'Invokes agent, asking it to compact/condense itself.'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if not ctx: return
     tokens = ctx.token_count()
     estimate_note = " (estimated)" if ctx.is_token_count_estimate() else ""
@@ -171,9 +171,9 @@ Otherwise, if the code is clean and minimal; that's fine, carry on.
 '''
 
 @ex6.command
-def smp(additional_msg: Optional[str]):
+def smp(tui, additional_msg: Optional[str]):
     'Invokes agent, asking it to attempt to simpllfy or shorten recent code'
-    ctx = ex6.get_current()
+    ctx = tui.current
     if not ctx: return
     msg = SMP
     if additional_msg:
@@ -182,13 +182,13 @@ def smp(additional_msg: Optional[str]):
 
 
 @ex6.command
-def cm(msg: Optional[str]):
+def cm(tui, msg: Optional[str]):
     """Generate a commit message from git diff and commit."""
     output_lines = ["Generating commit message..."]
 
     def draw(buf, inpt, r):
         x, y, w, h = r
-        th = ex6.get_theme()
+        th = tui.app.theme
         panel = ex6.Region(x, y, w, max(3, h // 2))
         px, py, pw, ph = panel
         buf.fill(panel, ' ')
@@ -202,9 +202,9 @@ def cm(msg: Optional[str]):
     def draw_auto_close(buf, inpt, r):
         draw(buf, inpt, r)
         if done_time[0] is not None and time.time() - done_time[0] >= 0.5:
-            ex6.pop_ui_panel()
+            tui.ui_panel_stack.pop()
 
-    ex6.push_ui_panel(draw_auto_close)
+    tui.ui_panel_stack.append(draw_auto_close)
 
     def run():
         subprocess.run(["git", "add", "."], capture_output=True)
@@ -226,7 +226,7 @@ def cm(msg: Optional[str]):
             diff_for_llm = diff_for_llm[:8000] + "\n\n[Diff truncated after 8000 characters.]"
         system = CM_SYSTEM_PROMPT
         user = f"Write a commit message for this diff:{hint}\n\n{diff_for_llm}"
-        commit_msg = _llm_one_shot(model, system, user)
+        commit_msg = _llm_one_shot(tui.app, model, system, user)
         output_lines.append(f"Commit: {commit_msg}")
 
         subprocess.run(["git", "add", "."], capture_output=True)
@@ -241,7 +241,7 @@ def cm(msg: Optional[str]):
     threading.Thread(target=run, daemon=True).start()
 
 @ex6.command
-def sync():
+def sync(tui):
     """Fetch origin, then merge origin/<branch>, then origin/main or origin/master."""
     output_lines = ["Fetching origin..."]
     done = [False]
@@ -253,7 +253,7 @@ def sync():
 
     def draw(buf, inpt, r):
         x, y, w, h = r
-        th = ex6.get_theme()
+        th = tui.app.theme
         panel = ex6.Region(x, y, w, max(3, h // 2))
         px, py, pw, ph = panel
         buf.fill(panel, ' ')
@@ -264,9 +264,9 @@ def sync():
             buf.puts(px + 2, py + 1 + i, line[:pw - 4], txt_color=th.text)
         if done[0] and inpt._keys:
             inpt._keys.clear()
-            ex6.pop_ui_panel()
+            tui.ui_panel_stack.pop()
 
-    ex6.push_ui_panel(draw)
+    tui.ui_panel_stack.append(draw)
 
     def run():
         fetch = subprocess.run(["git", "fetch", "origin"], capture_output=True, text=True)
@@ -321,13 +321,13 @@ def sync():
 
 
 @ex6.command
-def help():
+def help(tui):
     lines = ["Commands:"]
-    for name, (fn, spec) in sorted(ex6._commands.items()):
+    for name, (fn, spec) in sorted(tui.app.iter_commands()):
         args = " ".join(f"<{a}>" for a, _ in spec)
         doc = (fn.__doc__ or "").strip()
         line = f"  /{name} {args}".rstrip()
         lines.append(f"{line}  {doc}" if doc else line)
-    _text_panel(lines)
+    _text_panel(tui, lines)
 
 

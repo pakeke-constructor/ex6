@@ -8,14 +8,8 @@ from _ex6.models import M, ModelInfo
 
 
 
-_cached_contexts = {}  # ctx.name -> ttl
-_CACHE_FILE = None  # lazy
-
 def _cache_file():
-    global _CACHE_FILE
-    if not _CACHE_FILE:
-        _CACHE_FILE = ex6.get_folder() / "cache_state.json"
-    return _CACHE_FILE
+    return ex6.get_folder() / "cache_state.json"
 
 
 def cache_manually(ctx: ex6.Context, ttl="1h"):
@@ -36,14 +30,14 @@ def cache_manually(ctx: ex6.Context, ttl="1h"):
     entry = state.get(ctx.name)
     ttl_sec = 3600 if ttl == "1h" else 300
     if entry and entry["fp"] == fp and (time.time() - entry["ts"]) < ttl_sec:
-        _cached_contexts[ctx.name] = ttl
+        ctx.app.plugin_data.setdefault("provider:cached_contexts", {})[ctx.name] = ttl
         return
 
-    _cached_contexts[ctx.name] = ttl
+    ctx.app.plugin_data.setdefault("provider:cached_contexts", {})[ctx.name] = ttl
     state[ctx.name] = {"fp": fp, "ts": time.time()}
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(state))
-    ex6.debug_print(f"[cache] registered {ctx.name} (ttl={ttl}, fp={fp})")
+    ctx.app.debug_print(f"[cache] registered {ctx.name} (ttl={ttl}, fp={fp})")
 
 
 def _apply_cache_control(content: str | list[dict], cc: dict) -> list[dict]:
@@ -73,8 +67,8 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 def invoke_llm(ctx: ex6.Context):
     messages = [msg_to_dict(m, ctx) for m in ctx.get_messages()]
 
-    if ex6.is_over_budget():
-        result = ex6.LLMResult(error=f"daily budget exceeded (${ex6.get_daily_cost():.2f}/${ex6.get_daily_limit():.2f})")
+    if ctx.app.budget.is_over():
+        result = ex6.LLMResult(error=f"daily budget exceeded (${ctx.app.budget.get_cost():.2f}/${ctx.app.budget.get_limit():.2f})")
         _log_invoke(ctx, messages, result)
         yield result
         return
@@ -84,8 +78,9 @@ def invoke_llm(ctx: ex6.Context):
     # Anthropic prompt caching
     if ctx.model.startswith("anthropic/"):
         # 1h cache on last system message + tools (if ctx was registered via cache())
-        if ctx.name in _cached_contexts:
-            ttl = _cached_contexts[ctx.name]
+        cached_contexts = ctx.app.plugin_data.setdefault("provider:cached_contexts", {})
+        if ctx.name in cached_contexts:
+            ttl = cached_contexts[ctx.name]
             cc = {"type": "ephemeral", "ttl": ttl}
             # Only cache last system msg (prefix-based, covers everything before it)
             for msg in reversed(messages):
@@ -118,7 +113,7 @@ def invoke_llm(ctx: ex6.Context):
             body["reasoning"] = {"effort": ctx.reasoning}
         extra["extra_body"] = body
 
-    ex6.debug_print(f"[invoke] model={ctx.model} msgs={len(messages)}")
+    ctx.app.debug_print(f"[invoke] model={ctx.model} msgs={len(messages)}")
     try:
         response = client.chat.completions.create( # type: ignore[arg-type]
             model=ctx.model,
@@ -130,13 +125,13 @@ def invoke_llm(ctx: ex6.Context):
             **extra,
         )
     except Exception as e:
-        ex6.debug_print(f"[invoke] API EXCEPTION: {e}")
+        ctx.app.debug_print(f"[invoke] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
         _log_invoke(ctx, messages, result)
         yield result
         return
 
-    ex6.debug_print("[invoke] stream started")
+    ctx.app.debug_print("[invoke] stream started")
     input_tokens, output_tokens, cached_tokens, cache_write_tokens = 0, 0, 0, 0
     provider_cost = None  # OpenRouter may return cost directly
     finish_reason = "stop"
@@ -179,12 +174,12 @@ def invoke_llm(ctx: ex6.Context):
                     cache_write_tokens = getattr(details, 'cache_write_tokens', 0) or 0
                 provider_cost = getattr(chunk.usage, 'cost', None)
     except Exception as e:
-        ex6.debug_print(f"[invoke] stream exception: {e}")
+        ctx.app.debug_print(f"[invoke] stream exception: {e}")
         result = ex6.LLMResult(error=str(e))
         _log_invoke(ctx, messages, result, cached_tokens, cache_write_tokens)
         yield result
         return
-    ex6.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
+    ctx.app.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
 
     tool_calls = []
     for tc in tool_calls_acc.values():
@@ -205,23 +200,23 @@ def invoke_llm(ctx: ex6.Context):
         uncached_input = input_tokens - cached_tokens - cache_write_tokens
         cost = (uncached_input * info.input + cached_tokens * info.cache_read
                 + cache_write_tokens * info.cache_write + output_tokens * info.output) / 1_000_000
-    ex6.add_cost(cost)
+    ctx.app.budget.add_cost(cost)
 
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
-    ex6.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} cached_tokens={cached_tokens} cache_write_tokens={cache_write_tokens} tools={len(tool_calls)}")
+    ctx.app.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} cached_tokens={cached_tokens} cache_write_tokens={cache_write_tokens} tools={len(tool_calls)}")
     _log_invoke(ctx, messages, result, cached_tokens, cache_write_tokens)
     yield result
 
 
 
 @ex6.command
-def usage():
+def usage(tui):
     """Show today's spending."""
     from _ex6.commands import _text_panel
     lines = [
-        f"Today: ${ex6.get_daily_cost():.4f} / ${ex6.get_daily_limit():.2f}",
+        f"Today: ${tui.app.budget.get_cost():.4f} / ${tui.app.budget.get_limit():.2f}",
     ]
-    _text_panel(lines)
+    _text_panel(tui, lines)
 
 
 def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):

@@ -12,37 +12,17 @@ os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
 
 sys.modules['ex6'] = sys.modules[__name__]  # so plugins can `import ex6`
 
-# Debug ring buffer
-_debug_buffer = deque(maxlen=1000)
-
-def debug_print(*args, **kwargs):
-    ts = datetime.now().strftime("%H:%M:%S")
-    msg = " ".join(str(a) for a in args)
-    _debug_buffer.append(f"[{ts}] {msg}")
-
-
-_real_stdout = sys.stdout
-_real_stderr = sys.stderr
-
 class _StdoutSink:
-    """Captures stray writes to stdout/stderr and routes them to debug_print."""
+    def __init__(self, debug):
+        self.debug = debug
+
     def write(self, s):
         s = s.strip()
-        if s: debug_print(f"[stdout] {s}")
+        if s:
+            self.debug(f"[stdout] {s}")
+
     def flush(self): pass
     def isatty(self): return False
-
-_fatal_error = None
-
-import threading
-def _thread_excepthook(args):
-    # args: ExceptHookArgs(exc_type, exc_value, exc_traceback, thread)
-    import traceback
-    tb = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
-    debug_print(f"THREAD CRASH [{args.thread}]:\n{tb}")
-    global _fatal_error
-    _fatal_error = (f"{args.exc_type.__name__}: {args.exc_value}")
-threading.excepthook = _thread_excepthook
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -66,57 +46,23 @@ ESC_DELAY: float = 0
 # To understand why, ask an LLM about it
 
 
-_commands = {}
-_output_renderers = []
-_after_tool_calls = []
-
 # Type aliases for output rendering
 RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
 OutputLine = Union[str, RenderFn]  # str or render fn
 OutputRendererFn = Callable[[list, 'Message', 'Context'], None]  # fn(lines, msg, ctx) -> None
 
-def after_tool_calls(fn):
-    """
-    Called after tool execution, before the next LLM turn.
-    fn(ctx) -> None. Use ctx.append_message() to inject reminders, etc.
-
-    @ex6.after_tool_calls
-    def token_reminder(ctx):
-        if ctx.llm_result and ctx.llm_result.input_tokens > 150000:
-            ctx.append_message(ex6.Message(role="user", content="Wrap it up."))
-    """
-    _after_tool_calls.append(fn)
-    return fn
-
-def output_renderer(fn: OutputRendererFn) -> OutputRendererFn:
-    '''
-    Called once per message. Mutate `lines` in-place (replace str with RenderFn).
-
-    @ex6.output_renderer
-    def syntax_highlighting(lines: list[ex6.OutputLine], msg: ex6.Message, ctx: ex6.Context) -> None:
-        ...
-    '''
-    _output_renderers.append(fn)
-    return fn
+def _declaration(kind):
+    def mark(fn):
+        setattr(fn, "_ex6_declaration", kind)
+        return fn
+    return mark
 
 
-
-
-def command(fn):
-    '''
-    used like:
-
-    @ex6.command
-    def my_command(arg1, arg2): pass
-
-    now, `/command a b` should be valid command
-    '''
-    name = fn.__name__
-    sig = inspect.signature(fn)
-    spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str)
-            for p in sig.parameters.values()]
-    _commands[name] = (fn, spec)
-    return fn
+after_tool_calls = _declaration("after_tool_calls")
+output_renderer = _declaration("output_renderer")
+command = _declaration("command")
+overridable = _declaration("overridable")
+override = _declaration("override")
 
 
 
@@ -134,46 +80,21 @@ def _coerce_arg(value: str, typ):
         return value
     return typ(value)
 
-def dispatch_command(text: str):
-    if not text.startswith("/"): return False
-    body = text[1:].strip()
-    if not body: return False
-
-    name, sep, rest = body.partition(" ")
-    if name not in _commands: return True
-
-    fn, spec = _commands[name]
-    if len(spec) == 1:
-        # 1 arg = pass the entire arg as a string. 
-        # eg (/command blah blah blah), passes "blah blah blah" as a string IFF /command has 1 arg.
-        args = [rest.strip()] if sep else []
-    else: # Otherwise, split by space.
-        args = rest.split() if sep else []
-
-    parsed = []
-    for i, (_, typ) in enumerate(spec):
-        if i < len(args):
-            parsed.append(_coerce_arg(args[i], typ))
-        else:
-            parsed.append(None)
-    return fn(*parsed)
-
-
 @command
-def dbg():
-    enter_scroll_mode()
+def dbg(tui):
+    tui.enter_scroll_mode()
     print("="*30)
     print("DEBUG LOG")
     print("="*30)
-    print(f"({len(_debug_buffer)} entries)\n")
-    for line in _debug_buffer:
+    print(f"({len(tui.app.debug_buffer)} entries)\n")
+    for line in tui.app.debug_buffer:
         print(line)
 
 
 @command
-def ctx():
-    enter_scroll_mode()
-    ctx = get_current()
+def ctx(tui):
+    tui.enter_scroll_mode()
+    ctx = tui.current
     if not ctx:
         print("No active context."); return
     print("\n".join(_build_ctx_dump_lines(ctx, leading_blanks=5)))
@@ -211,21 +132,19 @@ def _build_ctx_dump_lines(ctx, leading_blanks=0):
 
 
 @command
-def dmp():
-    ctx = get_current()
+def dmp(tui):
+    ctx = tui.current
     if not ctx: return
     lines = _build_ctx_dump_lines(ctx)
     with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
 
-_log_keys = False
 @command
-def dbg_keys():
+def dbg_keys(tui):
     """Toggle key debug logging."""
-    global _log_keys
-    _log_keys = not _log_keys
-    debug_print(f"Key logging {'ON' if _log_keys else 'OFF'}")
+    tui.log_keys = not tui.log_keys
+    tui.app.debug_print(f"Key logging {'ON' if tui.log_keys else 'OFF'}")
 
 
 
@@ -242,62 +161,54 @@ def get_folder() -> Path:
 
 
 
-# --- Daily budget ---
-_daily_limit: Optional[float] = 15.0
-_daily_cost: float = 0.0
-_daily_cost_date: str = ""
-_usage_mtime: Optional[float] = None
-_cost_lock = threading.Lock()
+class DailyBudget:
+    def __init__(self, limit: Optional[float] = 15.0):
+        self.limit = limit
+        self.cost = 0.0
+        self.date = ""
+        self.usage_mtime = None
+        self.lock = threading.Lock()
 
-def set_daily_limit(limit: float):
-    global _daily_limit
-    _daily_limit = limit
+    def get_limit(self) -> float:
+        return 1000 if self.limit is None else self.limit
 
-def get_daily_limit() -> float:
-    return 1000 if _daily_limit is None else _daily_limit
-
-def _ensure_cost_loaded():
-    """Load/reset daily cost from disk. Must be called under _cost_lock."""
-    global _daily_cost, _daily_cost_date, _usage_mtime
-    today = datetime.now().strftime("%Y-%m-%d")
-    path = get_folder() / "usage.json"
-    try:
-        mtime = path.stat().st_mtime
-    except:
-        mtime = None
-    if _daily_cost_date == today and mtime == _usage_mtime:
-        return
-    # new day, first load, or file changed
-    _daily_cost = 0.0
-    _daily_cost_date = today
-    try:
-        data = json.loads(path.read_text())
-        if data.get("date") == today:
-            _daily_cost = data.get("cost", 0.0)
-    except: pass
-    _usage_mtime = mtime
-
-
-def get_daily_cost() -> float:
-    with _cost_lock:
-        _ensure_cost_loaded()
-        return _daily_cost
-
-def is_over_budget() -> bool:
-    return get_daily_cost() >= get_daily_limit()
-
-def add_cost(cost: float):
-    with _cost_lock:
-        global _daily_cost, _usage_mtime
-        _ensure_cost_loaded()
-        _daily_cost += cost
+    def _ensure_loaded(self):
+        today = datetime.now().strftime("%Y-%m-%d")
         path = get_folder() / "usage.json"
-        tmp = path.with_suffix(".tmp")
         try:
-            tmp.write_text(json.dumps({"date": _daily_cost_date, "cost": _daily_cost}))
-            os.replace(tmp, path)
-            _usage_mtime = path.stat().st_mtime
+            mtime = path.stat().st_mtime
+        except:
+            mtime = None
+        if self.date == today and mtime == self.usage_mtime:
+            return
+        self.cost = 0.0
+        self.date = today
+        try:
+            data = json.loads(path.read_text())
+            if data.get("date") == today:
+                self.cost = data.get("cost", 0.0)
         except: pass
+        self.usage_mtime = mtime
+
+    def get_cost(self) -> float:
+        with self.lock:
+            self._ensure_loaded()
+            return self.cost
+
+    def is_over(self) -> bool:
+        return self.get_cost() >= self.get_limit()
+
+    def add_cost(self, cost: float):
+        with self.lock:
+            self._ensure_loaded()
+            self.cost += cost
+            path = get_folder() / "usage.json"
+            tmp = path.with_suffix(".tmp")
+            try:
+                tmp.write_text(json.dumps({"date": self.date, "cost": self.cost}))
+                os.replace(tmp, path)
+                self.usage_mtime = path.stat().st_mtime
+            except: pass
 
 
 def get_token_estimate(s: str) -> int:
@@ -305,24 +216,6 @@ def get_token_estimate(s: str) -> int:
 
 
 MAX_TOOL_OUTPUT_CHARACTERS = 150000
-OVERRIDES = {}
-_OVERRIDDEN = set()
-
-def overridable(fn):
-    OVERRIDES[fn.__name__] = fn
-    def wrap_fn(*a, **ka):
-        return OVERRIDES[fn.__name__](*a, **ka)
-    return wrap_fn
-
-def override(fn):
-    name = fn.__name__
-    if name not in OVERRIDES:
-        raise RuntimeError(f"'{name}' not overridable")
-    if name in _OVERRIDDEN:
-        raise RuntimeError(f"'{name}' already overridden")
-    _OVERRIDDEN.add(name)
-    OVERRIDES[name] = fn
-    return fn
 
 
 
@@ -352,86 +245,162 @@ class Theme:
 
 
 
-_tui = None
-_theme = Theme()
-_context_schemas = {}
+class App:
+    def __init__(self):
+        self.commands = {}
+        self.output_renderers = []
+        self.after_tool_calls = []
+        self.overrides = {}
+        self.default_implementations = {}
+        self._overridden = set()
+        self.contexts = []
+        self.current = None
+        self.theme = Theme()
+        self.context_schemas = {}
+        self.plugin_data = {}
+        self.diagnostics = {}
+        self.budget = DailyBudget()
+        self.debug_buffer = deque(maxlen=1000)
+        self.fatal_error = None
+        self.stdout = sys.stdout
+        self.stderr = sys.stderr
+        self.tui = None
+        self._registered_modules = set()
+        self._setup_modules = set()
+        self._register_module(sys.modules[__name__])
+
+    def debug_print(self, *args, **kwargs):
+        ts = datetime.now().strftime("%H:%M:%S")
+        msg = " ".join(str(a) for a in args)
+        self.debug_buffer.append(f"[{ts}] {msg}")
+
+    def command(self, fn):
+        params = list(inspect.signature(fn).parameters.values())[1:]
+        spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str) for p in params]
+        self.commands[fn.__name__] = (fn, spec)
+        return fn
+
+    def output_renderer(self, fn):
+        self.output_renderers.append(fn)
+        return fn
+
+    def after_tool_call(self, fn):
+        self.after_tool_calls.append(fn)
+        return fn
+
+    def overridable(self, fn):
+        self.default_implementations[fn.__name__] = fn
+        self.overrides.setdefault(fn.__name__, fn)
+        return fn
+
+    def override(self, fn):
+        name = fn.__name__
+        if name not in self.overrides:
+            raise RuntimeError(f"'{name}' not overridable")
+        if name in self._overridden:
+            raise RuntimeError(f"'{name}' already overridden")
+        self._overridden.add(name)
+        self.overrides[name] = fn
+        return fn
+
+    def get_implementation(self, name, default=False):
+        registry = self.default_implementations if default else self.overrides
+        return registry[name]
+
+    def call(self, name, *args, **kwargs):
+        return self.overrides[name](*args, **kwargs)
+
+    def iter_commands(self):
+        return self.commands.items()
+
+    def dispatch_command(self, tui, text: str):
+        if not text.startswith("/"): return False
+        body = text[1:].strip()
+        if not body: return False
+        name, sep, rest = body.partition(" ")
+        if name not in self.commands: return True
+        fn, spec = self.commands[name]
+        args = ([rest.strip()] if sep else []) if len(spec) == 1 else (rest.split() if sep else [])
+        parsed = [_coerce_arg(args[i], typ) if i < len(args) else None for i, (_, typ) in enumerate(spec)]
+        return fn(tui, *parsed)
+
+    def _register_module(self, module):
+        if module.__name__ in self._registered_modules:
+            return
+        self._registered_modules.add(module.__name__)
+        for value in vars(module).values():
+            if not callable(value) or getattr(value, "__module__", None) != module.__name__:
+                continue
+            kind = getattr(value, "_ex6_declaration", None)
+            if kind == "command": self.command(value)
+            elif kind == "output_renderer": self.output_renderer(value)
+            elif kind == "after_tool_calls": self.after_tool_call(value)
+            elif kind == "overridable": self.overridable(value)
+            elif kind == "override": self.override(value)
+
+    def setup_module(self, module):
+        if module.__name__ in self._setup_modules:
+            return
+        self._setup_modules.add(module.__name__)
+        setup = getattr(module, "setup", None)
+        if setup:
+            setup(self)
+
+    def add_context(self, ctx):
+        if ctx._app is not None and ctx._app is not self:
+            raise RuntimeError("Context already belongs to another app")
+        ctx._app = self
+        if ctx not in self.contexts:
+            self.contexts.append(ctx)
+        if ctx.schema_id:
+            self.context_schemas.setdefault(ctx.schema_id, ctx)
+        if self.current is None:
+            self.current = ctx
+        return ctx
+
+    def create_context(self, *args, **kwargs):
+        return self.add_context(Context(*args, **kwargs))
+
+    def get_context(self, name):
+        return next((c for c in self.contexts if c.name == name), None)
+
+    def remove_context(self, ctx):
+        if ctx in self.contexts:
+            self.contexts.remove(ctx)
+            ctx._app = None
+        if self.current is ctx:
+            self.current = self.contexts[0] if self.contexts else None
+
+    def load_context(self, serialized_context):
+        payload = json.loads(serialized_context)
+        schema_id = payload.get("schema_id")
+        if schema_id not in self.context_schemas:
+            raise ValueError(f"Unknown context schema: {schema_id!r}")
+        return self.context_schemas[schema_id].clone_with_context(serialized_context)
 
 
 def run_tui():
-    global _tui
-    assert _tui is None, "TUI already running"
-    _tui = TUI()
+    app = App()
+    tui = TUI(app)
+    app.tui = tui
+    real_stdout, real_stderr = sys.stdout, sys.stderr
+    app.stdout, app.stderr = real_stdout, real_stderr
+    old_thread_hook = threading.excepthook
+
+    def thread_excepthook(args):
+        import traceback
+        tb = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        app.debug_print(f"THREAD CRASH [{args.thread}]:\n{tb}")
+        app.fatal_error = f"{args.exc_type.__name__}: {args.exc_value}"
+
+    threading.excepthook = thread_excepthook
     try:
-        _load_plugins()
-        _run_tui_loop(_tui)
+        _load_plugins(app)
+        _run_tui_loop(tui, real_stdout, real_stderr)
     finally:
-        _tui = None
-
-
-def get_tui():
-    return _tui
-
-
-def get_current():
-    tui = get_tui()
-    return tui.current if tui is not None else None
-
-
-def set_current(ctx):
-    tui = get_tui()
-    if tui is not None:
-        tui.current = ctx
-
-
-def add_context(ctx):
-    tui = get_tui()
-    if tui is not None and ctx not in tui.contexts:
-        tui.contexts.append(ctx)
-
-
-def get_context(name):
-    tui = get_tui()
-    if tui is None:
-        return None
-    return next((c for c in tui.contexts if c.name == name), None)
-
-
-
-def remove_context(ctx):
-    tui = get_tui()
-    if tui is None:
-        return
-    if ctx in tui.contexts:
-        tui.contexts.remove(ctx)
-    if tui.current is ctx:
-        tui.current = tui.contexts[0] if tui.contexts else None
-
-
-def get_theme() -> Theme:
-    return _theme
-
-
-def set_theme(th):
-    global _theme
-    _theme = th
-
-
-
-def push_ui_panel(draw_fn):
-    tui = get_tui()
-    if tui is not None:
-        tui.ui_panel_stack.append(draw_fn)
-
-def pop_ui_panel():
-    tui = get_tui()
-    if tui is not None and tui.ui_panel_stack:
-        return tui.ui_panel_stack.pop()
-
-def enter_scroll_mode():
-    """Exit fullscreen for scroll mode. Caller prints, main loop handles re-entry."""
-    tui = get_tui()
-    if tui is not None:
-        tui.enter_scroll_mode()
+        sys.stdout, sys.stderr = real_stdout, real_stderr
+        threading.excepthook = old_thread_hook
+        app.tui = None
 
 
 @overridable
@@ -698,8 +667,8 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 
 SPIN = "/-\\|"
 
-def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwargs=None):
-    th = get_theme()
+def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwargs=None, theme=None):
+    th = theme or Theme()
     if status == 'running':
         icon, color = SPIN[int(time.time() * 8) % 4], th.warning
     elif status == 'error':
@@ -767,7 +736,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
                         args = {**args, 'tool_call_id': tc["id"]}
                     result["value"] = fn(ctx, **_check_tool_args(fn, args))
                 except Exception as e:
-                    debug_print(f"tool {tc['name']} failed: {e}")
+                    ctx._require_app().debug_print(f"tool {tc['name']} failed: {e}")
                     result["value"] = f"ERROR: {e}"
                     result["error"] = str(e)
             t = threading.Thread(target=run_tool)
@@ -855,6 +824,16 @@ class Context:
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _tools_invalidated: bool = False
+    _app: Optional['App'] = field(default=None, init=False, repr=False)
+
+    def _require_app(self):
+        if self._app is None:
+            raise RuntimeError("Context is detached; register it with app.add_context(ctx)")
+        return self._app
+
+    @property
+    def app(self):
+        return self._require_app()
 
     def get_messages(self) -> tuple:
         with self._msg_lock:
@@ -885,9 +864,6 @@ class Context:
     def __post_init__(self, messages):
         if messages:
             self._messages.extend(messages)
-        if self.schema_id:
-            _context_schemas.setdefault(self.schema_id, self)
-        add_context(self)
 
     def get_input_box(self):
         if self._input_box is None:
@@ -940,7 +916,8 @@ class Context:
         return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
     def invoke(self, text, llm_fn=None):
-        llm_fn = llm_fn or self.invoke_llm or invoke_llm
+        app = self._require_app()
+        llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
         if self.transform_user_prompt:
             text = self.transform_user_prompt(self, text)
         self.append_message(Message(role="user", content=text))
@@ -969,9 +946,9 @@ class Context:
                     do_llm()
                     if not self.llm_result: break
                     self.llm_suspended = True
-                    should_loop = call_tools(self, self.llm_result)
+                    should_loop = app.call("call_tools", self, self.llm_result)
                     if should_loop:
-                        for fn in _after_tool_calls: fn(self)
+                        for fn in app.after_tool_calls: fn(self)
                     self.llm_suspended = False
             finally:
                 self.llm_is_running = False
@@ -1041,14 +1018,6 @@ class Context:
             "data": dict(self.data),
         }, ensure_ascii=False, indent=2)
 
-    @classmethod
-    def load_context(cls, serialized_context: str) -> 'Context':
-        payload = json.loads(serialized_context)
-        schema_id = payload.get("schema_id")
-        if schema_id not in _context_schemas:
-            raise ValueError(f"Unknown context schema: {schema_id!r}")
-        return _context_schemas[schema_id].clone_with_context(serialized_context)
-
     def clone_with_context(self, serialized_context: str) -> 'Context':
         payload = json.loads(serialized_context)
         if payload.get("format") != 1:
@@ -1080,7 +1049,7 @@ class Context:
         cpy.llm_is_running = False
         cpy.name = new_name
         cpy.parent = self.name
-        cpy.__post_init__(None)
+        self._require_app().add_context(cpy)
         return cpy
 
     def fork(self, new_name: Optional[str] = None) -> 'Context':
@@ -1093,7 +1062,9 @@ class Context:
 
 def _ctx_input_submit(ctx, text):
     if text.startswith("/"):
-        dispatch_command(text)
+        app = ctx._require_app()
+        if app.tui:
+            app.dispatch_command(app.tui, text)
     elif not ctx.is_running():
         ctx.invoke(text)
 
@@ -1152,7 +1123,7 @@ class ScreenBuffer:
         for row in self.txt_colors: row[:] = [None] * self.w
         for row in self.bg_colors: row[:] = [None] * self.w
 
-    def flush(self, term):
+    def flush(self, term, output=None):
         skip_diff = self._invalidated
         self._invalidated = False
 
@@ -1217,8 +1188,9 @@ class ScreenBuffer:
                     out.append(apply_style(fg, st, bg, c))
 
         if out:
-            _real_stdout.write("".join(out))
-            _real_stdout.flush()
+            output = output or sys.__stdout__
+            output.write("".join(out))
+            output.flush()
         # swap: current becomes prev, prev becomes current (will be cleared next frame)
         self.chars, self._prev_chars = self._prev_chars, self.chars
         self.styles, self._prev_styles = self._prev_styles, self.styles
@@ -1558,7 +1530,7 @@ def make_input(on_submit):
 
 @overridable
 def render_selection_mode_context_name(tui, buf, ctx, x, y):
-    th = get_theme()
+    th = tui.app.theme
     selected = ctx is tui.current
     approx = "~" if ctx.is_token_count_estimate() else ""
     toks = f" ({approx}{ctx.token_count()//1000}k)"
@@ -1578,7 +1550,7 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
 @overridable
 def render_selection_left(tui, buf, inpt, r, allow_nav=True):
     x, y, w, h = r
-    th = get_theme()
+    th = tui.app.theme
     buf.rect_line(r, txt_color=th.accent)
 
     ctxs = sorted(tui.contexts, key=lambda c: c.name)
@@ -1600,11 +1572,11 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
         prefix = ">> " if selected else "   "
         row = y + 1 + i
         buf.puts(x + 1, row, prefix, txt_color=th.selection if selected else None)
-        render_selection_mode_context_name(tui, buf, ctx, x + 1 + len(prefix), row)
+        tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(prefix), row)
 
 @overridable
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
-    th = get_theme()
+    th = tui.app.theme
     token_count = ctx.token_count()
     ratio = token_count / ctx.max_tokens if ctx.max_tokens else 0
     filled = int(ratio * (bar_w - 2))
@@ -1620,19 +1592,20 @@ def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
 @overridable
 def render_selection_right(tui, buf, r):
     x, y, w, h = r
-    th = get_theme()
+    th = tui.app.theme
     buf.rect_line(r, txt_color=th.accent)
 
     ctx = tui.current
     buf.puts(x + 2, y + 1, ctx.name, style='bold')
     model_x = x + 2 + len(ctx.name) + 2
     buf.puts(model_x, y + 1, ctx.model, style='dim')
-    budget_str = f"${get_daily_cost():.2f}/${_daily_limit:.2f}"
-    budget_color = th.error if is_over_budget() else th.success
+    budget = tui.app.budget
+    budget_str = f"${budget.get_cost():.2f}/${budget.get_limit():.2f}"
+    budget_color = th.error if budget.is_over() else th.success
     buf.puts(x + w - len(budget_str) - 2, y + 1, budget_str, txt_color=budget_color)
 
     bar_w = min(w - 4, 20)
-    render_context_window_bar(tui, buf, ctx, x + 2, y + 2, bar_w)
+    tui.app.call("render_context_window_bar", tui, buf, ctx, x + 2, y + 2, bar_w)
 
     buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
     row = y + 4
@@ -1687,7 +1660,7 @@ def _default_tool_row(ctx, tc, tool_msg):
 def render_work_mode(tui, buf, inpt, r):
     x, y, w, h = r
     ctx = tui.current
-    th = get_theme()
+    th = tui.app.theme
 
     messages = ctx.get_messages()
     tool_msgs = {m.tool_call_id: m for m in messages if m.role == "tool"}
@@ -1698,7 +1671,7 @@ def render_work_mode(tui, buf, inpt, r):
             continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         lines = c.split('\n')
-        for renderer in _output_renderers: renderer(lines, msg, ctx)
+        for renderer in tui.app.output_renderers: renderer(lines, msg, ctx)
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 rows = ctx._tool_rows.get(tc["id"])
@@ -1715,7 +1688,7 @@ def render_work_mode(tui, buf, inpt, r):
         if txt or not cot:
             streaming_msg = Message(role="assistant", content="")
             lines = (txt + "█").split('\n')
-            for renderer in _output_renderers: renderer(lines, streaming_msg, ctx)
+            for renderer in tui.app.output_renderers: renderer(lines, streaming_msg, ctx)
             message_outputs.append(('assistant', lines, False))
 
 
@@ -1735,7 +1708,7 @@ def render_work_mode(tui, buf, inpt, r):
         for line in lines:
             if line == '' and has_tool_calls: continue
             if isinstance(line, ToolCall):
-                render_tool_line(buf, x, row, w, line.name, line.args, line.status, line.detail, line.kwargs)
+                render_tool_line(buf, x, row, w, line.name, line.args, line.status, line.detail, line.kwargs, th)
                 drawn = 1
             elif callable(line):
                 drawn = line(buf, x, row, w)
@@ -1762,13 +1735,13 @@ def render_work_mode(tui, buf, inpt, r):
     label_w = len(label) + 2
     bar_w = min(w - label_w - 20, 30)
     buf.puts(x, y, label, txt_color=th.text)
-    render_context_window_bar(tui, buf, ctx, x + label_w, y, bar_w)
+    tui.app.call("render_context_window_bar", tui, buf, ctx, x + label_w, y, bar_w)
 
 
 @overridable
 def render_work_mode_input(tui, buf, inpt, input_r, input_box):
     ctx = tui.current
-    th = get_theme()
+    th = tui.app.theme
     if ctx.is_running():
         input_box(buf, inpt, input_r, txt_color=th.accent)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
@@ -1797,13 +1770,13 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 @overridable
 def render_work_mode_footer(tui, buf, r, ctx):
     x, y, w, h = r
-    th = get_theme()
+    th = tui.app.theme
     on = ctx.yolo
     buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
                 txt_color=th.success if on else th.muted)
 
 def render_workmodefooter_and_commands(tui, buf, r, ctx):
-    th = get_theme()
+    th = tui.app.theme
     x, y, w, h = r
     text = ctx.get_input_box().get_text()
     """
@@ -1816,11 +1789,11 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
     """
 
     if not text.startswith("/"):
-        render_work_mode_footer(tui,buf,r,ctx)
+        tui.app.call("render_work_mode_footer", tui, buf, r, ctx)
         return
 
     query = text[1:].split(" ")[0]
-    names = sorted(_commands)
+    names = sorted(tui.app.commands)
     prefix = [n for n in names if n.startswith(query)]
     fuzzy = difflib.get_close_matches(query, [n for n in names if n not in prefix], n=3)
     matches = (prefix + fuzzy)[:3]
@@ -1831,7 +1804,7 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
     for i, name in enumerate(matches):
         if i >= h:
             break
-        fn, spec = _commands[name]
+        fn, spec = tui.app.commands[name]
         args = " ".join(f"<{a}>" for a, _ in spec)
         doc = (fn.__doc__ or "").strip()
         cx = x
@@ -1842,7 +1815,7 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
 
 _ex6_dir = os.path.dirname(os.path.abspath(__file__))
 
-def _load_plugins():
+def _load_plugins(app):
     import importlib.util
     import types
 
@@ -1866,6 +1839,7 @@ def _load_plugins():
             if dir_path not in existing.__path__:
                 existing.__path__.append(dir_path)
 
+    modules = []
     for plugin_dir in dirs:
         _register_pkg("_ex6", plugin_dir)
         for dirpath, dirnames, filenames in os.walk(plugin_dir):
@@ -1879,18 +1853,27 @@ def _load_plugins():
                 mod_name = f"{pkg_name}.{filename[:-3]}"
                 existing = sys.modules.get(mod_name)
                 if existing and getattr(existing, '__file__', None):
-                    continue  # skip real modules, but allow overriding package stubs (e.g. core dir/ vs project file.py)
-                path = os.path.join(dirpath, filename)
-                spec = importlib.util.spec_from_file_location(mod_name, path)
-                assert spec and spec.loader
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[mod_name] = module
-                spec.loader.exec_module(module)
+                    module = existing
+                else:
+                    path = os.path.join(dirpath, filename)
+                    spec = importlib.util.spec_from_file_location(mod_name, path)
+                    assert spec and spec.loader
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[mod_name] = module
+                    spec.loader.exec_module(module)
+                if module not in modules:
+                    modules.append(module)
+
+    for module in modules:
+        app._register_module(module)
+    for module in modules:
+        app.setup_module(module)
 
 
 
 @dataclass
 class TUI:
+    app: App
     mode: Literal["selection", "work", "help", "scroll"] = "selection"
     prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"
     term: Any = None
@@ -1902,11 +1885,23 @@ class TUI:
     input_box: Any = None  # per-context; resolved each frame
     stdout_sink: Any = None
     show_cot: bool = True
-    contexts: list = field(default_factory=list)
-    current: Any = None  # pyright: ignore - always valid when contexts is non-empty
+    log_keys: bool = False
+
+    @property
+    def contexts(self):
+        return self.app.contexts
+
+    @property
+    def current(self):
+        return self.app.current
+
+    @current.setter
+    def current(self, value):
+        self.app.current = value
 
     def __post_init__(self):
         from blessed import Terminal
+        self.app.tui = self
         self.term = Terminal()
         if os.name == "nt":
             import msvcrt
@@ -1917,23 +1912,23 @@ class TUI:
                     char += msvcrt.getwch()
                 return char
             self.term.getch = getch
-        self.sel_input_box = make_input(self.sel_on_submit)
+        self.sel_input_box = self.app.call("make_input", self.sel_on_submit)
         self.buf = ScreenBuffer(self.term.width, self.term.height)
-        self.stdout_sink = _StdoutSink()
+        self.stdout_sink = _StdoutSink(self.app.debug_print)
 
     def sel_on_submit(self, text):
         self.sel_input_open = False
         if text.startswith("/"):
-            dispatch_command(text)
+            self.app.dispatch_command(self, text)
 
     def enter_scroll_mode(self):
         if self.mode == "scroll":
             return
         self.prev_mode = self.mode
         self.mode = "scroll"
-        sys.stdout, sys.stderr = _real_stdout, _real_stderr
-        _real_stdout.write(self.term.exit_fullscreen)
-        _real_stdout.flush()
+        sys.stdout, sys.stderr = self.app.stdout, self.app.stderr
+        self.app.stdout.write(self.term.exit_fullscreen)
+        self.app.stdout.flush()
 
 
 def _tui_loop(tui: TUI):
@@ -1943,16 +1938,16 @@ def _tui_loop(tui: TUI):
 
     if tui.mode != "scroll":
         sys.stdout, sys.stderr = _sink, _sink
-    if _fatal_error:
-        raise RuntimeError(f"FATAL: {_fatal_error}")
+    if tui.app.fatal_error:
+        raise RuntimeError(f"FATAL: {tui.app.fatal_error}")
     for _ in range(4):
         try:
             key = term.inkey(timeout=0.001, esc_delay=ESC_DELAY)
         except UnicodeDecodeError:
             key = None
         while key:
-            if _log_keys:
-                debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
+            if tui.log_keys:
+                tui.app.debug_print(f"key: name={key.name!r} str={str(key)!r} code={key.code!r} seq={key.is_sequence}")
             tui.keyls.append(key)
             try:
                 key = term.inkey(timeout=0, esc_delay=ESC_DELAY)
@@ -1970,12 +1965,12 @@ def _tui_loop(tui: TUI):
     buf.clear()
 
     if not tui.contexts:
-        th = get_theme()
+        th = tui.app.theme
         msg = "You must create a plugin with Contexts for ex6 to work."
         mx = (term.width - len(msg)) // 2
         my = term.height // 2
         buf.puts(mx, my, msg, txt_color=th.error)
-        buf.flush(term)
+        buf.flush(term, tui.app.stdout)
         return
 
     if tui.current not in tui.contexts:
@@ -2005,17 +2000,17 @@ def _tui_loop(tui: TUI):
     if tui.mode == "scroll":
         if inpt._keys:
             tui.mode = tui.prev_mode
-            _real_stdout.write(term.enter_fullscreen)
-            _real_stdout.flush()
+            tui.app.stdout.write(term.enter_fullscreen)
+            tui.app.stdout.flush()
             sys.stdout, sys.stderr = _sink, _sink
             buf.invalidate()
     elif tui.mode == "work":
-        th = get_theme()
-        render_work_mode(tui, buf, inpt, main_r)
+        th = tui.app.theme
+        tui.app.call("render_work_mode", tui, buf, inpt, main_r)
         div_color = th.invoking if tui.current.is_running() else th.muted
         buf.hline((0, main_r[1] + main_r[3], term.width, 1), txt_color=div_color)
         if not tui.current.ui_stack and not tui.ui_panel_stack:
-            render_work_mode_input(tui, buf, inpt, input_r, input_box)
+            tui.app.call("render_work_mode_input", tui, buf, inpt, input_r, input_box)
         buf.hline((0, input_r[1] + input_r[3], term.width, 1), txt_color=div_color)
         render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
         if inpt.consume('KEY_ESCAPE'):
@@ -2023,7 +2018,7 @@ def _tui_loop(tui: TUI):
         if inpt.consume('KEY_CTRL_X') and tui.current.is_running():
             tui.current.stop_early = True
     elif tui.mode == "selection":
-        th = get_theme()
+        th = tui.app.theme
         if not tui.sel_input_open and inpt.consume("KEY_ENTER"):
             tui.mode = "work"
         if not tui.sel_input_open and inpt.consume("/"):
@@ -2034,15 +2029,15 @@ def _tui_loop(tui: TUI):
             tui.sel_input_box.set_text("")
         if tui.sel_input_open:
             left, right = main_r.split_horizontal(1, 3)
-            render_selection_left(tui, buf, inpt, left, allow_nav=False)
-            render_selection_right(tui, buf, right)
+            tui.app.call("render_selection_left", tui, buf, inpt, left, allow_nav=False)
+            tui.app.call("render_selection_right", tui, buf, right)
             buf.rect_line(input_r, txt_color=th.error)
             tui.sel_input_box(buf, inpt, input_r.shrink(1))
         else:
             full_r = Region(0, 0, term.width, term.height)
             left, right = full_r.split_horizontal(1, 3)
-            render_selection_left(tui, buf, inpt, left)
-            render_selection_right(tui, buf, right)
+            tui.app.call("render_selection_left", tui, buf, inpt, left)
+            tui.app.call("render_selection_right", tui, buf, right)
     else:
         assert tui.mode == "help"
 
@@ -2055,11 +2050,11 @@ def _tui_loop(tui: TUI):
             tui.current.ui_stack[-1](buf, inpt, r)
         if tui.mode != prev_mode:
             buf.invalidate()
-        buf.flush(term)
+        buf.flush(term, tui.app.stdout)
 
 
 
-def _run_tui_loop(tui: TUI):
+def _run_tui_loop(tui: TUI, real_stdout, real_stderr):
     term = tui.term
 
     try:
@@ -2068,14 +2063,14 @@ def _run_tui_loop(tui: TUI):
                 _tui_loop(tui)
     except Exception:
         import traceback
-        sys.stdout, sys.stderr = _real_stdout, _real_stderr
+        sys.stdout, sys.stderr = real_stdout, real_stderr
         try:
-            _real_stdout.write(term.exit_fullscreen)
-            _real_stdout.flush()
+            real_stdout.write(term.exit_fullscreen)
+            real_stdout.flush()
         except Exception:
             pass
         tb = traceback.format_exc()
-        debug_print(tb)
+        tui.app.debug_print(tb)
         print(tb)
         sys.exit(1)
 

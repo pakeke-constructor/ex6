@@ -28,38 +28,39 @@ You will be asked to assist with activities such as debugging code, refactoring 
 
 MODEL = "openai/gpt-5.1-codex-mini"
 
-c1 = Context("ctx1", messages=[
-    coding_agent_system_prompt,
-    Message(role="system", content="You are helpful."),
-    Message(role="user", content="hello"),
-    Message(role="assistant", content="Hi! How can I help?"),
-], model=MODEL)
 
-Context("ctx2", model=MODEL)
-Context("foobar", model=MODEL)
+def setup(app):
+    c1 = app.create_context("ctx1", messages=[
+        coding_agent_system_prompt,
+        Message(role="system", content="You are helpful."),
+        Message(role="user", content="hello"),
+        Message(role="assistant", content="Hi! How can I help?"),
+    ], model=MODEL)
 
-
-Context("reader", messages=[
-    coding_agent_system_prompt,
-], model=MODEL)
+    app.create_context("ctx2", model=MODEL)
+    app.create_context("foobar", model=MODEL)
 
 
-
-Context("ctx_1", messages=[
-    coding_agent_system_prompt,
-], model=MODEL)
+    app.create_context("reader", messages=[
+        coding_agent_system_prompt,
+    ], model=MODEL)
 
 
 
-
-Context("coder", messages=[
-    coding_agent_system_prompt,
-], model=MODEL)
-
+    app.create_context("ctx_1", messages=[
+        coding_agent_system_prompt,
+    ], model=MODEL)
 
 
-ex6.set_current(c1)
 
+
+    app.create_context("coder", messages=[
+        coding_agent_system_prompt,
+    ], model=MODEL)
+
+
+
+    app.current = c1
 
 
 

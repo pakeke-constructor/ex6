@@ -1,5 +1,5 @@
 import ex6
-import json, os
+import json, os, copy
 from typing import Optional
 
 # colors:
@@ -78,25 +78,26 @@ THEMES = {
     ),
 }
 
-def _load_saved_theme():
+def _load_saved_theme(app):
     try:
         data = json.loads((ex6.get_folder() / "theme.json").read_text())
         name = data.get("name", "")
         if name in THEMES:
-            ex6.set_theme(THEMES[name])
+            app.theme = copy.copy(THEMES[name])
     except: pass
 
-_load_saved_theme()
+def setup(app):
+    _load_saved_theme(app)
 
 @ex6.command
-def theme(name: Optional[str]):
+def theme(tui, name: Optional[str]):
     """Switch theme. No arg lists available themes."""
     if not name:
         lines = ["Themes:"] + [f"  {n}" for n in THEMES.keys()]
         scroll = [0]
         def draw(buf, inpt, r):
             x, y, w, h = r
-            th = ex6.get_theme()
+            th = tui.app.theme
             buf.fill(r, ' ')
             buf.rect_line(r, txt_color=th.accent)
             if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
@@ -106,12 +107,12 @@ def theme(name: Optional[str]):
             if scroll[0] > max_scroll: scroll[0] = max_scroll
             for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
                 buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
-        ex6.push_ui_panel(draw)
+        tui.ui_panel_stack.append(draw)
         return
     if name not in THEMES:
-        ex6.debug_print(f"Unknown theme: {name}")
+        tui.app.debug_print(f"Unknown theme: {name}")
         return
-    ex6.set_theme(THEMES[name])
+    tui.app.theme = copy.copy(THEMES[name])
     path = ex6.get_folder() / "theme.json"
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"name": name}))
