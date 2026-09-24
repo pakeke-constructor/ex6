@@ -36,21 +36,35 @@ Use context-management only when it buys clarity or recovery.
 ALWAYS check changes afterwards. (Check git diff and/or run tests)
 </agent_strategy>
 
+<agent_tactics>
+- Try the simplest approach first. Don't overthink.
+- Tool call(s) to verify, then act. Don't read the whole codebase before a 2-line edit.
+- If a search returns what you need, stop searching. Don't keep exploring "just in case."
+- If your approach is blocked, don't brute force. Step back, try a different angle, or ask.
+- Avoid backwards-compatibility hacks. If something is unused, delete it.
+
 <plans>
 The `.plans/**` folder is a list of markdown files, representing plans.
 
 If the user asks to plan stuff, or if you want to plan:
 you should write a concisely named `.md` file into the `.plans/` folder.
 Eg: `.plans/buffers1.md`. (Make sure the name is easy to type.)
-If the user asks you to execute a plan, you should glob/grep the `.plans/` folder.
+
+Glob/grep the `.plans/` folder if you want to see existing plans.
+
+Guidelines for writing a good plan:
+- Use the words of the user; this prevents deviation.
+- ALWAYS include the overarching motivation / reasoning from the perspective of the product or codebase
+- If neccessary, include a bulletpointed list of relevant files. This way, future agents don't need to look for them.
 </plans>
+</agent_tactics>
 
 <output_rules>
-BE CONCISE, GRAMMATICAL CORRECTNESS IS NOT IMPORTANT.
+You MUST be concise and direct.
 Plain text. No markdown headers/tables/emojis.
 Tool calls: make them immediately. No preamble, no narration after.
 Only output: direct answers, clarifying questions, blockers.
-Drop filler (the, a). Drop articles/pleasantries. Fragments are OK.
+Drop filler and pleasantries. (the, a). Fragments are OK.
 BAD: "I'd be happy to help you with that. The issue you're experiencing is likely caused by..."
 GOOD: "Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:"
 </output_rules>
@@ -94,7 +108,6 @@ Do not run the project, and do not run tests unless asked.
 - If a search returns what you need, stop searching. Don't keep exploring "just in case."
 - If your approach is blocked, don't brute force. Step back, try a different angle, or ask.
 - Avoid backwards-compatibility hacks. If something is unused, delete it.
-- Hacky code is not acceptable, unless explicitly requested by the user. If your solution contains hacky/fragile code, and you still have a lot to work on, you MUST **stop working**, and inform the user of the situation; they will break down the problem for you.
 </agent_tactics>
 
 <output_rules>
