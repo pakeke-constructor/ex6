@@ -26,6 +26,8 @@ A lot of the UX/UI wi
 "Installation?" Nope- just copy paste them into your `_ex6/` folder.  
 All python files inside `_ex6` are loaded automatically.
 
+Dependencies include Pillow (`pip install Pillow`) for the `read_image` tool.
+
 
 
 

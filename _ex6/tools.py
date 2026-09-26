@@ -32,6 +32,8 @@ import sys
 import git
 import inspect
 import functools
+import io
+from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
 from ex6 import Context, Message
 from typing import Optional
@@ -625,27 +627,143 @@ def _read_headers_solidity(tree, source, line_numbers=False):
     return text, line_nos
 
 
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+_IMAGE_FORMATS = {"PNG", "JPEG", "WEBP", "GIF", "BMP"}
+MAX_IMAGE_SOURCE_BYTES = 50 * 1024 * 1024
+MAX_IMAGE_PIXELS = 50_000_000
+MAX_IMAGE_OUTPUT_BYTES = 50 * 1024 * 1024
+
+
+def _looks_like_image(path, data):
+    ext = os.path.splitext(path)[1].lower()
+    signatures = (
+        data.startswith(b"\x89PNG\r\n\x1a\n"),
+        data.startswith(b"\xff\xd8\xff"),
+        data.startswith((b"GIF87a", b"GIF89a")),
+        data.startswith(b"BM"),
+        len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
+    )
+    return ext in _IMAGE_EXTENSIONS or any(signatures)
+
+
+def _check_sensitive_image_path(path):
+    normalized = os.path.abspath(path).replace("\\", "/").lower()
+    name = os.path.basename(normalized)
+    sensitive_names = {
+        ".env", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+        "credentials", "credentials.json", "secrets.json", "token.json",
+    }
+    if name in sensitive_names or name.startswith(".env."):
+        raise ValueError(f"Refused sensitive path: '{path}'.")
+    if any(word in name for word in ("secret", "credential", "private_key", "token")):
+        raise ValueError(f"Refused sensitive path: '{path}'.")
+    if "/.ssh/" in normalized:
+        raise ValueError(f"Refused sensitive path: '{path}'.")
+
+
+def _format_bytes(size):
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.0f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
+               detail: str = "auto") -> ex6.ToolResult:
+    """Read a local screenshot/image (PNG, JPEG, WebP, GIF, or BMP)."""
+    if not 256 <= max_dimension <= 8192:
+        raise ValueError("max_dimension must be between 256 and 8192.")
+    if detail not in ("auto", "low", "high"):
+        raise ValueError("detail must be auto, low, or high.")
+
+    p = ctx.resolve(path)
+    _check_sensitive_image_path(p)
+    if not os.path.isfile(p):
+        raise ValueError(f"'{path}' is not a file.")
+    source_size = os.path.getsize(p)
+    if source_size > MAX_IMAGE_SOURCE_BYTES:
+        raise ValueError(f"Image exceeds {MAX_IMAGE_SOURCE_BYTES // (1024 * 1024)} MB source limit.")
+
+    try:
+        with Image.open(p) as source:
+            source_format = source.format
+            if source_format not in _IMAGE_FORMATS:
+                raise ValueError(f"Unsupported image format: {source_format or 'unknown'}.")
+            source_width, source_height = source.size
+            if source_width * source_height > MAX_IMAGE_PIXELS:
+                raise ValueError(f"Image exceeds {MAX_IMAGE_PIXELS:,} decoded-pixel limit.")
+            source.seek(0)
+            image = ImageOps.exif_transpose(source).copy()
+    except (UnidentifiedImageError, OSError) as e:
+        raise ValueError(f"Corrupt or unsupported image '{path}'.") from e
+
+    width, height = image.size
+    resized = max(width, height) > max_dimension
+    if resized:
+        image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+
+    has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
+    use_png = has_alpha or resized or source_format in ("PNG", "GIF", "WEBP", "BMP")
+    output = io.BytesIO()
+    if use_png:
+        if has_alpha:
+            image = image.convert("RGBA")
+        else:
+            image = image.convert("RGB")
+        image.save(output, format="PNG", optimize=True)
+        mime_type, suffix = "image/png", ".png"
+    else:
+        image = image.convert("RGB")
+        image.save(output, format="JPEG", quality=90, optimize=True)
+        mime_type, suffix = "image/jpeg", ".jpg"
+
+    data = output.getvalue()
+    if len(data) > MAX_IMAGE_OUTPUT_BYTES:
+        raise ValueError(f"Normalized image exceeds {MAX_IMAGE_OUTPUT_BYTES // (1024 * 1024)} MB limit.")
+    managed_path = ex6.store_attachment(data, suffix)
+    transmitted_width, transmitted_height = image.size
+    dimensions = f"{source_width}x{source_height}"
+    sizes = _format_bytes(source_size)
+    if (source_width, source_height) != (transmitted_width, transmitted_height):
+        dimensions += f" → {transmitted_width}x{transmitted_height}"
+        sizes += f" → {_format_bytes(len(data))}"
+    elif source_size != len(data):
+        sizes += f" → {_format_bytes(len(data))}"
+    text = f"Loaded image {path}\n{dimensions} · {mime_type} · {sizes}"
+    attachment = ex6.ImageAttachment(managed_path, mime_type, transmitted_width,
+                                     transmitted_height, detail)
+    return ex6.ToolResult(text, (attachment,))
+
+
 def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = None, line_numbers: Optional[bool] = False) -> str:
     """
-    Read and return contents of a file at the given path.
-    - Prefer line_numbers=False to avoid bloat. 
+    Read and return text contents of a file.
+    - Prefer line_numbers=False to avoid bloat.
     - Use line_numbers=True if you are doing deep work with this file.
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     - lines=(start,end) to read a subset (1-indexed, inclusive). (Forces line_numbers=True)
     """
     _check_gitignore(ctx, path)
     p = ctx.resolve(path)
-    with open(p, "r") as f:
-        all_lines = f.readlines()
+    with open(p, "rb") as f:
+        data = f.read()
+    if _looks_like_image(p, data[:16]):
+        raise ValueError(f"'{path}' is an image. Use read_image instead.")
+    try:
+        content = data.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as e:
+        raise ValueError(f"'{path}' is a binary file and cannot be read as text.") from e
+    if "\x00" in content:
+        raise ValueError(f"'{path}' is a binary file and cannot be read as text.")
+    all_lines = content.splitlines(keepends=True)
     if lines:
         start, end = lines
         end = min(end, len(all_lines)) # end-line can't go beyond file
         selected = all_lines[start-1:end]
         ctx.mark_file_read(path, list(range(start, end + 1)))
         return _add_line_numbers("".join(selected), start=start)
-    content = "".join(all_lines)
     if ex6.get_token_estimate(content) > ex6.MAX_TOOL_OUTPUT_CHARACTERS:
-        # short-circuit for code-mode, so the LLM can still see other tool-calls in this block.
         raise ValueError("File is too big!")
     ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
     if line_numbers:
@@ -1385,7 +1503,7 @@ def _count_matching_tool_outputs(ctx: ex6.Context, fp: str, output: str) -> int:
             continue
         if tc_map.get(m.tool_call_id) != fp:
             continue
-        if str(m.content or "") == output:
+        if ex6.tool_result_text(m.content) == output:
             count += 1
     return count
 
@@ -1408,7 +1526,7 @@ def guard_repeat_calls(fn):
         fp = _guard_fingerprint(fn.__name__, call_kwargs)
 
         out = fn(*args, **kwargs)
-        out_str = str(out or "")
+        out_str = ex6.tool_result_text(out)
         if _count_matching_tool_outputs(ctx, fp, out_str) >= 2:
             return f"ERROR: blocked repeated tool call ({fn.__name__}) with same args+output. Use previous tool output already in context."
         return out

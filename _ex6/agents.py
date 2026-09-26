@@ -1,7 +1,7 @@
 
 from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.models import M
-from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, edit_file_lines, ask_user_question, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
+from _ex6.tools import read_headers, read_body, glob, search, write_file, edit_file, read_file, read_image, edit_file_lines, ask_user_question, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
@@ -100,7 +100,7 @@ PLANNER_MODEL = M.OPUS_46.id
 
 
 MAIN_TOOLS = [
-    read_file, glob, search, read_headers, read_body,
+    read_file, read_image, glob, search, read_headers, read_body,
     write_file, edit_file,
     ask_user_question,
     COMMANDLINE_TOOL, explore_agent, websearch_agent,

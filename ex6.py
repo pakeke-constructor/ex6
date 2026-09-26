@@ -38,6 +38,9 @@ import copy
 import time
 import glob
 import difflib
+import atexit
+import shutil
+import tempfile
 
 
 ESC_DELAY: float = 0
@@ -109,7 +112,7 @@ def _build_ctx_dump_lines(ctx, leading_blanks=0):
         label = msg.role
         if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
         lines.append(f"--- [{i}] {label} ---")
-        lines.append(str(msg.get_msg(ctx)))
+        lines.append(tool_result_text(msg.get_msg(ctx)))
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 name = tc['name']
@@ -217,6 +220,43 @@ def get_token_estimate(s: str) -> int:
 
 MAX_TOOL_OUTPUT_CHARACTERS = 150000
 
+
+@dataclass(frozen=True)
+class Attachment:
+    path: str
+    mime_type: str
+
+
+@dataclass(frozen=True)
+class ImageAttachment(Attachment):
+    width: int
+    height: int
+    detail: Literal["auto", "low", "high"] = "auto"
+
+
+@dataclass
+class ToolResult:
+    text: str
+    attachments: tuple[Attachment, ...] = ()
+
+
+def tool_result_text(value) -> str:
+    if isinstance(value, ToolResult):
+        return value.text
+    return str(value or "")
+
+
+_attachment_dir = tempfile.mkdtemp(prefix="ex6-attachments-")
+atexit.register(shutil.rmtree, _attachment_dir, ignore_errors=True)
+
+
+def store_attachment(data: bytes, suffix: str) -> str:
+    digest = hashlib.sha256(data).hexdigest()
+    path = os.path.join(_attachment_dir, digest + suffix)
+    if not os.path.exists(path):
+        with open(path, "wb") as f:
+            f.write(data)
+    return path
 
 
 @dataclass
@@ -414,7 +454,7 @@ def invoke_llm(ctx):
 @dataclass
 class Message:
     role: Literal["system", "user", "assistant", "tool"]
-    content: Union[str, Callable[['Context'], str]]
+    content: Union[str, ToolResult, Callable[['Context'], str]]
     tools: list[Callable] = field(default_factory=list)
     chunks: Optional[list] = None  # ordered ResponseChunks (for assistant msgs)
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
@@ -756,10 +796,12 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
         ctx._tools_invalidated = False
         return True
     for r in results:
-        val = str(r["value"] or "")
-        if len(val) > MAX_TOOL_OUTPUT_CHARACTERS:
-            val = f"ERROR: Tool output too large ({len(val)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS})."
-            r["error"] = val
+        value = r["value"]
+        val = value if isinstance(value, ToolResult) else ToolResult(tool_result_text(value))
+        if len(val.text) > MAX_TOOL_OUTPUT_CHARACTERS:
+            text = f"ERROR: Tool output too large ({len(val.text)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS})."
+            val = ToolResult(text)
+            r["error"] = text
         ctx.append_message(Message(role="tool", content=val, tool_call_id=r["id"]))
     return True
 
@@ -855,7 +897,8 @@ class Context:
     def token_count(self) -> int:
         if self.llm_result:
             return self.llm_result.input_tokens + self.llm_result.output_tokens
-        return sum(get_token_estimate(m.content) for m in self.get_messages() if isinstance(m.content, str))
+        return sum(get_token_estimate(tool_result_text(m.content)) for m in self.get_messages()
+                   if isinstance(m.content, (str, ToolResult)))
 
     def is_token_count_estimate(self) -> bool:
         "If no llmResult, then we are estimating the token-count via the //3 trick."
@@ -1004,7 +1047,7 @@ class Context:
         for message in self.get_messages():
             messages.append({
                 "role": message.role,
-                "content": message.get_msg(self),
+                "content": tool_result_text(message.get_msg(self)),
                 "tools": [fn.__name__ for fn in message.tools],
                 "tool_calls": message.tool_calls,
                 "tool_call_id": message.tool_call_id,
@@ -1643,7 +1686,7 @@ def _default_tool_row(ctx, tc, tool_msg):
     if (t is not None and t.is_alive()) or tool_msg is None:
         status, detail = 'running', None
     else:
-        content = tool_msg.content or ""
+        content = tool_result_text(tool_msg.content)
         status = 'error' if content.startswith("ERROR:") else 'ok'
         detail = content
     args = tc["args"]
@@ -1670,7 +1713,7 @@ def render_work_mode(tui, buf, inpt, r):
         if msg.role == "tool":
             continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
-        lines = c.split('\n')
+        lines = tool_result_text(c).split('\n')
         for renderer in tui.app.output_renderers: renderer(lines, msg, ctx)
         if msg.tool_calls:
             for tc in msg.tool_calls:

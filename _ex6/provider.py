@@ -3,6 +3,8 @@ import hashlib
 import ex6
 import openai
 import os
+import base64
+import copy
 from _ex6.models import M, ModelInfo
 
 
@@ -42,15 +44,38 @@ def cache_manually(ctx: ex6.Context, ttl="1h"):
 
 def _apply_cache_control(content: str | list[dict], cc: dict) -> list[dict]:
     """Add cache_control to a message content field. Returns array-format content."""
+    blocks: list[dict]
     if isinstance(content, str):
-        content = [{"type": "text", "text": content}]
-    if isinstance(content, list) and content:
-        content[-1]["cache_control"] = cc
+        blocks = [{"type": "text", "text": content}]
+    else:
+        blocks = copy.deepcopy(content)
+    if blocks:
+        blocks[-1]["cache_control"] = cc
+    return blocks
+
+
+def _tool_content(result: ex6.ToolResult):
+    if not result.attachments:
+        return result.text
+    content: list[dict] = [{"type": "text", "text": result.text}]
+    for attachment in result.attachments:
+        if not isinstance(attachment, ex6.ImageAttachment):
+            raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
+        if not os.path.isfile(attachment.path):
+            raise ValueError(f"Attachment file is missing: {attachment.path}")
+        with open(attachment.path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        content.append({"type": "image_url", "image_url": {
+            "url": f"data:{attachment.mime_type};base64,{encoded}",
+            "detail": attachment.detail,
+        }})
     return content
 
 
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
-    d: dict = {"role": m.role, "content": m.get_msg(ctx)}
+    value = m.get_msg(ctx)
+    content = _tool_content(value) if isinstance(value, ex6.ToolResult) else value
+    d: dict = {"role": m.role, "content": content}
     if m.tool_calls:
         d["tool_calls"] = [
             {"id": tc["id"], "type": "function",
@@ -219,6 +244,16 @@ def usage(tui):
     _text_panel(tui, lines)
 
 
+def _log_safe(value):
+    if isinstance(value, dict):
+        return {k: _log_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_log_safe(v) for v in value]
+    if isinstance(value, str) and value.startswith("data:") and ";base64," in value:
+        return "<image data omitted>"
+    return value
+
+
 def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):
     from datetime import datetime
     import random
@@ -243,7 +278,7 @@ def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):
     ]
     for m in messages:
         lines.append(f"[{m.get('role', m.get('type', '?'))}]")
-        c = m.get('content', m)
+        c = _log_safe(m.get('content', m))
         lines.append(c if isinstance(c, str) else json.dumps(c))
         lines.append("")
 

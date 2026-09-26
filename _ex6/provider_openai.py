@@ -4,6 +4,7 @@ import ex6
 import openai
 import os
 import time
+import base64
 from _ex6.provider import _log_invoke
 
 
@@ -99,6 +100,23 @@ def _codex_client(access_token, account_id):
     )
 
 
+def _responses_tool_output(result: ex6.ToolResult):
+    if not result.attachments:
+        return result.text
+    output = [{"type": "input_text", "text": result.text}]
+    for attachment in result.attachments:
+        if not isinstance(attachment, ex6.ImageAttachment):
+            raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
+        if not os.path.isfile(attachment.path):
+            raise ValueError(f"Attachment file is missing: {attachment.path}")
+        with open(attachment.path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("ascii")
+        output.append({"type": "input_image", "image_url":
+                       f"data:{attachment.mime_type};base64,{encoded}",
+                       "detail": attachment.detail})
+    return output
+
+
 def _to_responses_input(ctx: ex6.Context):
     """Convert ex6 chat messages -> (instructions, Responses `input` items)."""
     instructions = []
@@ -108,8 +126,9 @@ def _to_responses_input(ctx: ex6.Context):
         if m.role == "system":
             instructions.append(c if isinstance(c, str) else json.dumps(c))
         elif m.role == "tool":
+            output = _responses_tool_output(c) if isinstance(c, ex6.ToolResult) else c
             items.append({"type": "function_call_output",
-                          "call_id": m.tool_call_id, "output": c})
+                          "call_id": m.tool_call_id, "output": output})
         elif m.role == "assistant":
             if c:
                 items.append({"type": "message", "role": "assistant",
