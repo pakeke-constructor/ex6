@@ -63,9 +63,15 @@ def _declaration(kind):
     return mark
 
 
-after_tool_calls = _declaration("after_tool_calls")
-after_llm_turn = _declaration("after_llm_turn")
-output_renderer = _declaration("output_renderer")
+def _declaration_ctx(kind):
+    return _declaration(kind)
+
+
+CONTEXT_HOOK_KINDS = ("after_tool_calls", "after_llm_turn", "output_renderer")
+
+after_tool_calls = _declaration_ctx("after_tool_calls")
+after_llm_turn = _declaration_ctx("after_llm_turn")
+output_renderer = _declaration_ctx("output_renderer")
 command = _declaration("command")
 overridable = _declaration("overridable")
 override = _declaration("override")
@@ -291,9 +297,7 @@ class Theme:
 class App:
     def __init__(self):
         self.commands = {}
-        self.output_renderers = []
-        self.after_tool_calls = []
-        self.after_llm_turns = []
+        self.context_hooks = {kind: [] for kind in CONTEXT_HOOK_KINDS}
         self.overrides = {}
         self.default_implementations = {}
         self._overridden = set()
@@ -324,17 +328,24 @@ class App:
         self.commands[fn.__name__] = (fn, spec)
         return fn
 
-    def output_renderer(self, fn):
-        self.output_renderers.append(fn)
+    def add_context_hook(self, kind, fn):
+        self.context_hooks[kind].append(fn)
         return fn
 
-    def after_tool_call(self, fn):
-        self.after_tool_calls.append(fn)
-        return fn
+    def run_context_hooks(self, kind, ctx, *args):
+        for fn in self.context_hooks[kind]:
+            fn(*args, ctx)
+        for fn in ctx.context_hooks[kind]:
+            fn(*args, ctx)
+
+    def output_renderer(self, fn):
+        return self.add_context_hook("output_renderer", fn)
+
+    def after_tool_calls(self, fn):
+        return self.add_context_hook("after_tool_calls", fn)
 
     def after_llm_turn(self, fn):
-        self.after_llm_turns.append(fn)
-        return fn
+        return self.add_context_hook("after_llm_turn", fn)
 
     def overridable(self, fn):
         self.default_implementations[fn.__name__] = fn
@@ -380,10 +391,8 @@ class App:
             if not callable(value) or getattr(value, "__module__", None) != module.__name__:
                 continue
             kind = getattr(value, "_ex6_declaration", None)
-            if kind == "command": self.command(value)
-            elif kind == "output_renderer": self.output_renderer(value)
-            elif kind == "after_tool_calls": self.after_tool_call(value)
-            elif kind == "after_llm_turn": self.after_llm_turn(value)
+            if kind in CONTEXT_HOOK_KINDS: self.add_context_hook(kind, value)
+            elif kind == "command": self.command(value)
             elif kind == "overridable": self.overridable(value)
             elif kind == "override": self.override(value)
 
@@ -865,6 +874,7 @@ class Context:
     data: StrictDataDict = field(default_factory=StrictDataDict) # str/int/float/bool/None only. Use data_volatile for complex objects.
     data_volatile: dict = field(default_factory=dict) # cleared on fork/clear. For complex/mutable objects.
 
+    _context_hooks: dict = field(default_factory=lambda: {kind: [] for kind in CONTEXT_HOOK_KINDS}, init=False, repr=False)
     _messages: list = field(default_factory=list, init=False, repr=False)
     _msg_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
@@ -885,6 +895,23 @@ class Context:
     @property
     def app(self):
         return self._require_app()
+
+    @property
+    def context_hooks(self):
+        return self._context_hooks
+
+    def add_context_hook(self, kind, fn):
+        self._context_hooks[kind].append(fn)
+        return fn
+
+    def output_renderer(self, fn):
+        return self.add_context_hook("output_renderer", fn)
+
+    def after_tool_calls(self, fn):
+        return self.add_context_hook("after_tool_calls", fn)
+
+    def after_llm_turn(self, fn):
+        return self.add_context_hook("after_llm_turn", fn)
 
     def get_messages(self) -> tuple:
         with self._msg_lock:
@@ -990,7 +1017,7 @@ class Context:
             content = "".join(c.content for c in self.llm_current_output if c.type == "text")
             tool_calls = self.llm_result.tool_calls if self.llm_result else None
             self.append_message(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
-            for fn in app.after_llm_turns: fn(self)
+            app.run_context_hooks("after_llm_turn", self)
 
         def run():
             try:
@@ -1001,7 +1028,7 @@ class Context:
                     self.llm_suspended = True
                     should_loop = app.call("call_tools", self, self.llm_result)
                     if should_loop:
-                        for fn in app.after_tool_calls: fn(self)
+                        app.run_context_hooks("after_tool_calls", self)
                     self.llm_suspended = False
             finally:
                 self.llm_is_running = False
@@ -1090,6 +1117,7 @@ class Context:
     def _clone(self, new_name: str, messages: list[Message]) -> 'Context':
         cpy = copy.copy(self)
         cpy._msg_lock = threading.RLock()
+        cpy._context_hooks = {kind: list(fns) for kind, fns in self._context_hooks.items()}
         cpy._messages = messages
         cpy._read_hashes = dict(self._read_hashes)
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
@@ -1724,7 +1752,7 @@ def render_work_mode(tui, buf, inpt, r):
             continue
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         lines = tool_result_text(c).split('\n')
-        for renderer in tui.app.output_renderers: renderer(lines, msg, ctx)
+        tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
         if msg.tool_calls:
             for tc in msg.tool_calls:
                 rows = ctx._tool_rows.get(tc["id"])
@@ -1741,7 +1769,7 @@ def render_work_mode(tui, buf, inpt, r):
         if txt or not cot:
             streaming_msg = Message(role="assistant", content="")
             lines = (txt + "█").split('\n')
-            for renderer in tui.app.output_renderers: renderer(lines, streaming_msg, ctx)
+            tui.app.run_context_hooks("output_renderer", ctx, lines, streaming_msg)
             message_outputs.append(('assistant', lines, False))
 
 
