@@ -6,6 +6,8 @@ import hashlib
 from pathlib import Path
 from collections import deque
 from datetime import datetime
+import math
+
 
 os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
 # (if using SSH, you might want to set this higher. Ask some LLM to explain why.)
@@ -62,6 +64,7 @@ def _declaration(kind):
 
 
 after_tool_calls = _declaration("after_tool_calls")
+after_llm_turn = _declaration("after_llm_turn")
 output_renderer = _declaration("output_renderer")
 command = _declaration("command")
 overridable = _declaration("overridable")
@@ -215,7 +218,7 @@ class DailyBudget:
 
 
 def get_token_estimate(s: str) -> int:
-    return len(s) // 3
+    return math.floor(len(s) / 2.5)
 
 
 MAX_TOOL_OUTPUT_CHARACTERS = 150000
@@ -290,6 +293,7 @@ class App:
         self.commands = {}
         self.output_renderers = []
         self.after_tool_calls = []
+        self.after_llm_turns = []
         self.overrides = {}
         self.default_implementations = {}
         self._overridden = set()
@@ -326,6 +330,10 @@ class App:
 
     def after_tool_call(self, fn):
         self.after_tool_calls.append(fn)
+        return fn
+
+    def after_llm_turn(self, fn):
+        self.after_llm_turns.append(fn)
         return fn
 
     def overridable(self, fn):
@@ -375,6 +383,7 @@ class App:
             if kind == "command": self.command(value)
             elif kind == "output_renderer": self.output_renderer(value)
             elif kind == "after_tool_calls": self.after_tool_call(value)
+            elif kind == "after_llm_turn": self.after_llm_turn(value)
             elif kind == "overridable": self.overridable(value)
             elif kind == "override": self.override(value)
 
@@ -981,6 +990,7 @@ class Context:
             content = "".join(c.content for c in self.llm_current_output if c.type == "text")
             tool_calls = self.llm_result.tool_calls if self.llm_result else None
             self.append_message(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
+            for fn in app.after_llm_turns: fn(self)
 
         def run():
             try:
