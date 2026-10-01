@@ -15,23 +15,32 @@ class ModelInfo:
 # Unified model registry. Each field is a ModelInfo.
 # On first lookup via M.get(model_id), builds a reverse index for O(1) access.
 class M:
-    OPUS_46          = ModelInfo("anthropic/claude-opus-4.6",         200_000, 5,    25,   0.5,  6.25)
-    OPUS_47          = ModelInfo("anthropic/claude-opus-4.7",         200_000, 5,    25,   0.5,  6.25)
-    OPUS_48          = ModelInfo("anthropic/claude-opus-4.8",         200_000, 5,    25,   0.5,  6.25)
-    SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       200_000, 3,    15,   0.3,  3.75)
-    SONNET_5        = ModelInfo("anthropic/claude-sonnet-5",         200_000, 2,    10,   0.3,  3.75)
-    HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",        200_000, 1,    5,    0.1,  1.25)
-    GPT_5             = ModelInfo("openai/gpt-5",                      400_000, 1.25, 10,   0.125)
-    GPT_54            = ModelInfo("openai/gpt-5.4",                  1_050_000, 2.5,  15,   0.25)
-    GPT_55            = ModelInfo("openai/gpt-5.5",                  1_050_000, 5,    30,   0.5)
-    GPT_56_SOL        = ModelInfo("openai/gpt-5.6-sol",                250_000, 5,   30, 0.5)
-    GPT_56_TERRA      = ModelInfo("openai/gpt-5.6-terra",              250_000, 2.5, 15, 0.25)
-    GPT_56_LUNA       = ModelInfo("openai/gpt-5.6-luna",               250_000, 1,    6, 0.1)
-    GPT_5_MINI        = ModelInfo("openai/gpt-5-mini",                 400_000, 0.25, 2,    0.025)
-    GPT_5_CODEX       = ModelInfo("openai/gpt-5-codex",                400_000, 1.25, 10,   0.125)
-    GPT_52_CODEX      = ModelInfo("openai/gpt-5.2-codex",              400_000, 1.75, 14,   0.175)
-    GPT_53_CODEX      = ModelInfo("openai/gpt-5.3-codex",              400_000, 1.75, 14,   0.175)
-    GPT_51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",         400_000, 0.25, 2,    0.025)
+    OPUS_46          = ModelInfo("anthropic/claude-opus-4.6",         1_000_000, 5,  25,  0.5,  6.25)
+    OPUS_47          = ModelInfo("anthropic/claude-opus-4.7",         1_000_000, 5,  25,  0.5,  6.25)
+    OPUS_48          = ModelInfo("anthropic/claude-opus-4.8",         1_000_000, 5,  25,  0.5,  6.25)
+    OPUS_5           = ModelInfo("anthropic/claude-opus-5",           1_000_000, 5,  25,  0.5,  6.25)
+    OPUS_55          = ModelInfo("anthropic/claude-opus-5.5",         1_000_000, 4,  20,  0.2,  5)
+    FABLE_5          = ModelInfo("anthropic/claude-fable-5",          1_000_000, 10, 50,  1,   12.5)
+    FABLE_51         = ModelInfo("anthropic/claude-fable-5.1",        1_000_000, 10, 50,  0.25, 12.5)
+    SONNET_46        = ModelInfo("anthropic/claude-sonnet-4.6",       1_000_000, 3,  15,  0.3,  3.75)
+    SONNET_5         = ModelInfo("anthropic/claude-sonnet-5",         1_000_000, 2,  10,  0.2,  2.5)
+    SONNET_55        = ModelInfo("anthropic/claude-sonnet-5.5",       1_000_000, 2,  10,  0.2,  2.5)
+    HAIKU_45         = ModelInfo("anthropic/claude-haiku-4.5",          200_000, 1,   5,  0.1,  1.25)
+    GPT_5            = ModelInfo("openai/gpt-5",                        400_000, 1.25, 10,  0.125)
+    GPT_54           = ModelInfo("openai/gpt-5.4",                    1_050_000, 2.5,  15,  0.25)
+    GPT_55           = ModelInfo("openai/gpt-5.5",                    1_050_000, 5,    30,  0.5)
+    GPT_56_SOL       = ModelInfo("openai/gpt-5.6-sol",                1_050_000, 4,    20,  0.4,   5)
+    GPT_56_TERRA     = ModelInfo("openai/gpt-5.6-terra",              1_050_000, 2,    12,  0.2,   2.5)
+    GPT_56_LUNA      = ModelInfo("openai/gpt-5.6-luna",               1_050_000, 0.2,  1.2, 0.02,  0.25)
+    GPT_6_ASTRA      = ModelInfo("openai/gpt-6-astra",                1_050_000, 10,   50,  1,     12.5)
+    GPT_6_SOL        = ModelInfo("openai/gpt-6-sol",                  1_050_000, 2,    10,  0.2,   2.5)
+    GPT_61_SOL       = ModelInfo("openai/gpt-6.1-sol",                1_050_000, 2,    10,  0.1,   2.5)
+    GPT_6_LUNA       = ModelInfo("openai/gpt-6-luna",                 1_050_000, 0.1,  0.5, 0.01,  0.125)
+    GPT_5_MINI       = ModelInfo("openai/gpt-5-mini",                   400_000, 0.25, 2,  0.025)
+    GPT_5_CODEX      = ModelInfo("openai/gpt-5-codex",                  400_000, 1.25, 10, 0.125)
+    GPT_52_CODEX     = ModelInfo("openai/gpt-5.2-codex",                400_000, 1.75, 14, 0.175)
+    GPT_53_CODEX     = ModelInfo("openai/gpt-5.3-codex",                400_000, 1.75, 14, 0.175)
+    GPT_51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",          400_000, 0.25, 2,  0.025)
     CODEX_MINI       = ModelInfo("openai/codex-mini",                 200_000, 1.5,  6,    0.375)
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
     GEMINI3_PRO      = ModelInfo("google/gemini-3-pro-preview",     1_048_576, 2,    12,   0.2)
@@ -72,12 +81,12 @@ class M:
             cls._index = {v.id: v for v in vars(cls).values() if isinstance(v, ModelInfo)}
         return cls._index.get(model_id)
 
-M.OPUS_LATEST = M.OPUS_48
-M.SONNET_LATEST = M.SONNET_5
-M.GPT_LATEST = M.GPT_56_SOL
-M.GPT_SOL_LATEST = M.GPT_56_SOL
+M.OPUS_LATEST = M.OPUS_55
+M.SONNET_LATEST = M.SONNET_55
+M.GPT_LATEST = M.GPT_6_ASTRA
+M.GPT_SOL_LATEST = M.GPT_61_SOL
 M.GPT_TERRA_LATEST = M.GPT_56_TERRA
-M.GPT_LUNA_LATEST = M.GPT_56_LUNA
+M.GPT_LUNA_LATEST = M.GPT_6_LUNA
 M.CODEX_LATEST = M.GPT_53_CODEX
 M.GEMINI_LATEST = M.GEMINI35_FLASH
 M.KIMI_LATEST = M.KIMI_K3
