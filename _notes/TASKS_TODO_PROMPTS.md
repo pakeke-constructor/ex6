@@ -12,17 +12,6 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 # TASKS:
 # ===============================
 
-Check out ex6.py.
-
-Notice all the weird global stuff, _commands, _output_renderers, etc etc.
-I.. would prefer it if these were refactored, and were no longer global. Global is messy.
-
-Don't write code; Can you plan, and find a good way to clean up these values thanks?
-
-- Notice how messages have caching in them. This is "nice", but the issue is that sometimes we might want to refresh the cache. Can you add a `ctx.purge_cache()` method please? and then add a `/purge` command that purges the current ctx's cache.
-
-
-
 
 
 - Make gitignore handling per `ctx.cwd`, not import-time process cwd.
@@ -30,61 +19,20 @@ Don't write code; Can you plan, and find a good way to clean up these values tha
 
 
 
+Discord bot for ex6?
+Being able to integrate clanker into codetheory Ltd server better?
 
-THEN: Oli, you could use ex6 to optimize and organize your life a bit more.
-Discord bot for ex6? checklists / goal tracking? running stuff in background, etc
+
+
 
 
 <cwd-agents>
 Overarching goal: make an agent that has reference to ex6 codebase;
 FROM ANY CODEBASE.
-
 make it so you call setup_ex6_agent(), to setup this agent in ANY repository. It should be well-aware of _ex6 plugins and how they work.
-
 Make it so the agent can swap between working-directory with safe_cwd() function.
 <cwd-agents>
 
-
-<compression>
-ex6 compression idea:
-"condense()" should be a function with 0 args. 
-
-when 'condense' is called, instead of instantly condensing, it should inject a bunch of guidance and information into the ctx window as a tool-result: (just return string from the tool-call)
-
- Information to be injected:
-- list all checkpoints, AND cumulative token-counts. eg
-- checkpoint 1: "objective blah" (10k toks)
-- checkpoint 2: "blah blh" (25k toks)
-- checkpoint 3: "hjhdfjdfh" (32k toks)
-
-- Add a new method to code-mode tools, called condense_to_checkpoint(...)
-- list the method signature for condense_to_checkpoint(...)
-- Add guidance for how to use condense_to_checkpoint(...), practices, etc
-- If less than 15k tokens used, tell the LLM "You probably don't need to condense, there's hardly any tokens used"
-- Tell the LLM how to choose the checkpoint to condense to, by calling appropriate tool.
-</compression>
-
-
-- sandboxing for ex6 agents (docker container)
-
-
-- ex6 agent skills
-
-
-
-- Tell LLMs to write comments in code as a form of "CoT" thinking
-
-
-- system reminder infrastructure.
--> Do exactly what was asked. Nothing more, nothing less. Never create files unless necessary. Never add docs/READMEs unprompted.
-https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
-
-
-- Create a new agent `debugger`, that uses codex 5.3 Apparently codex is excellent at debugging.
-
-
-- Create a new agent `tester`, (codex 5.3) Codex excels at testing and solving issues.
-(Generates test-cases, finds edge-cases, runs in a loop; then feeds output to `main` agent)
 
 
 
@@ -99,38 +47,34 @@ https://claude.ai/share/a720b25a-9705-461a-9ebf-25aa0adbca12
 ideas would be iterated on / tuned when the user does `/tune` command.
 (That way, it doesnt just end up like slop.)
 
+ANOTHER GOOD IDEA:
+when writing a skill, agents are forced to choose a "template structure" for said skill.
+This way, they don't just ramble about slop. They end up with a smart, well-structured, and well-scoped skill file.
+
 
 
 
 <better_interop>
 SPIKE: 
-
 What if agents could "interact" with ex6 much better?
 - Have tools to set/get users clipboard?
 - Send prompts to other agents?
 - Store data in ex6? like a buffer? 
 - Look at / change settings?
+
+EVEN BROADER:
+What kinds of UX things would make ex6 easier to work with?
+Maybe prompts as a first-class primitive?
 </better_interop>
 
 
 
 
-- Add this to prompt:
-"When I report a bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test."
+- Add this to system-prompt:
+"When there is a difficult bug, don't start by trying to fix it. Instead, start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test."
 
 
 
-- NEW TOOL: read_warnings("my_file.py")  reads warnings/errors from file (pylance, LuaLS)
-
-
-- plugin: similar to `SKILLS.md`. Allow agents to dynamically pull in skills. 
-
-
-- system-reminders infrastructure:
-- sys-reminder: notify LLMs if a file has been modified
-
-
-- choice/options plugin, like claude-code.
 
 
 - In-editor LLM invocation (like _99 from primeagen):
@@ -155,16 +99,6 @@ def my_func():
 
     # not sure. maybe best to keep it simple. See what works first; dont guess features
 ```
-
-
-- tools can block for results too..?
-```tools
-res = read_file("foo.py")
-make_subagent("find all entities in this file: " + res.get())
-# ^^^ the `res.get()` thing should block until got results.
-```
-NOTE: IT DOESNT NEED TO BE `res.get()`.  
-We should ideally use a builtin python abstraction.
 
 
 
