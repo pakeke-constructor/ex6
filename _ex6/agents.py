@@ -126,18 +126,17 @@ def custom_setup(app, messages):
         CLAUDE_MD,
     ]
 
-    app.create_context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages)
+    # app.create_context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages)
     app.create_context("c_sonnet", model=M.SONNET_LATEST.id, reasoning="high", messages=messages)
 
-    app.create_context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages)
+    # app.create_context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages)
+    # app.create_context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages)
+    # app.create_context("c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages)
 
-    app.create_context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages)
-
-    app.create_context("c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages)
-
-    _=app.create_context("sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    t=app.create_context("sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
     _=app.create_context("sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    t=app.create_context("sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    _=app.create_context("sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
+    _=app.create_context("sub_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
     app.current = t
 
 
