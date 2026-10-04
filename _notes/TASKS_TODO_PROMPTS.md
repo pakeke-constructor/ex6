@@ -19,7 +19,7 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
-I want to make it so it's easier for agents to create their own little local branch, and 
+I want to make it so it's easier for agents to create their own little local branch, and can make changes easily.
 
 
 

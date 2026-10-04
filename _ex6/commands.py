@@ -142,27 +142,6 @@ def _text_panel(tui, lines):
     tui.ui_panel_stack.append(draw)
 
 
-
-CONDENSE_MSG = r"""Your context window is getting large. You MUST condense now.
-Current token usage: {tokens} tokens {estimate_note}.
-
-Call `condense` or `compact` to collapse your context.
-Summarize ALL important findings, decisions, and file locations. Keep any files you'll need to edit soon.
-"""
-
-@ex6.command
-def c(tui, additional_msg: Optional[str]):
-    'Invokes agent, asking it to compact/condense itself.'
-    ctx = tui.current
-    if not ctx: return
-    tokens = ctx.token_count()
-    estimate_note = " (estimated)" if ctx.is_token_count_estimate() else ""
-    msg = CONDENSE_MSG.format(tokens=tokens, estimate_note=estimate_note)
-    if additional_msg:
-        msg += "\nAdditional user note: " + additional_msg
-    ctx.invoke(msg)
-
-
 SMP = r'''
 Take step back, and check for a simpler solution.
 If lot of code was added/changed, take a step back and evaluate the actual problem.
@@ -218,12 +197,15 @@ def cm(tui, msg: Optional[str]):
         model = M.GEMINI31_FLASH_LITE.id
 
         hint = f"User hint: {msg}" if msg else ""
-        diff_lines = diff.splitlines()
-        diff_for_llm = "\n".join(diff_lines[:2000])
-        if len(diff_lines) > 2000:
-            diff_for_llm += "\n\n[Diff truncated after 2000 lines.]"
-        if len(diff_for_llm) > 8000:
-            diff_for_llm = diff_for_llm[:8000] + "\n\n[Diff truncated after 8000 characters.]"
+        diff_for_llm = diff
+        if len(diff) > 8000:
+            output_lines.append("Large diff; using git diff --stat summary.")
+            diff_for_llm = subprocess.run(
+                ["git", "diff", "--stat", "HEAD"], capture_output=True, text=True
+            ).stdout
+            if len(diff_for_llm) > 8000:
+                diff_for_llm = diff_for_llm[:8000] + "\n[Summary truncated.]"
+            diff_for_llm = "[Full diff omitted; file change summary only.]\n" + diff_for_llm
         system = CM_SYSTEM_PROMPT
         user = f"Write a commit message for this diff:{hint}\n\n{diff_for_llm}"
         commit_msg = _llm_one_shot(tui.app, model, system, user)
