@@ -1,80 +1,102 @@
 import ex6
 import json, os, copy
+import math
 from typing import Optional
 
-# colors:
-# https://blessed.readthedocs.io/en/latest/colors.html
+
+def oklch(lightness: float, chroma: float, hue: float) -> tuple[int, int, int]:
+    angle = math.radians(hue)
+    a = chroma * math.cos(angle)
+    b = chroma * math.sin(angle)
+    l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    linear = (
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+    )
+    rgb = []
+    for channel in linear:
+        channel = max(0.0, min(1.0, channel))
+        if channel <= 0.0031308:
+            channel *= 12.92
+        else:
+            channel = 1.055 * channel ** (1 / 2.4) - 0.055
+        rgb.append(round(channel * 255))
+    return rgb[0], rgb[1], rgb[2]
+
 
 THEMES = {
     "default": ex6.Theme(),
 
     "green": ex6.Theme(
         name="green",
-        text = "white",
-        muted="bright_black",
-        cot = "red",
-        accent="seagreen",
-        accent_alt="darkturquoise",
-        success="mediumseagreen",
-        warning="darkkhaki",
-        error="indianred",
-        running="teal",
-        invoking="cadetblue",
-        selection="mediumaquamarine",
-        error_bg=(15, 45, 20),
-        diff_add_bg=(10, 50, 30),
-        diff_del_bg=(50, 18, 25),
-        md_bullet="darkturquoise",
-        md_code="darkseagreen",
-        md_link="seagreen",
-        md_italic="cadetblue",
-        md_bold="bright_white",
+        text=oklch(0.92, 0.008, 85),
+        muted=oklch(0.60, 0.01, 175),
+        cot=oklch(0.66, 0.10, 190),
+        accent=oklch(0.72, 0.21, 145),
+        accent_alt=oklch(0.74, 0.12, 195),
+        success=oklch(0.75, 0.21, 140),
+        warning=oklch(0.80, 0.16, 105),
+        error=oklch(0.65, 0.20, 29),
+        running=oklch(0.73, 0.12, 185),
+        invoking=oklch(0.78, 0.15, 100),
+        selection=oklch(0.85, 0.17, 105),
+        error_bg=oklch(0.22, 0.045, 25),
+        diff_add_bg=oklch(0.22, 0.04, 150),
+        diff_del_bg=oklch(0.20, 0.04, 25),
+        md_bullet=oklch(0.76, 0.15, 100),
+        md_code=oklch(0.76, 0.12, 190),
+        md_link=oklch(0.72, 0.12, 200),
+        md_italic=oklch(0.77, 0.15, 110),
+        md_bold=oklch(0.98, 0.005, 85),
     ),
 
     "blue": ex6.Theme(
         name="blue",
-        text = "white",
-        muted="bright_black",
-        cot = "blue",
-        accent="bright_blue",
-        accent_alt="mediumpurple",
-        success="cornflowerblue",
-        warning="plum",
-        error="hotpink",
-        running="deepskyblue",
-        invoking="mediumslateblue",
-        selection="bright_cyan",
-        error_bg=(40, 10, 60),
-        diff_add_bg=(10, 20, 60),
-        diff_del_bg=(50, 12, 40),
-        md_bullet="deepskyblue",
-        md_code="steelblue",
-        md_link="cornflowerblue",
-        md_italic="orchid",
-        md_bold="bright_white",
+        text=oklch(0.92, 0.008, 250),
+        muted=oklch(0.60, 0.01, 285),
+        cot=oklch(0.66, 0.12, 320),
+        accent=oklch(0.65, 0.21, 260),
+        accent_alt=oklch(0.70, 0.22, 328),
+        success=oklch(0.74, 0.16, 165),
+        warning=oklch(0.80, 0.16, 105),
+        error=oklch(0.65, 0.20, 29),
+        running=oklch(0.74, 0.12, 195),
+        invoking=oklch(0.72, 0.21, 335),
+        selection=oklch(0.82, 0.13, 195),
+        error_bg=oklch(0.22, 0.045, 15),
+        diff_add_bg=oklch(0.21, 0.04, 165),
+        diff_del_bg=oklch(0.20, 0.04, 15),
+        md_bullet=oklch(0.71, 0.21, 330),
+        md_code=oklch(0.76, 0.12, 190),
+        md_link=oklch(0.70, 0.18, 250),
+        md_italic=oklch(0.73, 0.20, 320),
+        md_bold=oklch(0.98, 0.005, 250),
     ),
 
     "red": ex6.Theme(
         name="red",
-        text = "white",
-        muted="bright_black",
-        cot = "orange",
-        accent="red",
-        accent_alt="bright_red",
-        success="blue",
-        warning="yellow",
-        error="bright_red",
-        running="bright_red",
-        invoking="orange",
-        selection="bright_red",
-        error_bg=(100, 10, 10),
-        diff_add_bg=(18, 60, 18),
-        diff_del_bg=(80, 10, 10),
-        md_bullet="bright_red",
-        md_code="bright_white",
-        md_link="red",
-        md_italic="bright_red",
-        md_bold="bright_white",
+        text=oklch(0.92, 0.008, 65),
+        muted=oklch(0.60, 0.01, 335),
+        cot=oklch(0.66, 0.12, 330),
+        accent=oklch(0.66, 0.23, 29),
+        accent_alt=oklch(0.79, 0.16, 105),
+        success=oklch(0.74, 0.18, 150),
+        warning=oklch(0.80, 0.16, 105),
+        error=oklch(0.68, 0.23, 20),
+        running=oklch(0.71, 0.21, 335),
+        invoking=oklch(0.78, 0.15, 100),
+        selection=oklch(0.85, 0.17, 105),
+        error_bg=oklch(0.24, 0.05, 25),
+        diff_add_bg=oklch(0.21, 0.04, 150),
+        diff_del_bg=oklch(0.22, 0.045, 20),
+        md_bullet=oklch(0.76, 0.15, 100),
+        md_code=oklch(0.78, 0.16, 105),
+        md_link=oklch(0.70, 0.21, 335),
+        md_italic=oklch(0.73, 0.20, 325),
+        md_bold=oklch(0.98, 0.005, 65),
     ),
 }
 

@@ -52,6 +52,7 @@ ESC_DELAY: float = 0
 
 
 # Type aliases for output rendering
+Color = Union[str, Tuple[int, int, int]]
 RenderFn = Callable[['ScreenBuffer', int, int, int], int]  # fn(buf, x, y, w) -> rows
 OutputLine = Union[str, RenderFn]  # str or render fn
 OutputRendererFn = Callable[[list, 'Message', 'Context'], None]  # fn(lines, msg, ctx) -> None
@@ -271,26 +272,26 @@ def store_attachment(data: bytes, suffix: str) -> str:
 @dataclass
 class Theme:
     name: str = "default"
-    text: str = "white"
-    muted: str = "bright_black"
-    cot: str = "red"
-    user_background: str = "black"
-    accent: str = "blue"
-    accent_alt: str = "cyan"
-    success: str = "green"
-    warning: str = "yellow"
-    error: str = "red"
-    running: str = "bright_blue"
-    invoking: str = "bright_yellow"
-    selection: str = "red"
-    error_bg: tuple = (80, 0, 0)
-    diff_add_bg: tuple = (18, 60, 18)
-    diff_del_bg: tuple = (60, 18, 18)
-    md_bullet: str = "cyan"
-    md_code: str = "green"
-    md_link: str = "blue"
-    md_italic: str = "magenta"
-    md_bold: str = "bright_white"
+    text: Color = "white"
+    muted: Color = "bright_black"
+    cot: Color = "red"
+    user_background: Color = "black"
+    accent: Color = "blue"
+    accent_alt: Color = "cyan"
+    success: Color = "green"
+    warning: Color = "yellow"
+    error: Color = "red"
+    running: Color = "bright_blue"
+    invoking: Color = "bright_yellow"
+    selection: Color = "red"
+    error_bg: Color = (80, 0, 0)
+    diff_add_bg: Color = (18, 60, 18)
+    diff_del_bg: Color = (60, 18, 18)
+    md_bullet: Color = "cyan"
+    md_code: Color = "green"
+    md_link: Color = "blue"
+    md_italic: Color = "magenta"
+    md_bold: Color = "bright_white"
 
 
 
@@ -732,7 +733,7 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
     elif status == 'error':
         icon, color = 'x', th.error
     else:
-        icon, color = 'v', th.success
+        icon, color = '>', th.success
     buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
     col = x + 4
     end = x + w
@@ -1209,7 +1210,11 @@ class ScreenBuffer:
         self._invalidated = False
 
         def apply_style(fg, st, bg, s):
-            if fg and st: attr = f"{fg}_{st}"
+            styled_fg = None
+            if isinstance(fg, tuple):
+                styled_fg = term.color_rgb(*fg)
+                attr = st
+            elif fg and st: attr = f"{fg}_{st}"
             elif fg: attr = fg
             elif st: attr = st
             else: attr = None
@@ -1218,6 +1223,7 @@ class ScreenBuffer:
             else: styled_bg = None
             styled = getattr(term, attr, None) if attr else None
             if styled: s = styled(s)
+            if styled_fg: s = styled_fg(s)
             if styled_bg: s = styled_bg(s)
             return s
 
