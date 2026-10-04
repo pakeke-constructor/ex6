@@ -40,10 +40,10 @@ from typing import Optional
 
 
 
-def _load_gitignore():
+def _load_gitignore(path):
     patterns = []
-    if os.path.isfile(".gitignore"):
-        with open(".gitignore") as f:
+    if os.path.isfile(path):
+        with open(path) as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):
@@ -51,14 +51,16 @@ def _load_gitignore():
     return patterns
 
 def _get_gitignore_patterns(ctx):
-    state = ctx.app.plugin_data.setdefault("tools:gitignore", {"stamp": None, "patterns": []})
+    path = os.path.abspath(ctx.resolve(".gitignore"))
+    cache = ctx.app.plugin_data.setdefault("tools:gitignore", {})
+    state = cache.setdefault(path, {"stamp": None, "patterns": []})
     try:
-        stat = os.stat(".gitignore")
+        stat = os.stat(path)
         stamp = (stat.st_mtime_ns, stat.st_size)
     except FileNotFoundError:
         stamp = None
     if stamp != state["stamp"]:
-        state["patterns"] = _load_gitignore()
+        state["patterns"] = _load_gitignore(path)
         state["stamp"] = stamp
     return state["patterns"]
 
@@ -70,7 +72,8 @@ def _get_file_lock(ctx, path):
     return locks[key]
 
 def _is_gitignored(ctx, path):
-    rel = os.path.relpath(path).replace("\\", "/")
+    root = ctx.cwd or os.getcwd()
+    rel = os.path.relpath(ctx.resolve(path), root).replace("\\", "/")
     parts = rel.split("/")
     if any(p in _SKIP_DIRS for p in parts):
         return True
