@@ -33,6 +33,8 @@ import git
 import inspect
 import functools
 import io
+import locale
+import tempfile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
 from ex6 import Context, Message
@@ -1137,7 +1139,7 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
     def on_submit(text):
         result[0] = text
-        ctx.ui_stack.pop()
+        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
 
@@ -1150,6 +1152,9 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
     ctx.push_ui(draw)
 
     while draw in ctx.ui_stack:
+        if ctx.stop_early:
+            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+            break
         time.sleep(0.05)
 
     return result[0] or ""
@@ -1167,7 +1172,7 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
         if not text:
             return
         result[0] = text
-        ctx.ui_stack.pop()
+        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
 
@@ -1226,7 +1231,7 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
                 selected[0] = (selected[0] + 1) % len(options)
             if inpt.consume('KEY_ENTER'):
                 result[0] = options[selected[0]]
-                ctx.ui_stack.pop()
+                if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
                 return
             if inpt._keys:
                 typed_mode[0] = True
@@ -1255,6 +1260,9 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
     ctx.push_ui(draw)
 
     while draw in ctx.ui_stack:
+        if ctx.stop_early:
+            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+            break
         time.sleep(0.05)
 
     answer = result[0] or ""
@@ -1279,7 +1287,7 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
 
     def on_submit(text):
         result[0] = text
-        ctx.ui_stack.pop()
+        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
     sev_labels = {1: "INFO", 2: "BLOCKING", 3: "CRITICAL"}
@@ -1314,6 +1322,9 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
     ctx.push_ui(draw)
 
     while draw in ctx.ui_stack:
+        if ctx.stop_early:
+            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+            break
         time.sleep(0.05)
 
     return result[0] or ""
@@ -1358,6 +1369,8 @@ def _render_diff(ctx, buf, diff_lines, x, y, w, h, filename=None):
 def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, bottom=False) -> str | None:
     """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason).
     render_extra: optional fn(buf, x, y, w, h) called below the chrome to render extra info."""
+    if ctx.stop_early:
+        return "stopped"
     if ctx.yolo:
         return None
     result = [False, None]  # [answered, denial_reason]
@@ -1365,7 +1378,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, 
     def on_submit(text):
         result[0] = True
         result[1] = text if text.strip() else None
-        ctx.ui_stack.pop()
+        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
 
@@ -1384,7 +1397,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, 
         buf.puts(content[0], content[1] + 1, "ENTER approve | type reason + ENTER to deny"[:content[2]], txt_color=th.muted)
         if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
             result[0] = True
-            ctx.ui_stack.pop()
+            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
             return
         input_r = ex6.Region(content[0], content[1] + 2, content[2], 1)
         input_draw(buf, inpt, input_r, txt_color=th.warning)
@@ -1401,7 +1414,7 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, 
             return "stopped"
         time.sleep(0.05)
 
-    return result[1]
+    return "stopped" if ctx.stop_early else result[1]
 
 
 
@@ -1434,36 +1447,6 @@ ENV_PROMPT = ex6.Message(role="system", content=_env_content, overview="env")
 
 
 _IS_WINDOWS = sys.platform == "win32"
-def _get_bash(ctx):
-    bash_location = ctx.app.plugin_data.get("tools:bash_location")
-    if bash_location:
-        return bash_location
-    if not _IS_WINDOWS:
-        ctx.app.plugin_data["tools:bash_location"] = "bash"
-        return "bash"
-    # Windows: try shutil.which first, then known install paths
-    b = shutil.which("bash")
-    if b:
-        ctx.app.plugin_data["tools:bash_location"] = b
-        return b
-    git_path = shutil.which("git")
-    if git_path:
-        # git.exe lives in <install>/cmd/ or <install>/bin/ — walk up and check
-        install_dir = os.path.dirname(os.path.dirname(git_path))
-        for sub in ("bin", "usr\\bin"):
-            p = os.path.join(install_dir, sub, "bash.exe")
-            if os.path.isfile(p):
-                ctx.app.plugin_data["tools:bash_location"] = p
-                return p
-    for d in (r"C:\Program Files\Git", r"C:\Program Files (x86)\Git"):
-        for sub in ("bin", "usr\\bin"):
-            p = os.path.join(d, sub, "bash.exe")
-            if os.path.isfile(p):
-                ctx.app.plugin_data["tools:bash_location"] = p
-                return p
-    return None
-
-
 
 def make_safe_cwd(folders: dict[str, str]):
     if len(folders) < 2:
@@ -1508,12 +1491,14 @@ def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
 
 
 def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
-    """Run a bash/shell command and return its output (stdout + stderr combined).
+    """Run a bash/shell command and return its output (stdout + stderr combined). Unix only.
     Use for: running tests, checking git status, installing packages, etc.
     timeout: max seconds to wait (default 30)."""
-    bp = _get_bash(ctx)
+    if _IS_WINDOWS:
+        raise RuntimeError("bash is Unix-only")
+    bp = shutil.which("bash")
     if not bp:
-        return "ERROR: bash not found (install Git for Windows)"
+        return "ERROR: bash not found"
     denial = _approve_command(ctx, "bash", command)
     if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
     try:
@@ -1527,23 +1512,65 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
 
 
 
-def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
+def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str | ex6.Operation:
     """Run a PowerShell command and return its output (stdout + stderr combined). Windows only.
     Use for: running tests, checking git status, installing packages, etc.
     timeout: max seconds to wait (default 30)."""
+    if not _IS_WINDOWS:
+        raise RuntimeError("powershell is Windows-only")
     exe = shutil.which("pwsh") or shutil.which("powershell")
     if not exe:
         return "ERROR: powershell not found"
     denial = _approve_command(ctx, "PowerShell", command)
     if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
+    stdout, stderr = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     try:
-        result = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-Command", command], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd, creationflags=subprocess.CREATE_NO_WINDOW)
-        out = result.stdout + result.stderr
-        if result.returncode != 0:
-            out = f"[exit code {result.returncode}]\n" + out
-        return out.strip() or "(no output)"
-    except subprocess.TimeoutExpired:
-        return f"ERROR: command timed out after {timeout}s"
+        proc = subprocess.Popen([exe, "-NoProfile", "-NonInteractive", "-Command", command],
+                                stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+                                cwd=ctx.cwd, creationflags=subprocess.CREATE_NO_WINDOW)
+    except Exception:
+        stdout.close()
+        stderr.close()
+        raise
+    deadline = time.monotonic() + timeout
+    timed_out, killer = False, None
+
+    def cancel():
+        nonlocal killer
+        if killer is None and proc.poll() is None:
+            killer = subprocess.Popen(['taskkill', '/PID', str(proc.pid), '/T', '/F'],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                      creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def poll(wait=5):
+        nonlocal timed_out
+        started = time.monotonic()
+        if killer is None and started >= deadline and proc.poll() is None:
+            timed_out = True
+            cancel()
+        remaining = max(0, wait)
+        if killer is None:
+            remaining = min(remaining, max(0, deadline - started))
+        try:
+            proc.wait(timeout=remaining)
+            if killer is not None:
+                killer.wait(timeout=max(0, wait - (time.monotonic() - started)))
+        except subprocess.TimeoutExpired:
+            return None
+        try:
+            stdout.seek(0)
+            stderr.seek(0)
+            out = (stdout.read() + stderr.read()).decode(locale.getpreferredencoding(False))
+        finally:
+            stdout.close()
+            stderr.close()
+        if timed_out:
+            return f"ERROR: command timed out after {timeout}s"
+        if proc.returncode != 0:
+            out = f"[exit code {proc.returncode}]\n" + out
+        return out.replace('\r\n', '\n').strip() or "(no output)"
+
+    return ex6.Operation(cancel=cancel, poll=poll)
 
 
 COMMANDLINE_TOOL = powershell if _IS_WINDOWS else bash
@@ -1714,6 +1741,8 @@ def guard_repeat_calls(fn):
         fp = _guard_fingerprint(fn.__name__, call_kwargs)
 
         out = fn(*args, **kwargs)
+        if isinstance(out, ex6.Operation):
+            return out
         out_str = ex6.tool_result_text(out)
         if _count_matching_tool_outputs(ctx, fp, out_str) >= 2:
             return f"ERROR: blocked repeated tool call ({fn.__name__}) with same args+output. Use previous tool output already in context."

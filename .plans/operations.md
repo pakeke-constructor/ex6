@@ -211,3 +211,12 @@ Shell coverage if migrated:
 - Real short-lived subprocess cancellation is reaped before callback; verify descendants are terminated using platform-appropriate tests.
 
 Run `python -m unittest discover -s tests` (verify project test entry point first), then git diff/status. Preserve unrelated user edits.
+
+Execution scope revised by user: implement `ex6.Operation` infrastructure and
+convert powershell to a cancellable subprocess-backed Operation. Keep
+explore_agent and websearch_agent as threads; clear waits for them to resolve.
+Defer clear's reset until draining finishes, without the full transition redesign.
+Use plain `ctx.stop_early: bool`; reject overlapping invokes and keep it set
+until workers join. Only Operations receive cancel; ordinary Python workers
+finish naturally. UI waits check stop and remove their own draw function;
+canceled approval denies. Leave UI-stack formalization for later.

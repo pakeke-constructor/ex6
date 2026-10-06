@@ -43,6 +43,7 @@ import difflib
 import atexit
 import shutil
 import tempfile
+from contextlib import closing
 
 
 ESC_DELAY: float = 0
@@ -248,6 +249,15 @@ class ImageAttachment(Attachment):
 class ToolResult:
     text: str
     attachments: tuple[Attachment, ...] = ()
+
+
+@dataclass
+class Operation:
+    """Tool-owned work. poll(wait) returns None while pending, str/ToolResult
+    after cleanup; poll(0) must not block. Core calls cancel at most once,
+    between polls. Plugins own deadlines and cleanup, including on failure."""
+    cancel: Callable[[], None]
+    poll: Callable[[float], str | ToolResult | None]
 
 
 def tool_result_text(value) -> str:
@@ -766,6 +776,19 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
 
 
 
+def _poll_operation(ctx, operation: Operation):
+    value, canceled = None, False
+    while value is None:
+        if ctx.stop_early and not canceled:
+            canceled = True
+            try:
+                operation.cancel()
+            except Exception as e:
+                ctx.app.debug_print(f"operation cancel failed: {e}")
+        value = operation.poll(0.1)
+    return value
+
+
 @overridable
 def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     '''
@@ -779,6 +802,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     threads, results, started_ids = [], [], []
     try:
         for tc in llm_result.tool_calls:
+            if ctx.stop_early: break
             fn = tools.get(tc["name"])
             result = {"id": tc["id"], "value": None, "error": None}
             results.append(result)
@@ -793,7 +817,10 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
                     # if a tool declares tool_call_id in its signature, pass it
                     if 'tool_call_id' in inspect.signature(fn).parameters:
                         args = {**args, 'tool_call_id': tc["id"]}
-                    result["value"] = fn(ctx, **_check_tool_args(fn, args))
+                    value = fn(ctx, **_check_tool_args(fn, args))
+                    if isinstance(value, Operation):
+                        value = _poll_operation(ctx, value)
+                    result["value"] = value
                 except Exception as e:
                     ctx._require_app().debug_print(f"tool {tc['name']} failed: {e}")
                     result["value"] = f"ERROR: {e}"
@@ -805,12 +832,12 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             threads.append(t)
 
         for t in threads:
-            while t.is_alive():
-                if ctx.stop_early and ctx._scheduled is None: return False
-                t.join(timeout=0.1)
+            t.join()
     finally:
         for tc_id in started_ids:
             ctx._active_tools.pop(tc_id, None)
+    if ctx.stop_early:
+        return False
     if ctx._tools_invalidated:
         ctx._tools_invalidated = False
         return True
@@ -883,6 +910,7 @@ class Context:
     _prev_height: int = 0 # how many lines were used in rendering last frame
     _tool_rows: dict = field(default_factory=dict)  # tool_call_id -> list[ToolCall] (plugin-supplied display rows)
     _active_tools: dict = field(default_factory=dict)  # tool_call_id -> Thread (in-flight)
+    _clear_pending: bool = field(default=False, init=False, repr=False)
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _tools_invalidated: bool = False
@@ -1006,6 +1034,8 @@ class Context:
         (Use this when you need the model to control it's own looping behaviour from within it's tool loop.)
         """
         with self._msg_lock:
+            if self._clear_pending:
+                raise RuntimeError("Clear is pending")
             if self._scheduled is not None:
                 raise RuntimeError("A callback is already scheduled")
             if self.llm_is_running:
@@ -1013,26 +1043,54 @@ class Context:
                 return
         fn(*args, **kwargs)
 
-    def invoke(self, text, llm_fn=None):
-        app = self._require_app()
-        llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
-        if self.transform_user_prompt:
-            text = self.transform_user_prompt(self, text)
-        self.append_message(Message(role="user", content=text))
-        self.llm_is_running = True
-        self.stop_early = False
-        self._tools_invalidated = False
-
-        def do_llm():
-            self.last_invoke_time_start = time.time()
-            self.llm_current_output = []
-            self.llm_result = None
-            for item in llm_fn(self):
+    def _read_llm_stream(self, llm_fn):
+        self.last_invoke_time_start = time.time()
+        self.llm_current_output = []
+        self.llm_result = None
+        with closing(llm_fn(self)) as stream:
+            for item in stream:
                 if self.stop_early: return
                 if isinstance(item, ResponseChunk):
                     self.llm_current_output.append(item)
                 elif isinstance(item, LLMResult):
                     self.llm_result = item
+
+    def _discard_stopped_tool_batch(self):
+        if not self.stop_early or not self.llm_result or not self.llm_result.tool_calls:
+            return
+        calls = self.llm_result.tool_calls
+        ids = {tc['id'] for tc in calls}
+        for i, message in enumerate(self._messages):
+            if message.tool_calls is calls:
+                self._messages[i:] = [m for m in self._messages[i + 1:] if m.tool_call_id not in ids]
+                break
+        for tc_id in ids:
+            self._tool_rows.pop(tc_id, None)
+
+    def invoke(self, text, llm_fn=None):
+        app = self._require_app()
+        llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
+        with self._msg_lock:
+            if self.llm_is_running:
+                raise RuntimeError("Context is already running or draining")
+            self.llm_is_running = True
+            self.stop_early = False
+            self.llm_result = None
+        try:
+            if self.transform_user_prompt:
+                text = self.transform_user_prompt(self, text)
+            self.append_message(Message(role="user", content=text))
+            self._tools_invalidated = False
+        except Exception:
+            with self._msg_lock:
+                self.llm_is_running = False
+                if self._clear_pending:
+                    self.clear()
+            raise
+
+        def do_llm():
+            self._read_llm_stream(llm_fn)
+            if self.stop_early: return
             content = "".join(c.content for c in self.llm_current_output if c.type == "text")
             tool_calls = self.llm_result.tool_calls if self.llm_result else None
             self.append_message(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
@@ -1043,19 +1101,23 @@ class Context:
                 should_loop = True
                 while should_loop and not self.stop_early and self._scheduled is None:
                     do_llm()
-                    if not self.llm_result: break
+                    if self.stop_early or not self.llm_result: break
                     self.llm_suspended = True
                     should_loop = app.call("call_tools", self, self.llm_result)
-                    if should_loop:
+                    if should_loop and not self.stop_early:
                         app.run_context_hooks("after_tool_calls", self)
                     self.llm_suspended = False
             finally:
                 with self._msg_lock:
+                    self._discard_stopped_tool_batch()
                     self.llm_is_running = False
                     self.llm_suspended = False
                     self.last_invoke_time_end = time.time()
                     scheduled = self._scheduled
                     self._scheduled = None
+                    if self._clear_pending:
+                        self.clear()
+                        scheduled = None
                 if scheduled is not None:
                     fn, args, kwargs = scheduled
                     fn(*args, **kwargs)
@@ -1081,28 +1143,32 @@ class Context:
                 self._tool_rows.pop(m.tool_call_id, None)
 
     def clear(self):
-        self.stop_early = True
         with self._msg_lock:
+            self.stop_early = True
             self._scheduled = None
-        self._tools_invalidated = True
-        def clear_messages(messages):
-            i = 0
-            while i < len(messages) and messages[i].role == "system":
-                i += 1
-            removed = messages[i:]
-            del messages[i:]
-            self._drop_tool_rows(removed)
-        self.edit_messages(clear_messages)
-        self.ui_stack = []
-        self.llm_is_running = False
-        self.llm_suspended = False
-        self.llm_result = None
-        self.llm_current_output = []
-        self.last_invoke_time_start = 0
-        self.last_invoke_time_end = 0
-        self._read_hashes = {}
-        self._line_snapshots = {}
-        self.data_volatile = {}
+            if self.llm_is_running:
+                self._clear_pending = True
+                return
+            self._clear_pending = False
+            self._tools_invalidated = True
+            def clear_messages(messages):
+                i = 0
+                while i < len(messages) and messages[i].role == "system":
+                    i += 1
+                removed = messages[i:]
+                del messages[i:]
+                self._drop_tool_rows(removed)
+            self.edit_messages(clear_messages)
+            self.ui_stack = []
+            self.llm_is_running = False
+            self.llm_suspended = False
+            self.llm_result = None
+            self.llm_current_output = []
+            self.last_invoke_time_start = 0
+            self.last_invoke_time_end = 0
+            self._read_hashes = {}
+            self._line_snapshots = {}
+            self.data_volatile = {}
 
     def dump_context(self) -> str:
         if not self.schema_id:
@@ -1144,6 +1210,7 @@ class Context:
     def _clone(self, new_name: str, messages: list[Message]) -> 'Context':
         cpy = copy.copy(self)
         cpy._msg_lock = threading.RLock()
+        cpy._clear_pending = False
         cpy._context_hooks = {kind: list(fns) for kind, fns in self._context_hooks.items()}
         cpy._messages = messages
         cpy._read_hashes = dict(self._read_hashes)
