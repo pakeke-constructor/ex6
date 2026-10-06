@@ -276,6 +276,123 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
 
 
 
+def _patch_match(lines, expected, start, eof=False):
+    if eof:
+        start = max(start, len(lines) - len(expected))
+    for normalize in (lambda s: s, str.rstrip, str.strip):
+        target = [normalize(line) for line in expected]
+        for i in range(start, len(lines) - len(expected) + 1):
+            if [normalize(line) for line in lines[i:i + len(expected)]] == target:
+                return i
+    raise ValueError("Patch context not found:\n" + "\n".join(expected))
+
+
+def _apply_file_patch(content, patch):
+    patch_lines = patch.replace("\r\n", "\n").strip("\n").split("\n")
+    newline_match = re.search(r"\r\n|\n|\r", content)
+    newline = newline_match.group() if newline_match else "\n"
+    trailing_newline = content.endswith(("\n", "\r"))
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.removesuffix("\n").split("\n") if content else []
+    result = []
+    cursor = 0
+    index = 0
+    changed = False
+    while index < len(patch_lines):
+        while index < len(patch_lines):
+            marker = patch_lines[index]
+            if marker == "@@":
+                index += 1
+            elif marker.startswith("@@ ") and marker[3:].strip():
+                anchor = _patch_match(lines, [marker[3:]], cursor)
+                result.extend(lines[cursor:anchor + 1])
+                cursor = anchor + 1
+                index += 1
+            else:
+                break
+        operations = []
+        expected = []
+        eof = False
+        while index < len(patch_lines):
+            line = patch_lines[index]
+            if line == "@@" or line.startswith("@@ "):
+                break
+            index += 1
+            if line == "*** End of File":
+                eof = True
+                if index != len(patch_lines):
+                    raise ValueError("*** End of File must be the last patch line.")
+                break
+            if line == "":
+                line = " "
+            if line[0] not in " +-":
+                raise ValueError(f"Invalid patch line {index}: {line}")
+            operations.append((line[0], line[1:]))
+            if line[0] != "+":
+                expected.append(line[1:])
+            if line[0] != " ":
+                changed = True
+        if not operations:
+            raise ValueError("Empty patch hunk; add context, removals, or additions.")
+        if expected:
+            position = _patch_match(lines, expected, cursor, eof)
+        else:
+            position = len(lines)
+        result.extend(lines[cursor:position])
+        cursor = position
+        for prefix, text in operations:
+            if prefix == " ":
+                result.append(lines[cursor])
+                cursor += 1
+            elif prefix == "-":
+                cursor += 1
+            else:
+                result.append(text)
+    if not changed:
+        raise ValueError("Patch must contain at least one addition or removal.")
+    result.extend(lines[cursor:])
+    updated = newline.join(result)
+    if result and (trailing_newline or not content):
+        updated += newline
+    return updated
+
+
+def patch_file(ctx: ex6.Context, file: str, patch: str) -> str:
+    """Edit a previously read file with Codex-style patch blocks. Use write_file to create/rewrite files.
+
+    Patch syntax:
+    - Prefix lines with ' ' to keep, '-' to remove, '+' to add. Keep source indentation after the prefix.
+    - Separate blocks with @@; the first @@ is optional. Blocks must follow file order.
+    - @@ anchor searches forward past a matching source line. Consecutive anchors are allowed.
+    - Optional final *** End of File requires the last block to match at EOF.
+    - Addition-only blocks append. Include context to insert elsewhere or disambiguate repeats.
+    - No Begin/End Patch wrappers, file headers, line numbers, or literal ... placeholders.
+
+    Matching tries exact, then ignores trailing whitespace, then leading/trailing whitespace.
+    First match at each level wins; context and file newlines are preserved.
+
+    Example patch:
+    @@ def greet():
+    -    return "old"
+    +    return "new"
+    """
+    p = ctx.resolve(file)
+    with _get_file_lock(ctx, p):
+        _check_read(ctx, file)
+        with open(p, "r", encoding="utf-8", newline="") as f:
+            old = f.read()
+        updated = _apply_file_patch(old, patch)
+        diff = _make_diff(old, updated)
+        denial = approve(ctx, f"Patch file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        if denial:
+            raise ValueError(f"User denied your patch_file request, with reason: {denial}")
+        with open(p, "w", encoding="utf-8", newline="") as f:
+            f.write(updated)
+        ctx.mark_file_read(file)
+        ctx.get_line_snapshot(file).clear()
+        return f"Patched {file}"
+
+
 def _ws_normalize(s):
     return re.sub(r'[ \t]+', ' ', s).strip()
 

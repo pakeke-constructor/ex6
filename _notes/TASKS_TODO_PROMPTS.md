@@ -14,12 +14,26 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
-- Make gitignore handling dynamic per `ctx.cwd`, not import-time process cwd.
-
-
 
 
 I want to make it so it's easier for agents to create their own little local branch, and can make changes easily.
+
+
+
+I want to make it easier for codex-style agents to edit files:
+Notice how the codex edit-format works, with the `apply_patch ***` stuff.
+I want to create a more specialized version of this, using a new custom tool:
+```py
+patch_file("my_file.py", """
+- old
++ new
+...
+""")
+```
+^^^ something like this?
+NOTE: I want to retain the write-file tool, and i dont need the delete-file tool either.
+
+
 
 
 
