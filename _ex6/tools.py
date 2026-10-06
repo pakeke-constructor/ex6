@@ -1063,6 +1063,75 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
 
 
 
+HANDOFF_GUIDELINES = """
+## HANDOFF TOOL GUIDELINES:
+You are seeing this message because you called `handoff(s, ready=False)`.
+This tool output will give you guidance for how to structure a good handoff document.
+
+... finish the rest of this.
+
+handoff structure:
+```
+## Motivation / original prompt:
+What task are we working on, and what's the motivation for solving the task?
+What's the bigger picture in terms of the product or system?
+(Include the exact user's words or prompt if relevant)
+
+## Relevant files and functions: (brief bulletpoints)
+- read_file(src/file1.py)
+- read_file(tests/file1.py)
+- read_headers(src/db.py)
+- read_body(src/auth.py, get_auth)
+
+## What's been done: (brief bulletpoints)
+...
+
+## Blockers, decisions, or other relevant info. (These should be brief bulletpoints)
+...
+
+## Suggested direction going forwards: (Also brief bulletpoints.)
+[IMPORTANT: For this part, don't be overconfident. It's possible that the agent will discover a better/simpler solution than you, so you should encourage the agent to explore ideas, and not be narrow-minded.]
+"""
+
+
+def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
+    """
+    This tool allows you to clear your context, and pass on information to a future version of yourself.
+    You should use this tool when context gets too large, or use it when you are starting a new unrelated task.
+
+    You must call this tool when the context window is too large, and you are ready to hand off your work.
+    Likewise, if you are panicing, and need more time to complete your task, you should also use this tool.
+    Even more importantly: If you need to make a super important decision: you should use this tool too.
+
+    Calling this tool with `ready=False` will give you information / guidance as to how to use it.
+
+    Intended usage:
+    ```
+    # (context window too large)
+
+    handoff("", ready=False)
+    ->
+      Handoff tool guidelines:
+      ...
+      ...
+
+    *great, now that I know the guidelines, lets draft a smart handoff document:*
+    handoff("... (handoff text here)", ready=True)
+      -> handoff complete!
+    ```
+
+    """
+    if not ready:
+        return HANDOFF_GUIDELINES
+
+    def apply():
+        ctx.clear()
+        ctx.invoke(txt)
+    ctx.schedule(apply)
+    return "Handoff requested; (your context will be cleared as soon as this turn ends.)"
+
+
+
 def ask_user(ctx: ex6.Context, question: str) -> str:
     """Ask user a question and wait for their response. Blocks until answered."""
     result = [None]

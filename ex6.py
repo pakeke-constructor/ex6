@@ -806,7 +806,7 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
 
         for t in threads:
             while t.is_alive():
-                if ctx.stop_early: return False
+                if ctx.stop_early and ctx._scheduled is None: return False
                 t.join(timeout=0.1)
     finally:
         for tc_id in started_ids:
@@ -886,6 +886,7 @@ class Context:
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _tools_invalidated: bool = False
+    _scheduled: Optional[tuple] = field(default=None, init=False, repr=False)
     _app: Optional['App'] = field(default=None, init=False, repr=False)
 
     def _require_app(self):
@@ -995,6 +996,23 @@ class Context:
     def get_tool_schemas(self) -> list[dict]:
         return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
 
+    def schedule(self, fn: Callable, *args, **kwargs):
+        """
+        Wait for the model and its tools to finish, then call fn with the supplied arguments.
+        fn is called immediately if the model is not running. 
+        Only one function can be waiting;
+        scheduling another raises an error. clear() cancels the waiting function.
+
+        (Use this when you need the model to control it's own looping behaviour from within it's tool loop.)
+        """
+        with self._msg_lock:
+            if self._scheduled is not None:
+                raise RuntimeError("A callback is already scheduled")
+            if self.llm_is_running:
+                self._scheduled = (fn, args, kwargs)
+                return
+        fn(*args, **kwargs)
+
     def invoke(self, text, llm_fn=None):
         app = self._require_app()
         llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
@@ -1023,7 +1041,7 @@ class Context:
         def run():
             try:
                 should_loop = True
-                while should_loop and not self.stop_early:
+                while should_loop and not self.stop_early and self._scheduled is None:
                     do_llm()
                     if not self.llm_result: break
                     self.llm_suspended = True
@@ -1032,9 +1050,15 @@ class Context:
                         app.run_context_hooks("after_tool_calls", self)
                     self.llm_suspended = False
             finally:
-                self.llm_is_running = False
-                self.llm_suspended = False
-                self.last_invoke_time_end = time.time()
+                with self._msg_lock:
+                    self.llm_is_running = False
+                    self.llm_suspended = False
+                    self.last_invoke_time_end = time.time()
+                    scheduled = self._scheduled
+                    self._scheduled = None
+                if scheduled is not None:
+                    fn, args, kwargs = scheduled
+                    fn(*args, **kwargs)
 
         threading.Thread(target=run, daemon=True).start()
     
@@ -1058,6 +1082,8 @@ class Context:
 
     def clear(self):
         self.stop_early = True
+        with self._msg_lock:
+            self._scheduled = None
         self._tools_invalidated = True
         def clear_messages(messages):
             i = 0
