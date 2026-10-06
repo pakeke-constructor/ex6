@@ -1090,7 +1090,7 @@ What's the bigger picture in terms of the product or system?
 ...
 
 ## Suggested direction going forwards: (Also brief bulletpoints.)
-[IMPORTANT: For this part, don't be overconfident. It's possible that the agent will discover a better/simpler solution than you, so you should encourage the agent to explore ideas, and not be narrow-minded.]
+[IMPORTANT: For this part, don't be overconfident. It's possible that the new agent will discover a better/simpler solution, so you should encourage exploring new ideas, and encourage taking a step back.]
 """
 
 
@@ -1119,7 +1119,6 @@ def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
     handoff("... (handoff text here)", ready=True)
       -> handoff complete!
     ```
-
     """
     if not ready:
         return HANDOFF_GUIDELINES

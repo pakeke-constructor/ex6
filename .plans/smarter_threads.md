@@ -1,100 +1,144 @@
-# Tool-thread lifecycle and safe scheduling
+# Owned tool execution, cancellation, and safe transitions
 
 ## Motivation
 
-User: `_active_tools` is ugly; there is no real difference between a stale tool and a dead tool. Make ownership and lifetime explicit instead of adding handoff-specific patches.
+User: `_active_tools` is ugly; make ownership and lifetime explicit instead of adding handoff-specific patches. Less code changed is better.
 
-ex6 should stay a thin, plugin-controlled harness. Core owns execution and safe state transitions; plugins own what transitions do. A stopped run must not leave invisible workers that can mutate a new conversation. `schedule()` must mean a genuinely safe boundary, not merely `llm_is_running == False`.
+ex6 stays a thin, plugin-controlled harness. Core owns execution and safe transitions; plugins decide how work runs and stops. Python threads cannot safely be force-canceled. A cancellation request does not mean a worker died, and dropping tracking cannot make Context safe to reuse.
 
-## Current state / recovery notes
+Tools receive the real mutable Context. Discarding late results alone cannot prevent late conversation/UI writes or filesystem effects. Keep the context busy until its old work actually finishes; never silently abandon workers and admit a new invocation.
 
-Work is uncommitted. Keep existing changes unless deliberately replacing them:
-- `_ex6/tools.py:handoff` schedules a callback that calls `ctx.clear()` then `ctx.invoke(txt)`.
-- `_ex6/agents.py` exposes handoff in MAIN_TOOLS.
-- `Context.schedule(fn, *args, **kwargs)` allows one pending callback, rejects a second, executes immediately when idle, and otherwise exits the loop and calls it after cleanup. `clear()` cancels the pending callback.
-- `tests/test_handoff.py` covers scheduling and handoff; last test run passed 9 tests.
-- User edited schedule's docstring after implementation. Read latest code; preserve their wording unless changing semantics requires an update. They want short, plain-English docs.
+Implement this together with `.plans/operations.md`. That file specifies the Operation API and adapters; this file specifies lifecycle and transition safety. The agreed API is `Operation(cancel, poll)`, not start/wait callbacks, Context registration, or process isolation.
 
-Problems:
-- `call_tools()` returns early on stop and its `finally` removes every batch entry from `_active_tools`, including still-live threads.
-- Current stop check is `if ctx.stop_early and ctx._scheduled is None: return False`. This makes safety depend on whether a callback happens to be pending. Scheduling after early exit can run while abandoned tools are still alive.
-- `_default_tool_row()` assumes a missing result means running, so dead/abandoned calls can render as running forever.
-- `clear()` sets model idle without waiting for the model worker. `invoke()` resets shared stop state; old workers can resume or overwrite new-run state.
-- A raw tool-call ID is not enough ownership if invocations reuse IDs.
-- `_clone()` shallow-copies Context before resetting some runtime fields; scheduled callbacks and other new execution state must not leak into forks.
-- Tool functions receive the real mutable Context. Discarding stale return values alone cannot prevent late writes, UI changes, or filesystem side effects.
+## Operation contract
 
-## Direction: smallest safe baseline
+```python
+@dataclass
+class Operation:
+    cancel: Callable[[], None]
+    poll: Callable[[float], str | ToolResult | None]
+```
 
-Separate two facts rather than inventing one status that conflates them:
-- Thread lifetime: still executing vs finished.
-- Ownership: belongs to current run vs stopped/superseded run (stale).
+Tool creates its resource and returns closures capturing it. No start callback or handle plumbing. Keep ToolResult as completed text/attachments, separate from Operation.
 
-A stale tool can still be alive. A cancellation request is not proof that it stopped. Python threads cannot safely be force-killed.
+- Plugin implements `poll(wait=5)` in seconds: waits up to deadline and returns None while pending, or str/ToolResult when finished.
+- `poll(0)` checks immediately, never blocks. Empty string is a completed result; test `is None`, not truthiness.
+- Core polls on the tool worker with short bounded intervals, never UI thread; no concurrent polls or new thread per poll.
+- `cancel()` requests termination, must be quick, and may run concurrently with poll. Core calls it at most once.
+- Continue polling after cancellation until underlying work and cleanup actually finish. Then join worker before cleanup/transition.
+- Cancellation during startup stays recorded. Cancel Operation once it becomes available, if still unfinished.
+- Startup is ordinary uncancellable Python; keep it short. Plugin owns resource cleanup before return, poll deadline compliance, and effective cancellation.
+- Plain string/ToolResult tools remain supported and drain normally. No promise of forcibly terminating arbitrary Python, undoing side effects, or promptly interrupting a blocked provider.
 
-Recommended baseline: do not start a new invocation or run a scheduled mutation while previous context workers are still alive. Stop requests cancellation immediately; execution remains busy/draining until workers finish. This avoids pretending arbitrary tools can be isolated from Context without changing the plugin API.
+## Current code / recovery
 
-If prompt reuse while non-cooperative tools continue running is required, ask before implementing. That requires a different design (isolated tool context / explicit write permissions), not just run IDs.
+These are inspection notes, not implementation already performed. Verify latest code before editing.
 
-## Implementation steps
+- `call_tools` uses `_active_tools` keyed by raw tool ID; early stop can remove still-live threads. Its `_scheduled` exception makes safety depend on whether a callback is pending.
+- `invoke` transforms/appends prompt before admission checks and resets shared stop state.
+- `clear` resets immediately while workers may still be alive.
+- `schedule` supports one pending callback. Idle callback runs on caller; deferred callback runs on model-loop thread after cleanup.
+- `handoff` is already a plugin using schedule to clear/reinvoke. Keep it there; no handoff state in core.
+- `_clone` shallow-copies runtime fields; new lifecycle state must not leak into forks.
+- UI answer handlers use `ui_stack.pop()`; several waits do not observe stop.
+- `bash`/`powershell` still use subprocess.run; Operation migration is specified in operations plan.
+- `tests/test_handoff.py` currently has five tests, including assertions on old tracking/shared flags that need updating.
 
-1. Establish execution ownership.
-   - Use one small per-invocation record for identity, model thread, cancellation signal, and tool executions. Prefer this over accumulating unrelated Context flags.
-   - Give each tool execution its owner, thread, completion/outcome, and cancellation/stale information. Keep execution bookkeeping separate from display `ToolCall`.
-   - Reuse existing structures where possible. No executor framework, forced thread killing, or long-lived history registry.
+Preserve unrelated user edits in `_ex6/agents.py`, `_ex6/tools.py`, and other files. Inspect working tree first. Preserve schedule's short plain-English documentation where semantics still apply.
 
-2. Fix tracking before changing scheduling.
-   - Register a tool before starting it; mark completion in its worker's `finally`.
-   - Never remove a live thread merely because the caller stopped waiting.
-   - Keep ownership until the run is fully drained. Preserve outcome long enough to render finished/error/stopped calls correctly, then clean it up with history/run cleanup.
-   - Use run ownership as well as tool ID so old completion cannot delete a newer entry.
-   - Commit tool results only for the owning, valid batch. A stopped/discarded batch must not append late results.
+## Implementation
 
-3. Unify stop and draining.
-   - Add one stop-request API and route `/stop`, Ctrl-X, and clear through it instead of writing/resetting shared stop flags independently.
-   - Cancellation belongs to the run and stays set; a new invocation cannot reset an old worker's cancellation state.
-   - Request stop without blocking the UI. Reject invocation while old workers are draining; callers wanting a transition use schedule.
-   - Keep running/busy status true until actual execution ends. Old cleanup must never reset a newer run's state.
-   - Do not hold `_msg_lock` (or an execution lock) while joining threads, calling providers/tools/hooks, or running scheduled callbacks.
+### 1. Ownership and tracking
 
-4. Make schedule depend on actual execution, not a boolean.
-   - Keep one pending function and the existing second-call error.
-   - Run immediately only if there are no model/tool workers left.
-   - Otherwise finish/drain the owning run, complete all old-run cleanup, remove the pending function, then invoke it outside locks. Old loop does nothing afterwards.
-   - Scheduling alone does not cancel tools. Remove the special `_scheduled` condition from the tool wait loop; one lifecycle rule should apply regardless of scheduling timing.
-   - Define clear during a run as a stop request with clearing deferred until safe; decide how this interacts with an already-pending callback before coding. Preserve existing clear-cancels-schedule semantics unless explicitly changing it with user approval.
-   - Keep handoff implemented in plugin via schedule; no `_handoff_prompt` or handoff logic in core.
+Use one small invocation record for identity, model thread, cancellation signal, and current tool executions. Each execution owns thread, published Operation, cancel-claimed state, completion, and result/error. Reuse existing batch structures; avoid parallel registries and duplicated status booleans.
 
-5. Align UI and plugin waits.
-   - Render executing, finished, failed, and stopped/stale calls from execution state, not absence of a result. Avoid labelling an alive canceled tool as finished.
-   - Question/approval tools should exit when their owning run is canceled and remove only their own UI entry.
-   - Blocking subprocess/network tools can finish naturally for this MVP. Document that a hung tool delays drain; do not silently detach it and claim the context is safe.
-   - A tool must not wait for a scheduled callback: callback waits for that tool. Document this briefly in schedule if needed.
+Capture run in worker closures. Cancellation stays set on that record and cannot be reset by another invocation. Record identity establishes ownership; raw tool IDs are provider/display metadata, not lifecycle identity.
 
-6. Reset lifecycle state on clear/fork.
-   - Fork copies conversation/configuration, not threads, pending callbacks, cancellation state, or in-flight execution records.
-   - Clear removes conversation/tool display state only when old workers cannot repopulate it.
+Register before starting workers. Mark completion in finally; retain live records until actual exit/join, even when conversation rows are truncated. Keep completed outcomes only with the associated batch/message, not an unbounded second history.
 
-## Tests
+### 2. Stop and drain
 
-Use Events/barriers rather than relying on timing:
-- Stop during parallel tools: live tools stay tracked until actual completion.
-- A finished tool and a stale-but-live tool are distinguishable in bookkeeping and UI.
-- Schedule before stop, during drain, and after model completion: callback never runs with a live old worker.
-- Handoff waits for sibling tools, clears their late state/results, then starts one clean invocation.
-- Scheduling twice rejects the second without losing the first; callback starts a new run without old cleanup clobbering it.
-- Invoke while draining cannot reset cancellation or overlap workers.
-- clear while executing and stop/clear races with result commit and scheduled execution.
-- Reused tool IDs cannot let an old completion remove current tracking.
-- Canceled UI tools unblock; forks do not inherit pending functions/runtime state.
-- Check full diff and run all tests.
+Add one stop-request API. Route `/stop`, Ctrl-X, and clear through it; migrate direct writable shared stop flags and relevant plugin checks.
 
-## Relevant files / scope
+Stop requests cancellation without blocking UI. Coordinator scans all batch executions while using bounded thread joins, claims published Operations' cancellation under a short lock, and calls cancel outside locks. Do not let a slow first sibling prevent cancel dispatch to the others.
 
-- `ex6.py`: Context runtime fields, invoke/schedule/clear/_clone, call_tools, _default_tool_row, Ctrl-X.
-- `_ex6/commands.py`: stop/clr and any run-state checks.
-- `_ex6/tools.py`: handoff, ask_user, ask_user_question, approve; subprocess/subagent waits only if required.
-- `tests/test_handoff.py`: existing uncommitted tests; extend/replace for lifecycle contract.
-- `.plans/stop.md`: related earlier plan for immediate provider cancellation and valid-history rollback. Do not implement its async-provider overhaul as part of this task.
+Workers resolve Operation via repeated bounded polls. Keep tracking/busy until every started worker finishes and is joined. Cancel failure is logged through debug_print, not retried, and must not end draining. Poll failure is terminal tool error only after plugin resource cleanup; core cannot infer resource lifetime from an exception.
 
-Before editing, settle clear/pending-callback semantics and verify this design remains small. If it needs more than 300 new lines, stop and ask how to simplify. Focus on correct ownership, honest tracking, and safe draining; not immediate remote cancellation, undoing tool side effects, or a general task scheduler.
+Check cancellation before starting tools, committing provider output/results, running hooks, and starting another model turn. Stop during streaming must not launch tools from an already assigned LLMResult. Close provider iteration on early exit when supported; do not implement `.plans/stop.md` async-provider overhaul.
+
+Never hold lifecycle/message locks while joining, polling, canceling, calling providers/tools/hooks, or running callbacks.
+
+### 3. Admission and safe scheduling
+
+Reject invoke while run is executing/draining or another thread owns a reserved transition. Reject before transforming prompt or appending user message. Reserve admission before launching model thread.
+
+Preserve schedule behavior:
+
+- One pending callback; second raises without replacing first.
+- Schedule requests exit after current turn/batch, without canceling siblings or starting another turn.
+- Stop does not cancel pending callback.
+- Idle callback runs immediately on caller; deferred callback runs on model-loop thread.
+- Safe boundary: tools joined, provider closed, hooks and old-run cleanup finished. Model-loop thread may only dispatch callback and return; no old-run writes afterwards.
+- Tool cannot wait for scheduled callback: callback waits for tool.
+
+Serialize admission, stop, schedule, clear, and callback claim with a short lifecycle lock. Reserve transition ownership through dispatch so external invoke cannot slip between cleanup and callback clear/reinvoke. Callback runs outside locks, may synchronously clear/invoke or schedule a nested callback. Release only its reservation, even on exception; never clobber a new run it starts.
+
+### 4. Clear policy: confirm before coding
+
+User has not approved the proposed semantics; discussion was redirected to cancellation API. Confirm this rule rather than silently treating it as decided:
+
+- Clear cancels pending callback, requests stop, and defers reset until draining finishes.
+- Repeated clears coalesce; schedule rejects while clear pending.
+- Idle clear stays synchronous.
+- Clear may cancel callback before claim. Once claimed it is executing; simplest policy rejects external clear during dispatch but permits callback's own clear.
+
+If user changes rule, update both plans. Do not introduce general callback queue. Clear must not admit new work while old workers can repopulate state.
+
+### 5. History, rendering, and UI
+
+Commit completed tool batch atomically under message lock, checking ownership/cancellation/batch validity with consistent lifecycle lock ordering. Never append one result at a time across a stop/clear race.
+
+Discard stopped batch's assistant tool-call message and rows as well as results; preserve earlier valid batches and latest user prompt. No dangling calls in next provider request. Truncate invalidates removed batch specifically; siblings cannot resurrect it. Execution tracking survives display removal.
+
+Render completion/error from execution outcome, not missing result. Alive canceled tool is executing/draining, not finished. Tools skipped due to stop must not appear forever running.
+
+Question, optional-answer, approval, and escalation waits capture owning cancellation signal and remove only their own draw function on answer/cancellation. Replace pop() in these paths. Canceled approval returns denial, never None. Keep synchronous approval helper for callers that use it before returning Operation; no wholesale UI operation rewrite.
+
+### 6. Clear/fork reset
+
+Clear conversation/tool rows and volatile state only after safe boundary. Fork copies conversation/configuration, not thread records, locks, cancellation, pending callback/clear, transition reservation, current output, or suspended state.
+
+Existing explore_agent parent tool remains tracked until child wait/removal finishes. Child stop propagation is optional follow-up, not a reason to declare parent drained early.
+
+## Relevant files
+
+- `ex6.py`: Operation/ToolResult, call_tools, Context lifecycle/admission/schedule/clear/truncate/_clone, tool rendering, Ctrl-X.
+- `_ex6/commands.py`: stop/clr and running checks.
+- `_ex6/tools.py`: blocking UI helpers, shell Operation adapters, existing handoff/subagent behavior.
+- `tests/test_handoff.py`: update old lifecycle assumptions and extend tests.
+- `.plans/operations.md`: detailed API, plugin obligations, shell adapter requirements, and polling tests.
+- `.plans/stop.md`: related provider cancellation work, explicitly out of scope.
+
+## Tests and verification
+
+Use Events/barriers with bounded waits and finally releases, not timing-only proofs:
+
+- Plain tools unchanged; Operation polls None until completion; empty result completes; poll(0) immediate; positive deadline honored.
+- Stop during startup remembered; during polling cancel called once; cancel request/failure does not release context before actual completion.
+- Parallel live workers stay tracked regardless of schedule timing; every sibling gets cancellation.
+- Finished worker and canceled-but-live worker distinct in bookkeeping/rendering.
+- Invoke while draining rejected before transformation/append and cannot reset old cancellation.
+- Schedule before stop/during drain/when idle obeys same boundary; schedule alone never cancels.
+- Double schedule preserves first; nested schedule/callback exception/new invocation release only own transition state.
+- Pause before callback claim: external invoke rejected; clear can cancel unclaimed callback. Claimed callback obeys agreed clear policy.
+- Handoff waits for sibling late writes, clears them, starts exactly one clean run without old cleanup overwriting it.
+- Stop during stream never launches old tool calls; discarded batches leave valid history.
+- Stop/clear/result commit and truncate races cannot append half-batches or resurrect removed calls.
+- Reused tool IDs cannot confuse run ownership or delete live tracking.
+- Parallel UI dialogs answer/cancel only their own entry; canceled approval denies.
+- Fork inherits no lifecycle state.
+- Shell migration, if included: output/exit/timeout unchanged; repeated polls preserve output; termination reaps process tree before transition.
+
+Implement ownership/drain and Operation handling first, then admission/clear, then history/UI adjustments. Reassess 300-added-production-line budget before expanding. Prefer existing loop over scheduler, background reaper, executor, arbitrary tool isolation, or forced thread killing.
+
+Run entire test suite and inspect full diff/status. Use ex6.debug_print for diagnostics. No implementation requested until user asks to proceed.

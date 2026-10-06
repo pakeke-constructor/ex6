@@ -46,9 +46,8 @@ ALWAYS check changes afterwards. (Check git diff and/or run tests)
 <plans>
 The `.plans/**` folder is a list of markdown files, representing plans.
 
-If the user asks to plan stuff, or if you want to plan:
-you should write a concisely named `.md` file into the `.plans/` folder.
-Eg: `.plans/buffers1.md`. (Make sure the name is easy to type.)
+If the user asks to plan stuff, or if you want to plan, write a concisely named `.md` file into the `.plans/` folder.
+Eg: `.plans/buffers1.md`. (This plan is called "buffers1"; Make sure the name is easy to type.)
 
 Glob/grep the `.plans/` folder if you want to see existing plans.
 
