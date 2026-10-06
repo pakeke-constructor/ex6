@@ -777,6 +777,9 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
 
 
 def _poll_operation(ctx, operation: Operation):
+    """
+    waits until operation is completed
+    """
     value, canceled = None, False
     while value is None:
         if ctx.stop_early and not canceled:
