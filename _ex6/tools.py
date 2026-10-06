@@ -278,9 +278,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
 
 
 
-def _patch_match(lines, expected, start, eof=False):
-    if eof:
-        start = max(start, len(lines) - len(expected))
+def _patch_match(lines, expected, start):
     for normalize in (lambda s: s, str.rstrip, str.strip):
         target = [normalize(line) for line in expected]
         for i in range(start, len(lines) - len(expected) + 1):
@@ -291,6 +289,7 @@ def _patch_match(lines, expected, start, eof=False):
 
 def _apply_file_patch(content, patch):
     patch_lines = patch.replace("\r\n", "\n").strip("\n").split("\n")
+    patch_lines = [line for line in patch_lines if not line.startswith("***")]
     newline_match = re.search(r"\r\n|\n|\r", content)
     newline = newline_match.group() if newline_match else "\n"
     trailing_newline = content.endswith(("\n", "\r"))
@@ -314,17 +313,11 @@ def _apply_file_patch(content, patch):
                 break
         operations = []
         expected = []
-        eof = False
         while index < len(patch_lines):
             line = patch_lines[index]
             if line == "@@" or line.startswith("@@ "):
                 break
             index += 1
-            if line == "*** End of File":
-                eof = True
-                if index != len(patch_lines):
-                    raise ValueError("*** End of File must be the last patch line.")
-                break
             if line == "":
                 line = " "
             if line[0] not in " +-":
@@ -337,7 +330,7 @@ def _apply_file_patch(content, patch):
         if not operations:
             raise ValueError("Empty patch hunk; add context, removals, or additions.")
         if expected:
-            position = _patch_match(lines, expected, cursor, eof)
+            position = _patch_match(lines, expected, cursor)
         else:
             position = len(lines)
         result.extend(lines[cursor:position])
@@ -366,9 +359,9 @@ def patch_file(ctx: ex6.Context, file: str, patch: str) -> str:
     - Prefix lines with ' ' to keep, '-' to remove, '+' to add. Keep source indentation after the prefix.
     - Separate blocks with @@; the first @@ is optional. Blocks must follow file order.
     - @@ anchor searches forward past a matching source line. Consecutive anchors are allowed.
-    - Optional final *** End of File requires the last block to match at EOF.
+    - Lines starting with *** are ignored, like comments.
     - Addition-only blocks append. Include context to insert elsewhere or disambiguate repeats.
-    - No Begin/End Patch wrappers, file headers, line numbers, or literal ... placeholders.
+    - No file headers, line numbers, or literal ... placeholders.
 
     Matching tries exact, then ignores trailing whitespace, then leading/trailing whitespace.
     First match at each level wins; context and file newlines are preserved.

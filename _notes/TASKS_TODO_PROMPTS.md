@@ -13,41 +13,6 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 # ===============================
 
 
-FIX PATCH FILE:
-the agents keep making mistakes with it.
-There must be a reason why they keep messing it up; this is a smart frontier model (GPT-SOL.)
-Please take a look and evaluate:
-
-```
---- [38] assistant ---
-  <patch_file>
-    file = ex6.py
-    patch =
-      @@
-                   self.llm_is_running = True
-                   self.stop_early = False
-      +            self.llm_result = None
-      @@
-                               calls = self.llm_result.tool_calls
-                               ids = {tc['id'] for tc in calls}
-      -                        self._messages[:] = [m for m in self._messages
-      -                                            if m.tool_calls is not calls and m.tool_call_id not in ids]
-      +                        index = next((i for i, m in enumerate(self._messages) if m.tool_calls is calls), len(self._messages))
-      +                        self._messages[index:] = [m for m in self._messages[index:]
-      +                                                  if m.tool_calls is not calls and m.tool_call_id not in ids]
-      *** End of File
-  </patch_file>
---- [39] tool (tool_call_id=call_57OsXwP1evl0KE5GfoULmTGb) ---
-ERROR: Patch context not found:
-                        calls = self.llm_result.tool_calls
-                        ids = {tc['id'] for tc in calls}
-                        self._messages[:] = [m for m in self._messages
-                                            if m.tool_calls is not calls and m.tool_call_id not in ids]
-```
-(sorry, i do not have the exact file in question. But I suspect it's an issue with the newlines after the @@)
-
-
-
 
 I want to make it so it's easier for agents to create their own little local branch, and can make changes easily.
 
