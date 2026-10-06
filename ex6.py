@@ -252,6 +252,12 @@ class ToolResult:
 
 
 @dataclass
+class PendingTool:
+    call: dict
+    result: ToolResult | None = None
+
+
+@dataclass
 class Operation:
     """Tool-owned work. poll(wait) returns None while pending, str/ToolResult
     after cleanup; poll(0) must not block. Core calls cancel at most once,
@@ -802,56 +808,53 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
         return False
 
     tools = ctx.get_tools()
-    threads, results, started_ids = [], [], []
+    pending = [PendingTool(tc) for tc in llm_result.tool_calls]
+    threads = []
+
+    def run_tool(record, fn):
+        tc = record.call
+        try:
+            args = tc["args"]
+            if 'tool_call_id' in inspect.signature(fn).parameters:
+                args = {**args, 'tool_call_id': tc["id"]}
+            value = fn(ctx, **_check_tool_args(fn, args))
+            if isinstance(value, Operation):
+                value = _poll_operation(ctx, value)
+            if not isinstance(value, ToolResult):
+                value = ToolResult(tool_result_text(value))
+            if len(value.text) > MAX_TOOL_OUTPUT_CHARACTERS:
+                value = ToolResult(f"ERROR: Tool output too large ({len(value.text)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS}).")
+        except Exception as e:
+            ctx.app.debug_print(f"tool {tc['name']} failed: {e}")
+            value = ToolResult(f"ERROR: {e}")
+        record.result = value
+
+    ctx.pending_tools = pending
     try:
-        for tc in llm_result.tool_calls:
+        for record in pending:
             if ctx.stop_early: break
+            tc = record.call
             fn = tools.get(tc["name"])
-            result = {"id": tc["id"], "value": None, "error": None}
-            results.append(result)
             if not fn:
-                err = f"Unknown tool: {tc['name']}"
-                result["value"] = f"ERROR: {err}"
-                result["error"] = err
+                record.result = ToolResult(f"ERROR: Unknown tool: {tc['name']}")
                 continue
-            def run_tool(fn=fn, tc=tc, result=result):
-                try:
-                    args = tc["args"]
-                    # if a tool declares tool_call_id in its signature, pass it
-                    if 'tool_call_id' in inspect.signature(fn).parameters:
-                        args = {**args, 'tool_call_id': tc["id"]}
-                    value = fn(ctx, **_check_tool_args(fn, args))
-                    if isinstance(value, Operation):
-                        value = _poll_operation(ctx, value)
-                    result["value"] = value
-                except Exception as e:
-                    ctx._require_app().debug_print(f"tool {tc['name']} failed: {e}")
-                    result["value"] = f"ERROR: {e}"
-                    result["error"] = str(e)
-            t = threading.Thread(target=run_tool)
-            ctx._active_tools[tc["id"]] = t
-            started_ids.append(tc["id"])
+            t = threading.Thread(target=run_tool, args=(record, fn))
             t.start()
             threads.append(t)
-
+    finally:
         for t in threads:
             t.join()
-    finally:
-        for tc_id in started_ids:
-            ctx._active_tools.pop(tc_id, None)
-    if ctx.stop_early:
-        return False
-    if ctx._tools_invalidated:
-        ctx._tools_invalidated = False
-        return True
-    for r in results:
-        value = r["value"]
-        val = value if isinstance(value, ToolResult) else ToolResult(tool_result_text(value))
-        if len(val.text) > MAX_TOOL_OUTPUT_CHARACTERS:
-            text = f"ERROR: Tool output too large ({len(val.text)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS})."
-            val = ToolResult(text)
-            r["error"] = text
-        ctx.append_message(Message(role="tool", content=val, tool_call_id=r["id"]))
+        ctx.pending_tools = None
+
+    with ctx._msg_lock:
+        if ctx.stop_early:
+            return False
+        if ctx._tools_invalidated:
+            ctx._tools_invalidated = False
+            return True
+        ctx._messages.extend([ctx._assistant_message(llm_result.tool_calls)] + [
+            Message(role="tool", content=p.result, tool_call_id=p.call["id"]) for p in pending
+        ])
     return True
 
 
@@ -911,8 +914,7 @@ class Context:
     _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
-    _tool_rows: dict = field(default_factory=dict)  # tool_call_id -> list[ToolCall] (plugin-supplied display rows)
-    _active_tools: dict = field(default_factory=dict)  # tool_call_id -> Thread (in-flight)
+    pending_tools: list[PendingTool] | None = field(default=None, init=False, repr=False)
     _clear_pending: bool = field(default=False, init=False, repr=False)
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
@@ -1058,17 +1060,9 @@ class Context:
                 elif isinstance(item, LLMResult):
                     self.llm_result = item
 
-    def _discard_stopped_tool_batch(self):
-        if not self.stop_early or not self.llm_result or not self.llm_result.tool_calls:
-            return
-        calls = self.llm_result.tool_calls
-        ids = {tc['id'] for tc in calls}
-        for i, message in enumerate(self._messages):
-            if message.tool_calls is calls:
-                self._messages[i:] = [m for m in self._messages[i + 1:] if m.tool_call_id not in ids]
-                break
-        for tc_id in ids:
-            self._tool_rows.pop(tc_id, None)
+    def _assistant_message(self, tool_calls):
+        content = "".join(c.content for c in self.llm_current_output if c.type == "text")
+        return Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls)
 
     def invoke(self, text, llm_fn=None):
         app = self._require_app()
@@ -1094,9 +1088,9 @@ class Context:
         def do_llm():
             self._read_llm_stream(llm_fn)
             if self.stop_early: return
-            content = "".join(c.content for c in self.llm_current_output if c.type == "text")
             tool_calls = self.llm_result.tool_calls if self.llm_result else None
-            self.append_message(Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls))
+            if not tool_calls:
+                self.append_message(self._assistant_message(tool_calls))
             app.run_context_hooks("after_llm_turn", self)
 
         def run():
@@ -1112,7 +1106,6 @@ class Context:
                     self.llm_suspended = False
             finally:
                 with self._msg_lock:
-                    self._discard_stopped_tool_batch()
                     self.llm_is_running = False
                     self.llm_suspended = False
                     self.last_invoke_time_end = time.time()
@@ -1128,22 +1121,14 @@ class Context:
         threading.Thread(target=run, daemon=True).start()
     
     def truncate(self, index: int):
-        """Remove all messages from index onward. Cleans up tool rows for removed messages.
+        """Remove all messages from index onward.
         Safe to call from tool execution (llm_suspended) or when LLM is not running.
         Raises if LLM is actively streaming."""
-        if self.llm_is_running and not self.llm_suspended:
-            raise RuntimeError("Cannot truncate while LLM is streaming")
-        def truncate_messages(messages):
-            removed = messages[index:]
-            del messages[index:]
-            self._drop_tool_rows(removed)
-        self.edit_messages(truncate_messages)
-        self._tools_invalidated = True
-
-    def _drop_tool_rows(self, removed):
-        for m in removed:
-            if m.tool_call_id:
-                self._tool_rows.pop(m.tool_call_id, None)
+        with self._msg_lock:
+            if self.llm_is_running and not self.llm_suspended:
+                raise RuntimeError("Cannot truncate while LLM is streaming")
+            del self._messages[index:]
+            self._tools_invalidated = True
 
     def clear(self):
         with self._msg_lock:
@@ -1154,14 +1139,10 @@ class Context:
                 return
             self._clear_pending = False
             self._tools_invalidated = True
-            def clear_messages(messages):
-                i = 0
-                while i < len(messages) and messages[i].role == "system":
-                    i += 1
-                removed = messages[i:]
-                del messages[i:]
-                self._drop_tool_rows(removed)
-            self.edit_messages(clear_messages)
+            i = 0
+            while i < len(self._messages) and self._messages[i].role == "system":
+                i += 1
+            del self._messages[i:]
             self.ui_stack = []
             self.llm_is_running = False
             self.llm_suspended = False
@@ -1220,8 +1201,7 @@ class Context:
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
         cpy.data = StrictDataDict(self.data)
         cpy.data_volatile = {}
-        cpy._tool_rows = {}
-        cpy._active_tools = {}
+        cpy.pending_tools = None
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
@@ -1820,15 +1800,12 @@ def _render_chunks(chunks):
     return "".join(parts)
 
 
-def _default_tool_row(ctx, tc, tool_msg):
-    """Build a default ToolCall row from in-flight state + tool result message."""
-    t = ctx._active_tools.get(tc["id"])
-    if (t is not None and t.is_alive()) or tool_msg is None:
+def _default_tool_row(tc, result):
+    if result is None:
         status, detail = 'running', None
     else:
-        content = tool_result_text(tool_msg.content)
-        status = 'error' if content.startswith("ERROR:") else 'ok'
-        detail = content
+        detail = tool_result_text(result)
+        status = 'error' if detail.startswith("ERROR:") else 'ok'
     args = tc["args"]
     if isinstance(args, dict):
         args = list(args.values())
@@ -1845,8 +1822,13 @@ def render_work_mode(tui, buf, inpt, r):
     ctx = tui.current
     th = tui.app.theme
 
-    messages = ctx.get_messages()
-    tool_msgs = {m.tool_call_id: m for m in messages if m.role == "tool"}
+    with ctx._msg_lock:
+        messages = list(ctx._messages)
+        pending = ctx.pending_tools
+        pending_assistant = ctx._assistant_message([p.call for p in pending]) if pending is not None else None
+        if pending_assistant is not None:
+            messages.append(pending_assistant)
+    tool_results = {m.tool_call_id: m.content for m in messages if m.role == "tool"}
 
     message_outputs = []
     for msg in messages:
@@ -1855,15 +1837,12 @@ def render_work_mode(tui, buf, inpt, r):
         c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
         lines = tool_result_text(c).split('\n')
         tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
-                rows = ctx._tool_rows.get(tc["id"])
-                if rows:
-                    lines.extend(rows)
-                else:
-                    lines.append(_default_tool_row(ctx, tc, tool_msgs.get(tc["id"])))
+        if msg is pending_assistant:
+            lines.extend(_default_tool_row(p.call, p.result) for p in pending)
+        elif msg.tool_calls:
+            lines.extend(_default_tool_row(tc, tool_results.get(tc["id"])) for tc in msg.tool_calls)
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
-    if ctx.is_running() and not ctx.llm_suspended:
+    if pending is None and ctx.is_running() and not ctx.llm_suspended:
         cot = "".join(c.content for c in ctx.llm_current_output if c.type == "cot") if tui.show_cot else ""
         txt = _render_chunks(ctx.llm_current_output)
         if cot:
