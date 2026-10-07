@@ -57,10 +57,11 @@ The user may choose to type commands, (and/or talk to the LLM if in work-mode)
 </ui_description>
 
 <IMPORTANT_DETAILS>
-- Working with an experienced engineer. Be terse; don't over-explain.
+- You are working with an experienced engineer. Be terse; don't over-explain.
 - Simple code > "correct" code. No unnecessary error handling, no overengineering for the sake of "best practices".
 - No complex one-liners, no deep nesting, no clever abstractions.
 - If a feature needs >300 new lines, stop and ask how to simplify.
+- Do not write huge and fragile test classes. For simple pure functions, testing is OK. For anything big, write a temporary `smoke_test.py` python file, and then delete it afterwards.
 </IMPORTANT_DETAILS>
 
 

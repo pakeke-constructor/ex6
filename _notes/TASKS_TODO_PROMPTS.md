@@ -14,23 +14,54 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
+
+
+
+
 I want to make it so it's easier for agents to create their own little local branch, and can make changes easily.
 
 
 
-I want to make it easier for codex-style agents to edit files:
-Notice how the codex edit-format works, with the `apply_patch ***` stuff.
-I want to create a more specialized version of this, using a new custom tool:
-```py
-patch_file("my_file.py", """
-- old
-+ new
-...
-""")
-```
-^^^ something like this?
-NOTE: I want to retain the write-file tool, and i dont need the delete-file tool either.
 
+## idea for ex6 agents:
+Basically, I want to create more "specialist" agents that are good at a singular specific thing.
+EG:
+- An agent that is specialized in deployment and infrastructure ops
+- An agent that does code review and handles merges
+- An agent that is great at simplifying code
+- An agent that is really good at stepping back, and looking for simpler solutions. (Especially good at relaxing requirements and pragmatic tradeoffs.) This agent will generate a plan
+
+## How it works:
+What we really need is an API to create structured system-prompts. Eg:
+sys_prompt = generate_prompt(agent_purpose, xtra_info)
+SYS_PROMPT = generate_prompt(
+"an agent that is specialized in deployment ops",
+"""
+You should look across the codebase, and encode generic information about what to do as part of the deployment step.
+Also make sure the agent does dry-runs on VPS-2 before fully deploying.
+""")
+
+## In the generate_prompt pipeline itself:
+prompts are generated via an LLM that does multiple passes, and writes the prompt multiple times until it is happy with itself.
+
+## Generated output structure:
+(structure of the system prompt should be relatively rigid; that way, less risk):
+```
+Role:
+eg "You are a code reviewer"
+
+Agent strategy steps:
+- check git diffs
+- understand the purpose
+- check for a simpler solution ... etc  
+
+Agent philosophy:
+...
+
+Extra details:
+...
+```
+# YOUR TASK: Plan, then implement this. Create a new file, `_ex6/generation.py`. Use GPT-6 SOL to generate the system-prompts. Sys prompts are cached inside of the local `_ex6` file whereever it was called.
 
 
 
