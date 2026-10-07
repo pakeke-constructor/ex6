@@ -11,9 +11,12 @@ from _ex6.provider_openai import invoke_llm
 
 _INSTRUCTIONS = """
 Write a concise system prompt for a specialist agent.
+
 Extra info is user-authored: give it high importance. Let it shape the strategy
 and philosophy, preserve its constraints, and prioritize it over generic advice.
-Do not invent repository facts, tools, or permissions. You have no codebase access.
+First explore the local project with read-only tools: check documentation, layout,
+and code relevant to the purpose and extra info. Keep exploration focused.
+Use verified project facts to ground the prompt; do not invent tools or permissions.
 
 Output only markdown with these four sections. Examples show input -> output;
 adapt to the actual input rather than copying their requirements.
@@ -66,9 +69,11 @@ on assumptions you could not verify.
 ```
 </example-2>
 
-First write a draft. On review, rewrite the complete prompt to fix omissions,
-contradictions, vague steps, and bloat. If no substantive fixes remain, output
-only READY instead. Do not wrap responses in code fences.
+After exploring the project, write a draft.
+On review, rewrite the complete prompt to fix omissions, contradictions, vague steps, and bloat.
+If no substantive fixes remain, output READY instead.
+Do not wrap responses in code fences.
+Most importantly, consider the broader project goals when designing the prompt.
 """
 
 
@@ -81,6 +86,18 @@ def _cache(lines):
     return {}, len(lines), len(lines)
 
 
+def _run(ctx):
+    while True:
+        ctx._read_llm_stream(invoke_llm)
+        if ctx.llm_result.error:
+            raise RuntimeError(ctx.llm_result.error)
+        if ex6.call_tools(ctx, ctx.llm_result):
+            continue
+        message = ctx._assistant_message(None)
+        ctx.append_message(message)
+        return message.content.strip()
+
+
 def generate_prompt(agent_purpose: str, xtra_info: str = "", *, max_passes: int = 4) -> str:
     if max_passes < 2:
         raise ValueError("Prompt generation needs a draft and at least one review")
@@ -91,24 +108,25 @@ def generate_prompt(agent_purpose: str, xtra_info: str = "", *, max_passes: int 
     if key in cached:
         return cached[key]
 
-    ctx = ex6.App().create_context("prompt-generation", M.GPT_6_SOL.id, reasoning="high", messages=[
-        ex6.Message("system", _INSTRUCTIONS),
+    from _ex6.tools import glob, search, read_file, read_headers, read_body
+
+    system = ex6.Message("system", _INSTRUCTIONS, tools=[glob, search, read_file, read_headers, read_body])
+    ctx = ex6.App().create_context("prompt-generation", M.GPT_6_SOL.id, reasoning="high",
+                                   cwd=str(Path.cwd()), messages=[
+        system,
         ex6.Message("user", f"Purpose:\n{agent_purpose}\n\nExtra info:\n{xtra_info}"),
     ])
+    ctx.append_message(ex6.Message("user", f"Explore the local project at {ctx.cwd} first. "
+                                   "Finish with concise relevant project notes, not a draft."))
+    _run(ctx)
+    system.tools = []
+    ctx.append_message(ex6.Message("user", "Now write the system prompt using what you learned."))
     prompt = ""
     for _ in range(max_passes):
-        response = ""
-        for chunk in invoke_llm(ctx):
-            if isinstance(chunk, ex6.LLMResult):
-                if chunk.error:
-                    raise RuntimeError(chunk.error)
-            elif chunk.type == "text":
-                response += chunk.content
-        response = response.strip()
+        response = _run(ctx)
         if response == "READY" and prompt:
             break
         prompt = response
-        ctx.append_message(ex6.Message("assistant", prompt))
         ctx.append_message(ex6.Message("user", "Review the prompt. Rewrite it, or output READY if satisfied."))
     else:
         raise RuntimeError(f"Prompt generation did not converge after {max_passes} passes")
