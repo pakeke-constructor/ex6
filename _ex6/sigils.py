@@ -18,18 +18,15 @@ def transform_user_prompt(ctx: ex6.Context, text: str) -> str:
     if not sigils:
         return text
 
-    sub = ctx.app.create_context("__sigils__", model=SIGIL_MODEL, reasoning="none", messages=[
+    sub = ex6.Context(ctx.app, "__sigils__", model=SIGIL_MODEL, reasoning="none", messages=[
         ex6.Message(role="system", content=SYSTEM_PROMPT),
         ex6.Message(role="user", content=f"Prompt:\n{text}\n\nSigils: {', '.join(sigils)}"),
     ])
-    try:
-        parts = []
-        for item in ctx.app.get_implementation("invoke_llm")(sub):
-            if isinstance(item, ex6.ResponseChunk) and item.type == "text":
-                parts.append(item.content)
-        augmentation = "".join(parts).strip()
-    finally:
-        ctx.app.remove_context(sub)
+    parts = []
+    for item in ctx.app.get_implementation("invoke_llm")(sub):
+        if isinstance(item, ex6.ResponseChunk) and item.type == "text":
+            parts.append(item.content)
+    augmentation = "".join(parts).strip()
 
     if not augmentation:
         return text

@@ -30,37 +30,38 @@ MODEL = "openai/gpt-5.1-codex-mini"
 
 
 def setup(app):
-    c1 = app.create_context("ctx1", messages=[
+    tui = app.tui
+    c1 = tui.add_context(Context(app, "ctx1", messages=[
         coding_agent_system_prompt,
         Message(role="system", content="You are helpful."),
         Message(role="user", content="hello"),
         Message(role="assistant", content="Hi! How can I help?"),
-    ], model=MODEL)
+    ], model=MODEL))
 
-    app.create_context("ctx2", model=MODEL)
-    app.create_context("foobar", model=MODEL)
+    tui.add_context(Context(app, "ctx2", model=MODEL))
+    tui.add_context(Context(app, "foobar", model=MODEL))
 
 
-    app.create_context("reader", messages=[
+    tui.add_context(Context(app, "reader", messages=[
         coding_agent_system_prompt,
-    ], model=MODEL)
+    ], model=MODEL))
 
 
 
-    app.create_context("ctx_1", messages=[
+    tui.add_context(Context(app, "ctx_1", messages=[
         coding_agent_system_prompt,
-    ], model=MODEL)
+    ], model=MODEL))
 
 
 
 
-    app.create_context("coder", messages=[
+    tui.add_context(Context(app, "coder", messages=[
         coding_agent_system_prompt,
-    ], model=MODEL)
+    ], model=MODEL))
 
 
 
-    app.current = c1
+    tui.current = c1
 
 
 

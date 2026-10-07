@@ -98,7 +98,8 @@ def generate_prompt(agent_purpose: str, xtra_info: str = "", *, cache_file: str 
     from _ex6.tools import glob, search, read_file, read_headers, read_body
 
     system = ex6.Message("system", _INSTRUCTIONS, tools=[glob, search, read_file, read_headers, read_body])
-    ctx = ex6.App().create_context(
+    ctx = ex6.Context(
+        ex6.App(),
         "prompt-generation",
         M.GPT_6_SOL.id,
         reasoning="high",

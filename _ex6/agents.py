@@ -118,25 +118,28 @@ def auto_setup(app):
     custom_setup(app, messages=messages)
 
 
-def custom_setup(app, messages):
+def custom_setup(app: ex6.App, messages):
     messages = messages or [
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
         CLAUDE_MD,
     ]
 
-    # app.create_context("c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages)
-    app.create_context("c_sonnet", model=M.SONNET_LATEST.id, reasoning="high", messages=messages)
+    tui = app.tui
+    assert tui
 
-    # app.create_context("c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages)
-    # app.create_context("c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages)
-    # app.create_context("c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages)
+    # tui.add_context(Context(app, "c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages))
+    tui.add_context(Context(app, "c_sonnet", model=M.SONNET_LATEST.id, reasoning="high", messages=messages))
 
-    _=app.create_context("sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    t=app.create_context("sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    _=app.create_context("sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    _=app.create_context("sub_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai)
-    app.current = t
+    # tui.add_context(Context(app, "c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages))
+    # tui.add_context(Context(app, "c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages))
+    # tui.add_context(Context(app, "c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages))
+
+    _=tui.add_context(Context(app, "sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    t=tui.add_context(Context(app, "sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    _=tui.add_context(Context(app, "sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    _=tui.add_context(Context(app, "sub_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    tui.current = t
 
 
 

@@ -1666,20 +1666,23 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         prompt = "\n".join(parts) + "\n\n" + prompt
 
     sub_name = f"explore_{int(time.time() * 1000)}"
-    sub = ctx.app.create_context(sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
+    sub = Context(ctx.app, sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
     add_tool_repetition_guard(sub, [read_file, read_headers, read_body, search, glob])
     sub.parent = ctx.name
-    sub.invoke(prompt)
-    while sub.llm_is_running:
-        time.sleep(0.05)
-
+    tui = ctx.app.tui
+    if tui:
+        tui.add_context(sub)
     try:
+        sub.invoke(prompt)
+        while sub.llm_is_running:
+            time.sleep(0.05)
         if sub.llm_result and sub.llm_result.error:
             raise RuntimeError(f"explore_agent failed: {sub.llm_result.error}")
         messages = sub.get_messages()
         return messages[-1].content if messages else ""
     finally:
-        ctx.app.remove_context(sub)
+        if tui:
+            tui.remove_context(sub)
 
 
 def _normalize_guard_value(v):

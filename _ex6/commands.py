@@ -10,7 +10,7 @@ import ex6
 @ex6.command
 def clr(tui, name: Optional[str]):
     'Clear context messages.'
-    ctx = tui.app.get_context(name) if name else tui.current
+    ctx = tui.get_context(name) if name else tui.current
     if not ctx: return
     ctx.clear()
 
@@ -50,9 +50,9 @@ def yy(tui, n: Optional[int]):
 @ex6.command
 def delete(tui, name: Optional[str]):
     'Delete a context.'
-    ctx = tui.app.get_context(name) if name else tui.current
+    ctx = tui.get_context(name) if name else tui.current
     if not ctx: return
-    tui.app.remove_context(ctx)
+    tui.remove_context(ctx)
 
 
 @ex6.command
@@ -60,7 +60,7 @@ def fork(tui, name: Optional[str]):
     'Fork current context.'
     ctx = tui.current
     if not ctx: return
-    ctx.fork(name)
+    tui.add_context(ctx.fork(name))
 
 
 @ex6.command
@@ -87,14 +87,13 @@ def crash(tui):
 
 def _llm_one_shot(app, model: str, system: str, user: str) -> str:
     """Synchronously run one LLM call. Returns assistant text."""
-    ctx = app.create_context(name="__tmp_cm__", model=model, reasoning="none")
+    ctx = ex6.Context(app, name="__tmp_cm__", model=model, reasoning="none")
     ctx.append_message(ex6.Message(role="system", content=system))
     ctx.append_message(ex6.Message(role="user", content=user))
     result_text = []
     for item in app.get_implementation("invoke_llm")(ctx):
         if isinstance(item, ex6.ResponseChunk) and item.type == "text":
             result_text.append(item.content)
-    app.remove_context(ctx)
     return "".join(result_text).strip()
 
 

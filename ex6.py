@@ -318,8 +318,6 @@ class App:
         self.overrides = {}
         self.default_implementations = {}
         self._overridden = set()
-        self.contexts = []
-        self.current = None
         self.theme = Theme()
         self.context_schemas = {}
         self.plugin_data = {}
@@ -329,7 +327,7 @@ class App:
         self.fatal_error = None
         self.stdout = sys.stdout
         self.stderr = sys.stderr
-        self.tui = None
+        self.tui: Optional[TUI] = None
         self._registered_modules = set()
         self._setup_modules = set()
         self._register_module(sys.modules[__name__])
@@ -389,7 +387,7 @@ class App:
     def iter_commands(self):
         return self.commands.items()
 
-    def dispatch_command(self, tui, text: str):
+    def dispatch_command(self, tui: TUI, text: str):
         if not text.startswith("/"): return False
         body = text[1:].strip()
         if not body: return False
@@ -420,31 +418,6 @@ class App:
         setup = getattr(module, "setup", None)
         if setup:
             setup(self)
-
-    def add_context(self, ctx):
-        if ctx._app is not None and ctx._app is not self:
-            raise RuntimeError("Context already belongs to another app")
-        ctx._app = self
-        if ctx not in self.contexts:
-            self.contexts.append(ctx)
-        if ctx.schema_id:
-            self.context_schemas.setdefault(ctx.schema_id, ctx)
-        if self.current is None:
-            self.current = ctx
-        return ctx
-
-    def create_context(self, *args, **kwargs):
-        return self.add_context(Context(*args, **kwargs))
-
-    def get_context(self, name):
-        return next((c for c in self.contexts if c.name == name), None)
-
-    def remove_context(self, ctx):
-        if ctx in self.contexts:
-            self.contexts.remove(ctx)
-            ctx._app = None
-        if self.current is ctx:
-            self.current = self.contexts[0] if self.contexts else None
 
     def load_context(self, serialized_context):
         payload = json.loads(serialized_context)
@@ -882,6 +855,7 @@ class StrictDataDict(dict):
 
 @dataclass
 class Context:
+    app: App
     name: str
     model: str
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
@@ -921,16 +895,6 @@ class Context:
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _scheduled: Optional[tuple] = field(default=None, init=False, repr=False)
-    _app: Optional['App'] = field(default=None, init=False, repr=False)
-
-    def _require_app(self):
-        if self._app is None:
-            raise RuntimeError("Context is detached; register it with app.add_context(ctx)")
-        return self._app
-
-    @property
-    def app(self):
-        return self._require_app()
 
     @property
     def context_hooks(self):
@@ -989,6 +953,8 @@ class Context:
     def __post_init__(self, messages):
         if messages:
             self._messages.extend(messages)
+        if self.schema_id:
+            self.app.context_schemas.setdefault(self.schema_id, self)
 
     def get_input_box(self):
         if self._input_box is None:
@@ -1086,7 +1052,7 @@ class Context:
                     message._current_tokens = item.input_tokens + item.output_tokens
 
     def invoke(self, text, llm_fn=None):
-        app = self._require_app()
+        app = self.app
         llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
         with self._msg_lock:
             if self.llm_is_running:
@@ -1234,7 +1200,6 @@ class Context:
         cpy.llm_is_running = False
         cpy.name = new_name
         cpy.parent = self.name
-        self._require_app().add_context(cpy)
         return cpy
 
     def fork(self, new_name: Optional[str] = None) -> 'Context':
@@ -1247,7 +1212,7 @@ class Context:
 
 def _ctx_input_submit(ctx, text):
     if text.startswith("/"):
-        app = ctx._require_app()
+        app = ctx.app
         if app.tui:
             app.dispatch_command(app.tui, text)
     elif not ctx.is_running():
@@ -2050,6 +2015,8 @@ def _load_plugins(app):
 @dataclass
 class TUI:
     app: App
+    contexts: list[Context] = field(default_factory=list, init=False)
+    current: Optional[Context] = field(default=None, init=False)
     mode: Literal["selection", "work", "help", "scroll"] = "selection"
     prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"
     term: Any = None
@@ -2063,17 +2030,23 @@ class TUI:
     show_cot: bool = True
     log_keys: bool = False
 
-    @property
-    def contexts(self):
-        return self.app.contexts
+    def add_context(self, ctx):
+        if ctx.app is not self.app:
+            raise RuntimeError("Context belongs to another app")
+        if ctx not in self.contexts:
+            self.contexts.append(ctx)
+        if self.current is None:
+            self.current = ctx
+        return ctx
 
-    @property
-    def current(self):
-        return self.app.current
+    def get_context(self, name):
+        return next((c for c in self.contexts if c.name == name), None)
 
-    @current.setter
-    def current(self, value):
-        self.app.current = value
+    def remove_context(self, ctx):
+        if ctx in self.contexts:
+            self.contexts.remove(ctx)
+        if self.current is ctx:
+            self.current = self.contexts[0] if self.contexts else None
 
     def __post_init__(self):
         from blessed import Terminal
