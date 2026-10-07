@@ -11,67 +11,46 @@ from _ex6.provider_openai import invoke_llm
 
 _INSTRUCTIONS = """
 Write a concise system prompt for a specialist agent.
-Preserve the supplied purpose and extra details. Do not invent repository facts,
-infrastructure, tools, or permissions. You have no codebase access; instructions
-to inspect it belong in the specialist's strategy. Prefer pragmatic, simple steps.
+Extra info is user-authored: give it high importance. Let it shape the strategy
+and philosophy, preserve its constraints, and prioritize it over generic advice.
+Do not invent repository facts, tools, or permissions. You have no codebase access.
 
-Output only a markdown blob with these sections, in this order:
+Output only markdown with these four sections. Examples show input -> output;
+adapt to the actual input rather than copying their requirements.
+
+<example-1>
+purpose: solidity analysis agent
+extra info: Focus on gas fees. Measure savings; preserve contract behavior.
+
+output:
+```
 Role:
-You are ...
-
+You analyze Solidity contracts for gas efficiency.
 Agent strategy steps:
-- ...
-
+- Inspect hot paths; measure gas, propose changes, and verify behavior and savings.
 Agent philosophy:
-- ...
-
+- Prefer measured savings over cleverness; never trade correctness for gas.
 Extra details:
-...
+Preserve contract behavior.
+```
+</example-1>
 
-Examples of the intended structure and specificity, not requirements to copy:
+<example-2>
+purpose: code review agent
+extra info: Prioritize regressions and simpler solutions. Do not edit or merge.
 
-Example: code-review agent
+output:
+```
 Role:
-You are a code reviewer. Find consequential problems and simpler solutions.
-
+You review code for regressions and unnecessary complexity.
 Agent strategy steps:
-- Read the diff and understand the intended change.
-- Inspect surrounding code and callers to verify assumptions.
-- Check correctness, regressions, security boundaries, and test coverage.
-- Look for a smaller change that achieves the same goal.
-- Report actionable findings with locations, consequences, and suggested fixes.
-- Separate merge-blocking issues from optional improvements.
-
+- Read the diff and relevant callers; report concrete bugs and simpler alternatives.
 Agent philosophy:
-- Correctness and simplicity matter more than stylistic preferences.
-- Review the actual change, not an imagined future architecture.
-- Prefer a few well-supported findings over speculative concerns.
-
+- Favor actionable evidence over style preferences or speculative concerns.
 Extra details:
-Do not modify code or merge changes unless explicitly requested.
-
-Example: Solidity contract analysis agent
-Role:
-You analyze Solidity contracts for vulnerabilities and economic failure modes.
-
-Agent strategy steps:
-- Identify assets, privileged roles, dependencies, and trust assumptions.
-- Trace asset flows and state transitions through external entry points.
-- State intended invariants and check authorization and accounting against them.
-- Examine reentrancy, upgrades, signature replay, rounding, and token behavior.
-- Check oracle assumptions, liquidation logic, and transaction-ordering risks.
-- Validate realistic attack sequences with focused tests or proofs of concept.
-- Report affected code, prerequisites, exploit path, impact, and mitigation.
-
-Agent philosophy:
-- Follow assets and state transitions, not just vulnerability checklists.
-- Separate permissionless exploits from explicitly trusted administrator powers.
-- Treat economic assumptions as part of the security model.
-- Explain attacker benefit or concrete harm before calling an issue exploitable.
-- State uncertainty and coverage; no findings does not prove safety.
-
-Extra details:
-Validate locally or on forks. Do not submit transactions to live networks.
+Do not edit code or merge changes.
+```
+</example-2>
 
 First write a draft. On review, rewrite the complete prompt to fix omissions,
 contradictions, vague steps, and bloat. If no substantive fixes remain, output
