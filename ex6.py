@@ -496,6 +496,7 @@ class Message:
     tool_call_id: Optional[str] = None  # for tool result msgs
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
+    _current_tokens: Optional[int] = field(default=None, repr=False)
 
     def __post_init__(self):
         for fn in self.tools:
@@ -851,10 +852,12 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             return False
         if ctx._tools_invalidated:
             ctx._tools_invalidated = False
+            ctx.llm_current_output = []
             return True
         ctx._messages.extend([ctx._assistant_message(llm_result.tool_calls)] + [
             Message(role="tool", content=p.result, tool_call_id=p.call["id"]) for p in pending
         ])
+        ctx.llm_current_output = []
     return True
 
 
@@ -966,14 +969,25 @@ class Context:
                 message._snapshot = None
 
     def token_count(self) -> int:
-        if self.llm_result:
-            return self.llm_result.input_tokens + self.llm_result.output_tokens
-        return sum(get_token_estimate(tool_result_text(m.content)) for m in self.get_messages()
-                   if isinstance(m.content, (str, ToolResult)))
+        with self._msg_lock:
+            total = 0
+            for message in reversed(self._messages):
+                if message._current_tokens is not None:
+                    total += message._current_tokens
+                    break
+                content = tool_result_text(message.get_msg(self))
+                total += get_token_estimate(content)
+
+            if self.llm_is_running:
+                output = "".join(chunk.content for chunk in self.llm_current_output)
+                total += get_token_estimate(output)
+            return total
 
     def is_token_count_estimate(self) -> bool:
-        "If no llmResult, then we are estimating the token-count via the //3 trick."
-        return not self.llm_result
+        messages = self.get_messages()
+        if not messages or messages[-1]._current_tokens is None:
+            return True
+        return self.llm_is_running and bool(self.llm_current_output)
 
     def __post_init__(self, messages):
         if messages:
@@ -1061,8 +1075,17 @@ class Context:
                     self.llm_result = item
 
     def _assistant_message(self, tool_calls):
-        content = "".join(c.content for c in self.llm_current_output if c.type == "text")
-        return Message(role="assistant", content=content, chunks=list(self.llm_current_output), tool_calls=tool_calls)
+        content = "".join(chunk.content for chunk in self.llm_current_output if chunk.type == "text")
+        current_tokens = None
+        if self.llm_result and self.llm_result.input_tokens:
+            current_tokens = self.llm_result.input_tokens + self.llm_result.output_tokens
+        return Message(
+            role="assistant",
+            content=content,
+            chunks=list(self.llm_current_output),
+            tool_calls=tool_calls,
+            _current_tokens=current_tokens,
+        )
 
     def invoke(self, text, llm_fn=None):
         app = self._require_app()
@@ -1073,6 +1096,7 @@ class Context:
             self.llm_is_running = True
             self.stop_early = False
             self.llm_result = None
+            self.llm_current_output = []
         try:
             if self.transform_user_prompt:
                 text = self.transform_user_prompt(self, text)
@@ -1090,7 +1114,9 @@ class Context:
             if self.stop_early: return
             tool_calls = self.llm_result.tool_calls if self.llm_result else None
             if not tool_calls:
-                self.append_message(self._assistant_message(tool_calls))
+                with self._msg_lock:
+                    self.append_message(self._assistant_message(tool_calls))
+                    self.llm_current_output = []
             app.run_context_hooks("after_llm_turn", self)
 
         def run():
@@ -1128,6 +1154,7 @@ class Context:
             if self.llm_is_running and not self.llm_suspended:
                 raise RuntimeError("Cannot truncate while LLM is streaming")
             del self._messages[index:]
+            self.llm_current_output = []
             self._tools_invalidated = True
 
     def clear(self):

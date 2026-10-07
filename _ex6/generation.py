@@ -87,8 +87,6 @@ def _run(ctx):
 
 
 def generate_prompt(agent_purpose: str, xtra_info: str = "", *, cache_file: str | None = None, max_passes: int = 4) -> str:
-    if max_passes < 2:
-        raise ValueError("Prompt generation needs a draft and at least one review")
     if cache_file is None:
         key = hashlib.sha256(repr((M.GPT_6_SOL.id, _INSTRUCTIONS, agent_purpose, xtra_info)).encode()).hexdigest()
         path = Path("_ex6/generation_cache") / f"{key}.txt"
