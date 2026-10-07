@@ -1,8 +1,5 @@
-import ast
 import hashlib
-import inspect
 from pathlib import Path
-from pprint import pformat
 
 import ex6
 from _ex6.models import M
@@ -77,15 +74,6 @@ Most importantly, consider the broader project goals when designing the prompt.
 """
 
 
-def _cache(lines):
-    for node in ast.parse("".join(lines)).body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if any(isinstance(t, ast.Name) and t.id == "_GENERATED_PROMPTS" for t in node.targets):
-            return ast.literal_eval(node.value), node.lineno - 1, node.end_lineno
-    return {}, len(lines), len(lines)
-
-
 def _run(ctx):
     while True:
         ctx._read_llm_stream(invoke_llm)
@@ -98,28 +86,33 @@ def _run(ctx):
         return message.content.strip()
 
 
-def generate_prompt(agent_purpose: str, xtra_info: str = "", *, max_passes: int = 4) -> str:
+def generate_prompt(agent_purpose: str, xtra_info: str = "", *, cache_file: str | None = None, max_passes: int = 4) -> str:
     if max_passes < 2:
         raise ValueError("Prompt generation needs a draft and at least one review")
-    path = Path(inspect.currentframe().f_back.f_code.co_filename).resolve()
-    key = hashlib.sha256(repr((M.GPT_6_SOL.id, _INSTRUCTIONS, agent_purpose, xtra_info)).encode()).hexdigest()
-    lines = path.read_bytes().decode("utf-8").splitlines(keepends=True)
-    cached, _, _ = _cache(lines)
-    if key in cached:
-        return cached[key]
+    if cache_file is None:
+        key = hashlib.sha256(repr((M.GPT_6_SOL.id, _INSTRUCTIONS, agent_purpose, xtra_info)).encode()).hexdigest()
+        path = Path("_ex6/generation_cache") / f"{key}.txt"
+    else:
+        path = Path(cache_file)
+    if path.exists():
+        return path.read_text(encoding="utf-8")
 
     from _ex6.tools import glob, search, read_file, read_headers, read_body
 
     system = ex6.Message("system", _INSTRUCTIONS, tools=[glob, search, read_file, read_headers, read_body])
-    ctx = ex6.App().create_context("prompt-generation", M.GPT_6_SOL.id, reasoning="high",
-                                   cwd=str(Path.cwd()), messages=[
-        system,
-        ex6.Message("user", f"Purpose:\n{agent_purpose}\n\nExtra info:\n{xtra_info}"),
-    ])
+    ctx = ex6.App().create_context(
+        "prompt-generation",
+        M.GPT_6_SOL.id,
+        reasoning="high",
+        cwd=str(Path.cwd()),
+        messages=[
+            system,
+            ex6.Message("user", f"Purpose:\n{agent_purpose}\n\nExtra info:\n{xtra_info}"),
+        ]
+    )
     ctx.append_message(ex6.Message("user", f"Explore the local project at {ctx.cwd} first. "
                                    "Finish with concise relevant project notes, not a draft."))
     _run(ctx)
-    system.tools = []
     ctx.append_message(ex6.Message("user", "Now write the system prompt using what you learned."))
     prompt = ""
     for _ in range(max_passes):
@@ -128,16 +121,7 @@ def generate_prompt(agent_purpose: str, xtra_info: str = "", *, max_passes: int 
             break
         prompt = response
         ctx.append_message(ex6.Message("user", "Review the prompt. Rewrite it, or output READY if satisfied."))
-    else:
-        raise RuntimeError(f"Prompt generation did not converge after {max_passes} passes")
 
-    lines = path.read_bytes().decode("utf-8").splitlines(keepends=True)
-    cached, start, end = _cache(lines)
-    cached[key] = prompt
-    newline = "\r\n" if lines and lines[0].endswith("\r\n") else "\n"
-    entry = "_GENERATED_PROMPTS = " + pformat(cached, width=100) + "\n"
-    if start == len(lines):
-        entry = "\n\n" + entry
-    lines[start:end] = [entry.replace("\n", newline)]
-    path.write_bytes("".join(lines).encode("utf-8"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(prompt, encoding="utf-8")
     return prompt
