@@ -1,4 +1,6 @@
 import hashlib
+import json
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import ex6
@@ -14,6 +16,8 @@ and philosophy, preserve its constraints, and prioritize it over generic advice.
 First explore the local project with read-only tools: check documentation, layout,
 and code relevant to the purpose and extra info. Keep exploration focused.
 Use verified project facts to ground the prompt; do not invent tools or permissions.
+Available agent tools describe the resulting agent's capabilities, not your
+exploration tools. An empty list means the agent has no tools.
 
 Output only markdown with these four sections. Examples show input -> output;
 adapt to the actual input rather than copying their requirements.
@@ -86,12 +90,14 @@ def _run(ctx):
         return message.content.strip()
 
 
-def generate_prompt(agent_purpose: str, xtra_info: str = "", *, cache_file: str | None = None, max_passes: int = 4) -> str:
+def _generate_prompt(app: ex6.App, role: str, details: str, tools: list[Callable], *, cwd: str,
+                     cache_file: str | None, max_passes: int) -> str:
+    tool_definitions = json.dumps([ex6.tool_to_schema(fn.__name__, fn) for fn in tools], sort_keys=True)
     if cache_file is None:
-        key = hashlib.sha256(repr((M.GPT_6_SOL.id, _INSTRUCTIONS, agent_purpose, xtra_info)).encode()).hexdigest()
-        path = Path("_ex6/generation_cache") / f"{key}.txt"
+        key = hashlib.sha256(repr((M.GPT_6_SOL.id, _INSTRUCTIONS, role, details, tool_definitions)).encode()).hexdigest()
+        path = Path(cwd) / "_ex6/generation_cache" / f"{key}.txt"
     else:
-        path = Path(cache_file)
+        path = Path(cwd) / cache_file
     if path.exists():
         return path.read_text(encoding="utf-8")
 
@@ -99,14 +105,14 @@ def generate_prompt(agent_purpose: str, xtra_info: str = "", *, cache_file: str 
 
     system = ex6.Message("system", _INSTRUCTIONS, tools=[glob, search, read_file, read_headers, read_body])
     ctx = ex6.Context(
-        ex6.App(),
+        app,
         "prompt-generation",
         M.GPT_6_SOL.id,
         reasoning="high",
-        cwd=str(Path.cwd()),
+        cwd=cwd,
         messages=[
             system,
-            ex6.Message("user", f"Purpose:\n{agent_purpose}\n\nExtra info:\n{xtra_info}"),
+            ex6.Message("user", f"Purpose:\n{role}\n\nExtra info:\n{details}\n\nAvailable agent tools:\n{tool_definitions}"),
         ]
     )
     ctx.append_message(ex6.Message("user", f"Explore the local project at {ctx.cwd} first. "
@@ -124,3 +130,13 @@ def generate_prompt(agent_purpose: str, xtra_info: str = "", *, cache_file: str 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(prompt, encoding="utf-8")
     return prompt
+
+
+def configure_agent(ctx: ex6.Context, role: str, details: str = "", *, tools: Iterable[Callable] = (),
+                    cache_file: str | None = None, max_passes: int = 4) -> ex6.Context:
+    tools = list(tools)
+    prompt = _generate_prompt(ctx.app, role, details, tools, cwd=str(Path(ctx.resolve(".")).resolve()),
+                              cache_file=cache_file, max_passes=max_passes)
+    ctx.append_message(ex6.Message("system", prompt, tools=tools))
+    return ctx
+
