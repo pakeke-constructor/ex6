@@ -174,7 +174,7 @@ def invoke_llm(ctx: ex6.Context):
             # CoT (OpenRouter reasoning field)
             reasoning = getattr(delta, 'reasoning', None) if delta else None
             if reasoning:
-                yield ex6.ResponseChunk("cot", reasoning, len(reasoning))
+                yield ex6.ResponseChunk("cot", reasoning)
 
             if delta and delta.tool_calls:
                 for tc in delta.tool_calls:
@@ -213,7 +213,6 @@ def invoke_llm(ctx: ex6.Context):
         except:
             pass
         tool_calls.append(tc)
-        yield ex6.ResponseChunk("tool", json.dumps(tc))
 
     # Use provider-reported cost if available, otherwise estimate
     if provider_cost is not None:

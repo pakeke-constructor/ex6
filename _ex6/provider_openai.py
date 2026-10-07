@@ -195,7 +195,7 @@ def invoke_llm(ctx: ex6.Context):
             if t == "response.output_text.delta":
                 yield ex6.ResponseChunk("text", event.delta)
             elif t == "response.reasoning_summary_text.delta":
-                yield ex6.ResponseChunk("cot", event.delta, len(event.delta))
+                yield ex6.ResponseChunk("cot", event.delta)
             elif t == "response.output_item.done" and event.item.type == "function_call":
                 it = event.item
                 try:
@@ -220,8 +220,6 @@ def invoke_llm(ctx: ex6.Context):
         yield result
         return
 
-    for tc in tool_calls:
-        yield ex6.ResponseChunk("tool", json.dumps(tc))
     if tool_calls:
         finish_reason = "tool_calls"
 

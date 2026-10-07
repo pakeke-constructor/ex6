@@ -483,7 +483,7 @@ def invoke_llm(ctx):
     """Override this to use real LLM."""
     for _ in range(60):
         time.sleep(0.1)
-        yield ResponseChunk("text", "token ", 1)
+        yield ResponseChunk("text", "token ")
 
 
 @dataclass
@@ -491,7 +491,6 @@ class Message:
     role: Literal["system", "user", "assistant", "tool"]
     content: Union[str, ToolResult, Callable[['Context'], str]]
     tools: list[Callable] = field(default_factory=list)
-    chunks: Optional[list] = None  # ordered ResponseChunks (for assistant msgs)
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
@@ -522,9 +521,9 @@ class Message:
 
 @dataclass
 class ResponseChunk:
-    type: str  # "text", "cot", "tool"
+    type: Literal["text", "cot"]
     content: str = ""
-    tokens: int = 1  # for cot
+
 
 @dataclass
 class LLMResult:
@@ -894,7 +893,7 @@ class Context:
     schema_id: Optional[str] = None
     max_tokens: int = 200000
     llm_is_running: bool = False
-    llm_current_output: list = field(default_factory=list)
+    llm_current_output: list[ResponseChunk] = field(default_factory=list)
     last_invoke_time_end: float = 0
     last_invoke_time_start: float = 0
     llm_result: Optional[LLMResult] = None
@@ -1082,7 +1081,6 @@ class Context:
         return Message(
             role="assistant",
             content=content,
-            chunks=list(self.llm_current_output),
             tool_calls=tool_calls,
             _current_tokens=current_tokens,
         )
@@ -1818,15 +1816,6 @@ def render_selection_right(tui, buf, r):
 
 
 
-def _render_chunks(chunks):
-    """Build display string from chunks list."""
-    parts = []
-    for c in chunks:
-        if c.type == "text":
-            parts.append(c.content)
-    return "".join(parts)
-
-
 def _default_tool_row(tc, result):
     if result is None:
         status, detail = 'running', None
@@ -1861,8 +1850,7 @@ def render_work_mode(tui, buf, inpt, r):
     for msg in messages:
         if msg.role == "tool":
             continue
-        c = _render_chunks(msg.chunks) if msg.role == "assistant" and msg.chunks else msg.get_msg(ctx)
-        lines = tool_result_text(c).split('\n')
+        lines = tool_result_text(msg.get_msg(ctx)).split('\n')
         tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
         if msg is pending_assistant:
             lines.extend(_default_tool_row(p.call, p.result) for p in pending)
@@ -1871,7 +1859,7 @@ def render_work_mode(tui, buf, inpt, r):
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
     if pending is None and ctx.is_running() and not ctx.llm_suspended:
         cot = "".join(c.content for c in ctx.llm_current_output if c.type == "cot") if tui.show_cot else ""
-        txt = _render_chunks(ctx.llm_current_output)
+        txt = "".join(c.content for c in ctx.llm_current_output if c.type == "text")
         if cot:
             message_outputs.append(('cot', (cot + ("" if txt else "█")).split('\n'), False))
         if txt or not cot:
@@ -1938,7 +1926,9 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         chunks = ctx.llm_current_output
         y = input_r[1]
         if chunks:
-            toks = sum(c.tokens for c in chunks)
+            toks = f"~{get_token_estimate(''.join(c.content for c in chunks))}"
+            if ctx.llm_result:
+                toks = str(ctx.llm_result.output_tokens)
             last_type = chunks[-1].type
             label = "thinking..." if last_type == "cot" else "outputting..."
             stats = f" ({toks} toks, {elapsed}) "

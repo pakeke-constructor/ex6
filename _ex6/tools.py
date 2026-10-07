@@ -327,6 +327,8 @@ def _apply_file_patch(content, patch):
                 expected.append(line[1:])
             if line[0] != " ":
                 changed = True
+        if operations and all(prefix == " " for prefix, _ in operations):
+            continue
         if not operations:
             raise ValueError("Empty patch hunk; add context, removals, or additions.")
         if expected:
