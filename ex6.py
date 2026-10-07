@@ -849,14 +849,12 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     with ctx._msg_lock:
         if ctx.stop_early:
             return False
-        if ctx._tools_invalidated:
-            ctx._tools_invalidated = False
-            ctx.llm_current_output = []
+        if ctx.pending_message is None:
             return True
-        ctx._messages.extend([ctx._assistant_message(llm_result.tool_calls)] + [
+        ctx._messages.extend([ctx.pending_message] + [
             Message(role="tool", content=p.result, tool_call_id=p.call["id"]) for p in pending
         ])
-        ctx.llm_current_output = []
+        ctx.pending_message = None
     return True
 
 
@@ -893,7 +891,9 @@ class Context:
     schema_id: Optional[str] = None
     max_tokens: int = 200000
     llm_is_running: bool = False
-    llm_current_output: list[ResponseChunk] = field(default_factory=list)
+    pending_message: Message | None = field(default=None, init=False, repr=False)
+    llm_cot: str = ""
+    llm_output_type: str = ""
     last_invoke_time_end: float = 0
     last_invoke_time_start: float = 0
     llm_result: Optional[LLMResult] = None
@@ -920,7 +920,6 @@ class Context:
     _clear_pending: bool = field(default=False, init=False, repr=False)
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
-    _tools_invalidated: bool = False
     _scheduled: Optional[tuple] = field(default=None, init=False, repr=False)
     _app: Optional['App'] = field(default=None, init=False, repr=False)
 
@@ -977,16 +976,15 @@ class Context:
                 content = tool_result_text(message.get_msg(self))
                 total += get_token_estimate(content)
 
-            if self.llm_is_running:
-                output = "".join(chunk.content for chunk in self.llm_current_output)
-                total += get_token_estimate(output)
+            if self.pending_message:
+                total += get_token_estimate(self.pending_message.content + self.llm_cot)
             return total
 
     def is_token_count_estimate(self) -> bool:
         messages = self.get_messages()
         if not messages or messages[-1]._current_tokens is None:
             return True
-        return self.llm_is_running and bool(self.llm_current_output)
+        return self.pending_message is not None
 
     def __post_init__(self, messages):
         if messages:
@@ -1063,27 +1061,29 @@ class Context:
 
     def _read_llm_stream(self, llm_fn):
         self.last_invoke_time_start = time.time()
-        self.llm_current_output = []
-        self.llm_result = None
+        message = Message(role="assistant", content="")
+        with self._msg_lock:
+            self.pending_message = message
+            self.llm_cot = self.llm_output_type = ""
+            self.llm_result = None
         with closing(llm_fn(self)) as stream:
             for item in stream:
                 if self.stop_early: return
-                if isinstance(item, ResponseChunk):
-                    self.llm_current_output.append(item)
-                elif isinstance(item, LLMResult):
-                    self.llm_result = item
+                self._receive_stream_item(message, item)
+        return message
 
-    def _assistant_message(self, tool_calls):
-        content = "".join(chunk.content for chunk in self.llm_current_output if chunk.type == "text")
-        current_tokens = None
-        if self.llm_result and self.llm_result.input_tokens:
-            current_tokens = self.llm_result.input_tokens + self.llm_result.output_tokens
-        return Message(
-            role="assistant",
-            content=content,
-            tool_calls=tool_calls,
-            _current_tokens=current_tokens,
-        )
+    def _receive_stream_item(self, message: Message, item: ResponseChunk | LLMResult) -> None:
+        with self._msg_lock:
+            if isinstance(item, ResponseChunk):
+                self.llm_output_type = item.type
+                if item.type == "text":
+                    message.content += item.content
+                else: self.llm_cot += item.content
+            elif isinstance(item, LLMResult):
+                self.llm_result = item
+                message.tool_calls = item.tool_calls
+                if item.input_tokens:
+                    message._current_tokens = item.input_tokens + item.output_tokens
 
     def invoke(self, text, llm_fn=None):
         app = self._require_app()
@@ -1094,12 +1094,12 @@ class Context:
             self.llm_is_running = True
             self.stop_early = False
             self.llm_result = None
-            self.llm_current_output = []
+            self.pending_message = None
+            self.llm_cot = self.llm_output_type = ""
         try:
             if self.transform_user_prompt:
                 text = self.transform_user_prompt(self, text)
             self.append_message(Message(role="user", content=text))
-            self._tools_invalidated = False
         except Exception:
             with self._msg_lock:
                 self.llm_is_running = False
@@ -1107,21 +1107,17 @@ class Context:
                     self.clear()
             raise
 
-        def do_llm():
-            self._read_llm_stream(llm_fn)
-            if self.stop_early: return
-            tool_calls = self.llm_result.tool_calls if self.llm_result else None
-            if not tool_calls:
-                with self._msg_lock:
-                    self.append_message(self._assistant_message(tool_calls))
-                    self.llm_current_output = []
-            app.run_context_hooks("after_llm_turn", self)
-
         def run():
             try:
                 should_loop = True
                 while should_loop and not self.stop_early and self._scheduled is None:
-                    do_llm()
+                    message = self._read_llm_stream(llm_fn)
+                    if self.stop_early: break
+                    if not message.tool_calls:
+                        with self._msg_lock:
+                            self.append_message(message)
+                            self.pending_message = None
+                    app.run_context_hooks("after_llm_turn", self)
                     if self.stop_early or not self.llm_result: break
                     self.llm_suspended = True
                     should_loop = app.call("call_tools", self, self.llm_result)
@@ -1132,6 +1128,8 @@ class Context:
                 with self._msg_lock:
                     self.llm_is_running = False
                     self.llm_suspended = False
+                    self.pending_message = None
+                    self.llm_cot = self.llm_output_type = ""
                     self.last_invoke_time_end = time.time()
                     scheduled = self._scheduled
                     self._scheduled = None
@@ -1152,8 +1150,7 @@ class Context:
             if self.llm_is_running and not self.llm_suspended:
                 raise RuntimeError("Cannot truncate while LLM is streaming")
             del self._messages[index:]
-            self.llm_current_output = []
-            self._tools_invalidated = True
+            self.pending_message = None
 
     def clear(self):
         with self._msg_lock:
@@ -1163,7 +1160,6 @@ class Context:
                 self._clear_pending = True
                 return
             self._clear_pending = False
-            self._tools_invalidated = True
             i = 0
             while i < len(self._messages) and self._messages[i].role == "system":
                 i += 1
@@ -1172,7 +1168,8 @@ class Context:
             self.llm_is_running = False
             self.llm_suspended = False
             self.llm_result = None
-            self.llm_current_output = []
+            self.pending_message = None
+            self.llm_cot = self.llm_output_type = ""
             self.last_invoke_time_start = 0
             self.last_invoke_time_end = 0
             self._read_hashes = {}
@@ -1227,6 +1224,11 @@ class Context:
         cpy.data = StrictDataDict(self.data)
         cpy.data_volatile = {}
         cpy.pending_tools = None
+        cpy.pending_message = None
+        cpy.llm_cot = cpy.llm_output_type = ""
+        cpy.llm_result = None
+        cpy.llm_suspended = False
+        cpy._scheduled = None
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
@@ -1841,7 +1843,7 @@ def render_work_mode(tui, buf, inpt, r):
     with ctx._msg_lock:
         messages = list(ctx._messages)
         pending = ctx.pending_tools
-        pending_assistant = ctx._assistant_message([p.call for p in pending]) if pending is not None else None
+        pending_assistant = ctx.pending_message
         if pending_assistant is not None:
             messages.append(pending_assistant)
     tool_results = {m.tool_call_id: m.content for m in messages if m.role == "tool"}
@@ -1850,23 +1852,20 @@ def render_work_mode(tui, buf, inpt, r):
     for msg in messages:
         if msg.role == "tool":
             continue
-        lines = tool_result_text(msg.get_msg(ctx)).split('\n')
+        text = tool_result_text(msg.get_msg(ctx))
+        if msg is pending_assistant and ctx.is_running() and not ctx.llm_suspended and ctx.llm_result is None:
+            cot = ctx.llm_cot if tui.show_cot else ""
+            if cot:
+                message_outputs.append(('cot', (cot + ("" if text else "█")).split('\n'), False))
+            if cot and not text: continue
+            text += "█"
+        lines = text.split('\n')
         tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
-        if msg is pending_assistant:
+        if msg is pending_assistant and pending is not None:
             lines.extend(_default_tool_row(p.call, p.result) for p in pending)
         elif msg.tool_calls:
             lines.extend(_default_tool_row(tc, tool_results.get(tc["id"])) for tc in msg.tool_calls)
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
-    if pending is None and ctx.is_running() and not ctx.llm_suspended:
-        cot = "".join(c.content for c in ctx.llm_current_output if c.type == "cot") if tui.show_cot else ""
-        txt = "".join(c.content for c in ctx.llm_current_output if c.type == "text")
-        if cot:
-            message_outputs.append(('cot', (cot + ("" if txt else "█")).split('\n'), False))
-        if txt or not cot:
-            streaming_msg = Message(role="assistant", content="")
-            lines = (txt + "█").split('\n')
-            tui.app.run_context_hooks("output_renderer", ctx, lines, streaming_msg)
-            message_outputs.append(('assistant', lines, False))
 
 
     available = h - 1
@@ -1923,14 +1922,12 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         input_box(buf, inpt, input_r, txt_color=th.accent)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
-        chunks = ctx.llm_current_output
         y = input_r[1]
-        if chunks:
-            toks = f"~{get_token_estimate(''.join(c.content for c in chunks))}"
+        if ctx.pending_message and ctx.llm_output_type:
+            toks = f"~{get_token_estimate(ctx.pending_message.content + ctx.llm_cot)}"
             if ctx.llm_result:
                 toks = str(ctx.llm_result.output_tokens)
-            last_type = chunks[-1].type
-            label = "thinking..." if last_type == "cot" else "outputting..."
+            label = "thinking..." if ctx.llm_output_type == "cot" else "outputting..."
             stats = f" ({toks} toks, {elapsed}) "
         else:
             label = "invoking..."

@@ -76,13 +76,13 @@ Most importantly, consider the broader project goals when designing the prompt.
 
 def _run(ctx):
     while True:
-        ctx._read_llm_stream(invoke_llm)
+        message = ctx._read_llm_stream(invoke_llm)
         if ctx.llm_result.error:
             raise RuntimeError(ctx.llm_result.error)
         if ex6.call_tools(ctx, ctx.llm_result):
             continue
-        message = ctx._assistant_message(None)
         ctx.append_message(message)
+        ctx.pending_message = None
         return message.content.strip()
 
 
