@@ -150,7 +150,7 @@ Otherwise, if the code is clean and minimal; that's fine, carry on.
 
 @ex6.command
 def smp(tui, additional_msg: Optional[str]):
-    'Invokes agent, asking it to attempt to simpllfy or shorten recent code'
+    'Simplify command. Invokes agent, asking it to attempt to simpllfy or shorten recent code'
     ctx = tui.current
     if not ctx: return
     msg = SMP
@@ -160,7 +160,7 @@ def smp(tui, additional_msg: Optional[str]):
 
 
 
-STA = r'''
+SSOT_CHECK = r'''
 Take a step back, and evaluate the statefulness of the relevant system/code.
 (Bad state is one of the most common causes of bugs, and we want to avoid it.)
 Some guidelines, in order:
@@ -173,11 +173,11 @@ If the system/code is clean and minimal; that's fine, no changes needed.
 '''
 
 @ex6.command
-def sta(tui, additional_msg: Optional[str]):
-    'Invokes agent, asking it to attempt to remove fragile state'
+def ssot(tui, additional_msg: Optional[str]):
+    'State-check command. Invokes agent, asking it to attempt to remove fragile state'
     ctx = tui.current
     if not ctx: return
-    msg = SMP
+    msg = SSOT_CHECK
     if additional_msg:
         msg += "\n\nAdditional user note:" + additional_msg
     ctx.invoke(msg)
