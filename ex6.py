@@ -285,6 +285,45 @@ def store_attachment(data: bytes, suffix: str) -> str:
     return path
 
 
+def clipboard_image_attachment() -> ImageAttachment | None:
+    import io
+    from PIL import Image, ImageGrab
+
+    try:
+        value = ImageGrab.grabclipboard()
+    except (NotImplementedError, OSError):
+        return None
+    if isinstance(value, list):
+        image = None
+        for path in value:
+            try:
+                image = Image.open(path)
+                break
+            except (OSError, ValueError):
+                pass
+        if image is None:
+            return None
+    elif isinstance(value, Image.Image):
+        image = value
+    else:
+        return None
+
+    opened_file = isinstance(value, list)
+    original = image
+    try:
+        width, height = image.size
+        if image.mode not in ("1", "L", "LA", "P", "RGB", "RGBA"):
+            image = image.convert("RGBA")
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+    finally:
+        if opened_file:
+            original.close()
+
+    path = store_attachment(output.getvalue(), ".png")
+    return ImageAttachment(path, "image/png", width, height)
+
+
 @dataclass
 class Theme:
     name: str = "default"
@@ -467,6 +506,7 @@ class Message:
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
+    attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
     _current_tokens: Optional[int] = field(default=None, repr=False)
 
@@ -958,8 +998,15 @@ class Context:
 
     def get_input_box(self):
         if self._input_box is None:
-            self._input_box = InputBox(lambda text: _ctx_input_submit(self, text))
+            self._input_box = InputBox(self.submit_input)
         return self._input_box
+
+    def submit_input(self, text):
+        if text.startswith("/"):
+            if self.app.tui:
+                self.app.dispatch_command(self.app.tui, text)
+        elif not self.is_running():
+            self.invoke(text, attachments=self.get_input_box().get_attachments())
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -1051,7 +1098,7 @@ class Context:
                 if item.input_tokens:
                     message._current_tokens = item.input_tokens + item.output_tokens
 
-    def invoke(self, text, llm_fn=None):
+    def invoke(self, text, llm_fn=None, attachments=None):
         app = self.app
         llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
         with self._msg_lock:
@@ -1065,7 +1112,7 @@ class Context:
         try:
             if self.transform_user_prompt:
                 text = self.transform_user_prompt(self, text)
-            self.append_message(Message(role="user", content=text))
+            self.append_message(Message(role="user", content=text, attachments=dict(attachments or {})))
         except Exception:
             with self._msg_lock:
                 self.llm_is_running = False
@@ -1209,14 +1256,6 @@ class Context:
     def push_ui(self, draw_fn):
         self.ui_stack.append(draw_fn)
 
-
-def _ctx_input_submit(ctx, text):
-    if text.startswith("/"):
-        app = ctx.app
-        if app.tui:
-            app.dispatch_command(app.tui, text)
-    elif not ctx.is_running():
-        ctx.invoke(text)
 
 
 
@@ -1539,6 +1578,8 @@ class InputPass:
         '\x1bd': ('KEY_CTRL_DELETE',),
         '\x18': ('KEY_CTRL_X',),
         '\x03': ('KEY_CTRL_C',),
+        '\x16': ('KEY_CTRL_V',),
+        '\x1bv': ('KEY_ALT_V',),
     }
 
     def __init__(self, keys: list):
@@ -1590,6 +1631,7 @@ class InputBox:
         self.on_submit = on_submit
         self.text = ""
         self.cursor = 0
+        self.attachments = {}
 
     def _prev_word(self, i):
         t = self.text
@@ -1602,6 +1644,16 @@ class InputBox:
         while i < len(t) and t[i].isalnum(): i += 1
         while i < len(t) and not t[i].isalnum(): i += 1
         return i
+
+    def _insert_attachment(self, attachment):
+        token = f"[pasted-image 0x{Path(attachment.path).stem[:5]}]"
+        n = 2
+        while token in self.text:
+            token = f"[pasted-image 0x{Path(attachment.path).stem[:5]}-{n}]"
+            n += 1
+        self.attachments[token] = attachment
+        self.text = self.text[:self.cursor] + token + self.text[self.cursor:]
+        self.cursor += len(token)
 
     @staticmethod
     def _wrap(s, w):
@@ -1624,6 +1676,11 @@ class InputBox:
     def draw(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
         inner_w = r[2]
         if inner_w < 1: return
+
+        if inpt.consume('KEY_CTRL_V', 'KEY_ALT_V'):
+            attachment = clipboard_image_attachment()
+            if attachment:
+                self._insert_attachment(attachment)
 
         typed = inpt.consume_text()
         if typed:
@@ -1659,7 +1716,7 @@ class InputBox:
             self.cursor += len(line) - cx
         if inpt.consume('KEY_ENTER') and self.text:
             self.on_submit(self.text)
-            self.text, self.cursor = "", 0
+            self.text, self.cursor, self.attachments = "", 0, {}
             return
 
         cursor_char = "█"
@@ -1683,9 +1740,14 @@ class InputBox:
     def set_text(self, t):
         self.text = t
         self.cursor = len(t)
+        self.attachments = {}
 
     def get_text(self):
         return self.text.strip()
+
+    def get_attachments(self):
+        return {token: attachment for token, attachment in self.attachments.items()
+                if token in self.text}
 
 
 @overridable

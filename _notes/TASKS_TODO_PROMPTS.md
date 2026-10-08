@@ -13,13 +13,15 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 # ===============================
 
 
+I want to allow pasted-images in ex6 please?
+Have a good think about how to represent images in the input-box.
 
+Plan before implementing, dont rush
+keep in mind it doesn't need to be perfect. Just something like [pasted-image 0x99843] or something.
 
-BUG WITH ex6 TUI:
-There is smart double-buffering that optimizes the rendering.
-However, 
+The thing that concerns me the most is how the image is STORED. right now, input-box contains simple text. We will need some kind of attachment-system or storage
 
-
+(Also for now; don't worry about hooking it up to the provider; that's a well-defined task)
 
 
 
