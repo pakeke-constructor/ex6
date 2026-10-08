@@ -1267,6 +1267,15 @@ class ScreenBuffer:
     def invalidate(self):
         self._invalidated = True
 
+    def clear_line(self, y):
+        if not 0 <= y < self.h:
+            return
+        for x in range(self.w):
+            self.chars[y][x] = ' '
+            self.styles[y][x] = None
+            self.txt_colors[y][x] = None
+            self.bg_colors[y][x] = None
+
     def clear(self):
         for row in self.chars: row[:] = [' '] * self.w
         for row in self.styles: row[:] = [None] * self.w
@@ -1877,6 +1886,7 @@ def render_work_mode(tui, buf, inpt, r):
         for sy in range(bar_top, bar_top + bar_h):
             buf.put(x + w - 1, sy, '█', txt_color=th.muted)
 
+    buf.clear_line(y)
     label = f"{ctx.name}  {ctx.model or ''}"
     label_w = len(label) + 2
     bar_w = min(w - label_w - 20, 30)
@@ -1888,6 +1898,8 @@ def render_work_mode(tui, buf, inpt, r):
 def render_work_mode_input(tui, buf, inpt, input_r, input_box):
     ctx = tui.current
     th = tui.app.theme
+    for y in range(input_r[1], input_r[1] + input_r[3]):
+        buf.clear_line(y)
     if ctx.is_running():
         input_box(buf, inpt, input_r, txt_color=th.accent)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
@@ -1924,6 +1936,8 @@ def render_work_mode_footer(tui, buf, r, ctx):
 def render_workmodefooter_and_commands(tui, buf, r, ctx):
     th = tui.app.theme
     x, y, w, h = r
+    for row in range(y, y + h):
+        buf.clear_line(row)
     text = ctx.get_input_box().get_text()
     """
     todo: in future, instead of just "yolo ON" and "yolo OFF",
