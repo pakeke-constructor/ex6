@@ -1,5 +1,6 @@
 
 from _ex6.provider_openai import invoke_llm as invoke_llm_openai
+from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic
 from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_file, read_file, read_image, ask_user_question, handoff, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
@@ -129,7 +130,8 @@ def custom_setup(app: ex6.App, messages):
     assert tui
 
     # tui.add_context(Context(app, "c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages))
-    tui.add_context(Context(app, "c_sonnet", model=M.SONNET_LATEST.id, reasoning="high", messages=messages))
+    tui.add_context(Context(app, "sub_SONNET", model=M.SONNET_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
+    tui.add_context(Context(app, "sub_OPUS", model=M.OPUS_46.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
 
     # tui.add_context(Context(app, "c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages))
     # tui.add_context(Context(app, "c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages))

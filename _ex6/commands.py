@@ -161,7 +161,7 @@ def smp(tui, additional_msg: Optional[str]):
 
 
 SSOT_CHECK = r'''
-Take a step back, and evaluate the statefulness of the relevant system/code.
+Evaluate the statefulness of the system/code you just worked on.
 (Bad state is one of the most common causes of bugs, and we want to avoid it.)
 Some guidelines, in order:
 - If it's possible to remove the state entirely via smarter code: REMOVE IT.
