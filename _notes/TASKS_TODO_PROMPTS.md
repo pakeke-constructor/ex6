@@ -15,6 +15,11 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
+BUG WITH ex6 TUI:
+There is smart double-buffering that optimizes the rendering.
+However, 
+
+
 
 
 

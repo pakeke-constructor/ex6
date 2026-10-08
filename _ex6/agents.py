@@ -130,20 +130,20 @@ def custom_setup(app: ex6.App, messages):
     assert tui
 
     # tui.add_context(Context(app, "c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages))
-    tui.add_context(Context(app, "sub_SONNET", model=M.SONNET_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
-    tui.add_context(Context(app, "sub_OPUS", model=M.OPUS_46.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
+    tui.add_context(Context(app, "anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
+    tui.add_context(Context(app, "anth_OPUS", model=M.OPUS_46.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
 
     # tui.add_context(Context(app, "c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages))
     # tui.add_context(Context(app, "c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages))
     # tui.add_context(Context(app, "c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages))
 
-    _=tui.add_context(Context(app, "sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    t=tui.add_context(Context(app, "sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    _=tui.add_context(Context(app, "oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    t=tui.add_context(Context(app, "oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
 
     # right now, GPT_56_SOL is stronger that GPT-6.
-    _=tui.add_context(Context(app, "sub_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    _=tui.add_context(Context(app, "oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
 
-    _=tui.add_context(Context(app, "sub_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    _=tui.add_context(Context(app, "oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
     tui.current = t
 
 
