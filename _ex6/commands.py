@@ -159,6 +159,32 @@ def smp(tui, additional_msg: Optional[str]):
     ctx.invoke(msg)
 
 
+
+STA = r'''
+Take a step back, and evaluate the statefulness of the system/code you just worked on.
+(Bad state is one of the most common causes of bugs, and we want to avoid it.)
+Some guidelines, in order:
+- If it's possible to remove the state entirely via smarter code: REMOVE IT.
+- Otherwise, if the state can't be removed, try make it a single-source-of-truth (SSOT).
+- Otherwise, if state must be duplicated, then make sure the state is either short-lived, recomputed frequently.
+- Lastly, if the bad state can't be short-lived or recomputed, think about a way to invalidate it, or make the consumers aware of the duplicate nature of it.
+Don't forget the broader goals. (If the system/code is clean and minimal; that's fine, no changes needed.)
+'''
+
+@ex6.command
+def sta(tui, additional_msg: Optional[str]):
+    'Invokes agent, asking it to attempt to remove fragile state'
+    ctx = tui.current
+    if not ctx: return
+    msg = SMP
+    if additional_msg:
+        msg += "\n\nAdditional user note:" + additional_msg
+    ctx.invoke(msg)
+
+
+
+
+
 @ex6.command
 def cm(tui, msg: Optional[str]):
     """Generate a commit message from git diff and commit."""
