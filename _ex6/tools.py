@@ -1413,17 +1413,17 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, 
 
 
 
-def _get_claude_md_content(ctx):
+def _get_agents_md(ctx):
     root = ctx.cwd or os.getcwd()
-    for p in ["CLAUDE.md", ".claude/CLAUDE.md", "AGENTS.md"]:
+    for p in [ "AGENTS.md", "CLAUDE.md", ".claude/CLAUDE.md",]:
         fp = os.path.join(root, p)
         if os.path.isfile(fp):
             with open(fp, "r", encoding="utf-8") as f:
                 return f.read()
     return "(no AGENTS.md or CLAUDE.md found)"
 
-CLAUDE_MD = ex6.Message(role="system", content=_get_claude_md_content, overview="AGENTS.md")
-AGENTS_MD = CLAUDE_MD
+AGENTS_MD = ex6.Message(role="system", content=_get_agents_md, overview="AGENTS.md")
+CLAUDE_MD = AGENTS_MD
 
 
 

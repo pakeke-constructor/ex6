@@ -1,7 +1,7 @@
 
 from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.models import M
-from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_file, read_file, read_image, ask_user_question, handoff, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, CLAUDE_MD, ENV_PROMPT, edit_file
+from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_file, read_file, read_image, ask_user_question, handoff, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
@@ -113,7 +113,7 @@ def auto_setup(app):
     messages = [
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
-        CLAUDE_MD,
+        AGENTS_MD,
     ]
     custom_setup(app, messages=messages)
 
@@ -122,7 +122,7 @@ def custom_setup(app: ex6.App, messages):
     messages = messages or [
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
-        CLAUDE_MD,
+        AGENTS_MD,
     ]
 
     tui = app.tui
@@ -137,7 +137,10 @@ def custom_setup(app: ex6.App, messages):
 
     _=tui.add_context(Context(app, "sub_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
     t=tui.add_context(Context(app, "sub_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    _=tui.add_context(Context(app, "sub_SOL", model=M.GPT_SOL_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+
+    # right now, GPT_56_SOL is stronger that GPT-6.
+    _=tui.add_context(Context(app, "sub_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+
     _=tui.add_context(Context(app, "sub_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
     tui.current = t
 
