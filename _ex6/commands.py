@@ -161,14 +161,15 @@ def smp(tui, additional_msg: Optional[str]):
 
 
 STA = r'''
-Take a step back, and evaluate the statefulness of the system/code you just worked on.
+Take a step back, and evaluate the statefulness of the relevant system/code.
 (Bad state is one of the most common causes of bugs, and we want to avoid it.)
 Some guidelines, in order:
 - If it's possible to remove the state entirely via smarter code: REMOVE IT.
 - Otherwise, if the state can't be removed, try make it a single-source-of-truth (SSOT).
-- Otherwise, if state must be duplicated, then make sure the state is either short-lived, recomputed frequently.
-- Lastly, if the bad state can't be short-lived or recomputed, think about a way to invalidate it, or make the consumers aware of the duplicate nature of it.
-Don't forget the broader goals. (If the system/code is clean and minimal; that's fine, no changes needed.)
+- Otherwise, if state must be duplicated, then make sure the state is either short-lived or recomputed frequently.
+- Lastly, if the bad state can't be short-lived or recomputed, think about a way to invalidate it, or make the consumers aware of the duplication.
+Don't forget the bigger picture. 
+If the system/code is clean and minimal; that's fine, no changes needed.
 '''
 
 @ex6.command
