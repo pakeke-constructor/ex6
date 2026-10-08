@@ -1306,41 +1306,46 @@ class ScreenBuffer:
             if dirty > (self.w * self.h) * 0.08:  # if 8% of cells are dirty = do full rewrite.
                 skip_diff = True
 
+        pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
+        rows = range(self.h) if skip_diff else (
+            y for y in range(self.h)
+            if any(pc[y][x] != self.chars[y][x]
+                   or pf[y][x] != self.txt_colors[y][x]
+                   or ps[y][x] != self.styles[y][x]
+                   or pb[y][x] != self.bg_colors[y][x]
+                   for x in range(self.w))
+        )
+
         out = []
-        if skip_diff:
-            # batch path: rewrite everything row-by-row with style segments
-            for y in range(self.h):
-                out.append(term.move(y, 0))
-                cur_fg = None
-                cur_st = None
-                cur_bg = None
-                seg = []
-                for x in range(self.w):
-                    fg = self.txt_colors[y][x]
-                    st = self.styles[y][x]
-                    bg = self.bg_colors[y][x]
-                    if cur_fg is None:
-                        cur_fg = fg; cur_st = st; cur_bg = bg
-                    if fg != cur_fg or st != cur_st or bg != cur_bg:
-                        out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
-                        seg = []
-                        cur_fg = fg; cur_st = st; cur_bg = bg
-                    seg.append(self.chars[y][x])
-                if seg:
+        for y in rows:
+            # Clear dirty rows first so content omitted by this frame cannot linger.
+            out.append(term.move(y, 0))
+            out.append(term.clear_eol)
+
+            row_end = self.w
+            while row_end and self.chars[y][row_end - 1] == ' ' \
+                    and self.styles[y][row_end - 1] is None \
+                    and self.txt_colors[y][row_end - 1] is None \
+                    and self.bg_colors[y][row_end - 1] is None:
+                row_end -= 1
+
+            cur_fg = None
+            cur_st = None
+            cur_bg = None
+            seg = []
+            for x in range(row_end):
+                fg = self.txt_colors[y][x]
+                st = self.styles[y][x]
+                bg = self.bg_colors[y][x]
+                if x == 0:
+                    cur_fg = fg; cur_st = st; cur_bg = bg
+                if fg != cur_fg or st != cur_st or bg != cur_bg:
                     out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
-        else:
-            # delta path: only write changed cells
-            pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
-            for y in range(self.h):
-                for x in range(self.w):
-                    c = self.chars[y][x]
-                    fg = self.txt_colors[y][x]
-                    st = self.styles[y][x]
-                    bg = self.bg_colors[y][x]
-                    if pc[y][x] == c and pf[y][x] == fg and ps[y][x] == st and pb[y][x] == bg:
-                        continue
-                    out.append(term.move(y, x))
-                    out.append(apply_style(fg, st, bg, c))
+                    seg = []
+                    cur_fg = fg; cur_st = st; cur_bg = bg
+                seg.append(self.chars[y][x])
+            if seg:
+                out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
 
         if out:
             output = output or sys.__stdout__
