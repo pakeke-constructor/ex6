@@ -497,6 +497,7 @@ class App:
         return registry[name]
 
     def call(self, name, *args, **kwargs):
+        """Call handlers until one returns truthy, otherwise fall back to the default implementation."""
         if name in self.handleables:
             for _, fn in self.handlers[name]:
                 result = fn(*args, **kwargs)
@@ -506,6 +507,7 @@ class App:
         return self.overrides[name](*args, **kwargs)
 
     def pipeline(self, name, value, *args, **kwargs):
+        """Pass a value through each handler in sequence, each can transform it, then through the default."""
         for _, fn in self.handlers[name]:
             result = fn(value, *args, **kwargs)
             if result is not None:
