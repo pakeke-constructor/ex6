@@ -301,6 +301,40 @@ def store_attachment(data: bytes, suffix: str) -> str:
     return path
 
 
+def clean_clipboard_whitespace():
+    """
+    Ctrl+C clipboard cleaning pass.
+    
+    When the user selects text in the terminal and presses Ctrl+C, the terminal
+    copies the raw screen content to clipboard — including all the layout spaces
+    (padding, margins, fixed-width columns) that ex6's ScreenBuffer uses.
+    
+    The terminal handles the first Ctrl+C (copies to clipboard, does NOT forward
+    to the app). A second Ctrl+C (with no selection) reaches the app as KEY_CTRL_C.
+    
+    So the workflow is:
+      1. Select text in terminal → Ctrl+C (terminal copies raw text)
+      2. Ctrl+C again (no selection → app receives it → we clean the clipboard)
+    
+    Cleaning: strip leading/trailing whitespace per line, collapse internal
+    whitespace runs into single spaces, remove empty lines.
+    """
+    import re
+    try:
+        import copykitten
+        raw = copykitten.paste()
+        lines = []
+        for line in raw.splitlines():
+            cleaned = re.sub(r'[ \t]+', ' ', line.strip())
+            if cleaned:
+                lines.append(cleaned)
+        cleaned_text = '\n'.join(lines)
+        if cleaned_text != raw:
+            copykitten.copy(cleaned_text)
+    except Exception:
+        pass
+
+
 def clipboard_image_attachment() -> ImageAttachment | None:
     import io
     from PIL import Image, ImageGrab
@@ -2245,6 +2279,10 @@ def _tui_loop(tui: TUI):
     input_box = tui.input_box = tui.current.get_input_box()
 
     prev_mode = tui.mode
+
+    # Ctrl+C clipboard cleaning: see clean_clipboard_whitespace() docstring for details.
+    if inpt.consume('KEY_CTRL_C'):
+        clean_clipboard_whitespace()
 
     if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
         tui.ui_panel_stack.pop()

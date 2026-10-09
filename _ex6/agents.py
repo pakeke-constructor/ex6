@@ -131,7 +131,7 @@ def custom_setup(app: ex6.App, messages):
 
     # tui.add_context(Context(app, "c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages))
     tui.add_context(Context(app, "anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
-    tui.add_context(Context(app, "anth_OPUS", model=M.OPUS_46.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
+    tui.add_context(Context(app, "anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
 
     # tui.add_context(Context(app, "c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages))
     # tui.add_context(Context(app, "c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages))
