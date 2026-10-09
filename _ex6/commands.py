@@ -197,7 +197,8 @@ def cm(tui, msg: Optional[str]):
     def draw(buf, inpt, r):
         x, y, w, h = r
         th = tui.app.theme
-        panel = ex6.Region(x, y, w, max(3, h // 2))
+        content_h = max(3, len(output_lines) + 2)
+        panel = ex6.Region(x, y, w, min(content_h, h))
         px, py, pw, ph = panel
         buf.fill(panel, ' ')
         buf.rect_line(panel, txt_color=th.accent)
@@ -265,7 +266,8 @@ def sync(tui):
     def draw(buf, inpt, r):
         x, y, w, h = r
         th = tui.app.theme
-        panel = ex6.Region(x, y, w, max(3, h // 2))
+        content_h = max(3, len(output_lines) + 2)
+        panel = ex6.Region(x, y, w, min(content_h, h))
         px, py, pw, ph = panel
         buf.fill(panel, ' ')
         buf.rect_line(panel, txt_color=th.accent)
