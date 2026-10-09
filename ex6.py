@@ -507,7 +507,7 @@ class App:
         return self.overrides[name](*args, **kwargs)
 
     def pipeline(self, name, value, *args, **kwargs):
-        """Pass a value through each handler in sequence, each can transform it, then through the default."""
+        """Chain of transforms: each handler can modify the value, then the default gets the final result."""
         for _, fn in self.handlers[name]:
             result = fn(value, *args, **kwargs)
             if result is not None:
