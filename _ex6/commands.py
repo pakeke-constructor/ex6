@@ -48,11 +48,14 @@ def yy(tui, n: Optional[int]):
 
 
 @ex6.command
-def delete(tui, name: Optional[str]):
+def del_context(tui, name: Optional[str]):
     'Delete a context.'
     ctx = tui.get_context(name) if name else tui.current
     if not ctx: return
     tui.remove_context(ctx)
+
+del_context.__name__ = "del" # coz del is python keyword, and we want /del
+
 
 
 @ex6.command

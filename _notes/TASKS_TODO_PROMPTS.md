@@ -80,7 +80,9 @@ DO NOT WRITE CODE, just plan.
 
 
 I want to improve sigils.
-Currently... it isnt *really* used.
+Currently... it isnt *really* used, and it's kinda bad.
+FIRST IMPROVEMENT: make `transform_user_prompt` a handler override, via @ex6.handleable.
+Then, we should use `@handleable` for transform-user-prompt maybe?
 
 but i got a really good idea that i think could be super beneficial... mainly for UX.
 firstly; can 
