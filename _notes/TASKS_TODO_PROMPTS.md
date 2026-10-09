@@ -13,15 +13,17 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 # ===============================
 
 
-I want to allow pasted-images in ex6 please?
-Have a good think about how to represent images in the input-box.
 
-Plan before implementing, dont rush
-keep in mind it doesn't need to be perfect. Just something like [pasted-image 0x99843] or something.
+Execute plan pasted-images-input.md.
+This will make copy-pasting stuff way more robust.
 
-The thing that concerns me the most is how the image is STORED. right now, input-box contains simple text. We will need some kind of attachment-system or storage
 
-(Also for now; don't worry about hooking it up to the provider; that's a well-defined task)
+
+Can you please make it so with anthropic models, usage is displayed bottom-right?
+See provider_openai and provder_anthropic.
+Should be same as openai, "x% used / 7d, resets in Xyz".
+For anthropic, the bar should be orange-colored, and it should show the proper reset time (not 7 days.)
+plan before implementing, you might need to experiment / search web a bit.
 
 
 

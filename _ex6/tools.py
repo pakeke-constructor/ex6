@@ -1132,8 +1132,8 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
     """Ask user a question and wait for their response. Blocks until answered."""
     result = [None]
 
-    def on_submit(text):
-        result[0] = text
+    def on_submit(value):
+        result[0] = value.text
         if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
@@ -1163,10 +1163,10 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
     typed_mode = [len(options) == 0]
     result = [None]
 
-    def on_submit(text):
-        if not text:
+    def on_submit(value):
+        if not value.text:
             return
-        result[0] = text
+        result[0] = value.text
         if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
@@ -1280,8 +1280,8 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
         raise EscalationError(reason, severity)
     result = [None]
 
-    def on_submit(text):
-        result[0] = text
+    def on_submit(value):
+        result[0] = value.text
         if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)
@@ -1370,9 +1370,9 @@ def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, 
         return None
     result = [False, None]  # [answered, denial_reason]
 
-    def on_submit(text):
+    def on_submit(value):
         result[0] = True
-        result[1] = text if text.strip() else None
+        result[1] = value.text if value.text.strip() else None
         if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
 
     input_draw = ctx.app.call("make_input", on_submit)

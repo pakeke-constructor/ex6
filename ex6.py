@@ -245,6 +245,12 @@ class ImageAttachment(Attachment):
     detail: Literal["auto", "low", "high"] = "auto"
 
 
+@dataclass(frozen=True)
+class InputValue:
+    text: str
+    attachments: dict[str, Attachment] = field(default_factory=dict)
+
+
 @dataclass
 class ToolResult:
     text: str
@@ -998,15 +1004,15 @@ class Context:
 
     def get_input_box(self):
         if self._input_box is None:
-            self._input_box = InputBox(self.submit_input)
+            self._input_box = InputBox(self.submit_input, allow_images=True)
         return self._input_box
 
-    def submit_input(self, text):
-        if text.startswith("/"):
+    def submit_input(self, value: InputValue):
+        if value.text.startswith("/"):
             if self.app.tui:
-                self.app.dispatch_command(self.app.tui, text)
+                self.app.dispatch_command(self.app.tui, value.text)
         elif not self.is_running():
-            self.invoke(text, attachments=self.get_input_box().get_attachments())
+            self.invoke(value.text, attachments=value.attachments)
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -1578,7 +1584,6 @@ class InputPass:
         '\x1bd': ('KEY_CTRL_DELETE',),
         '\x18': ('KEY_CTRL_X',),
         '\x03': ('KEY_CTRL_C',),
-        '\x16': ('KEY_CTRL_V',),
         '\x1bv': ('KEY_ALT_V',),
     }
 
@@ -1627,8 +1632,9 @@ class InputPass:
 
 
 class InputBox:
-    def __init__(self, on_submit):
+    def __init__(self, on_submit, allow_images=False):
         self.on_submit = on_submit
+        self.allow_images = allow_images
         self.text = ""
         self.cursor = 0
         self.attachments = {}
@@ -1677,7 +1683,7 @@ class InputBox:
         inner_w = r[2]
         if inner_w < 1: return
 
-        if inpt.consume('KEY_CTRL_V', 'KEY_ALT_V'):
+        if self.allow_images and inpt.consume('KEY_ALT_V'):
             attachment = clipboard_image_attachment()
             if attachment:
                 self._insert_attachment(attachment)
@@ -1715,8 +1721,11 @@ class InputBox:
             line = self._wrap(self.text, inner_w)[cy]
             self.cursor += len(line) - cx
         if inpt.consume('KEY_ENTER') and self.text:
-            self.on_submit(self.text)
+            attachments = {token: attachment for token, attachment in self.attachments.items()
+                           if token in self.text}
+            value = InputValue(self.text, attachments)
             self.text, self.cursor, self.attachments = "", 0, {}
+            self.on_submit(value)
             return
 
         cursor_char = "█"
@@ -1744,10 +1753,6 @@ class InputBox:
 
     def get_text(self):
         return self.text.strip()
-
-    def get_attachments(self):
-        return {token: attachment for token, attachment in self.attachments.items()
-                if token in self.text}
 
 
 @overridable
@@ -2146,10 +2151,10 @@ class TUI:
         self.buf = ScreenBuffer(self.term.width, self.term.height)
         self.stdout_sink = _StdoutSink(self.app.debug_print)
 
-    def sel_on_submit(self, text):
+    def sel_on_submit(self, value: InputValue):
         self.sel_input_open = False
-        if text.startswith("/"):
-            self.app.dispatch_command(self, text)
+        if value.text.startswith("/"):
+            self.app.dispatch_command(self, value.text)
 
     def enter_scroll_mode(self):
         if self.mode == "scroll":
