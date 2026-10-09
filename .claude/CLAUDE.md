@@ -8,11 +8,15 @@ Existing coding agent harness are often bloated, and inject a tonne of stuff, to
 Great for noobs. Not so great for high-performing engineers who want to optimize.
 
 ## Solution and project goals:
-ex6: A hyper-minimal TUI coding harness where you create agents from scratch. Every token explicit. Every tool explicit. Plugins give absolute control over everything, from orchestration to tools.
+ex6: A hyper-minimal TUI coding harness where you create agents from scratch.
+Every token is explicit, every tool is explicit. 
+Plugins give absolute control over everything, from orchestration to tools.
+
 - Serves as a thin, simple layer; no leaky/overreaching abstractions.
 - No hidden/implicit context. User can see entire ctx window, and has FULL control.
 - Total degree of customization/control via plugins.
 - Lives in terminal.
+- Can be used as a standalone backend 
 
 
 ## Project architecture:
@@ -31,9 +35,11 @@ printing/debugging: If you want to print, you must use `ex6.debug_print()`. (Sam
 Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add even define what terminal-UI is.
 
 ## Core plugins:
-- _ex6/tools.py - contains all tool-definitions like read_file, edit_file, etc
+- _ex6/tools.py - contains all tool-definitions like read_file, edit_file, powershell, read_body, etc.
 - _ex6/provider.py - openrouter provider, overrides invoke_llm
-- _ex6/agents/agents.py - agent definitions.
+- _ex6/provider_openai.py - openai provider, goes through subscription
+- _ex6/provider_anthropic.py - anthropic provider, goes through subscription
+- _ex6/agents.py - basic agent definitions, as an example. Projects usually define their own agents.
 - _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command
 
 

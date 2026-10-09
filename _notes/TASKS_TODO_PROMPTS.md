@@ -79,6 +79,13 @@ DO NOT WRITE CODE, just plan.
 
 
 
+I want to improve sigils.
+Currently... it isnt *really* used.
+
+but i got a really good idea that i think could be super beneficial... mainly for UX.
+firstly; can 
+
+
 
 
 ## idea for ex6 agents:

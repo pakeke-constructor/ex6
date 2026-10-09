@@ -138,13 +138,13 @@ def custom_setup(app: ex6.App, messages):
     # tui.add_context(Context(app, "c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages))
 
     _=tui.add_context(Context(app, "oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    t=tui.add_context(Context(app, "oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    _=tui.add_context(Context(app, "oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
 
     # right now, GPT_56_SOL is stronger that GPT-6.
-    _=tui.add_context(Context(app, "oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
+    c=tui.add_context(Context(app, "oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
 
     _=tui.add_context(Context(app, "oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    tui.current = t
+    tui.current = c
 
 
 
@@ -154,3 +154,9 @@ def custom_setup(app: ex6.App, messages):
 def setup(app):
     if os.getcwd() == os.path.dirname(os.path.abspath(ex6.__file__)):
         auto_setup(app)
+
+    # Inline prompts: write a line ending in ;;; to launch a coding agent
+    from _ex6.inline import setup as inline_setup
+    if app.tui and app.tui.current:
+        inline_setup(app, app.tui.current.fork("_inline"))
+
