@@ -1103,6 +1103,7 @@ class Context:
             self.invoke(value.text, attachments=value.attachments)
         else:
             self._pending_inputs.append(value)
+            self.stop_early = True
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -2070,6 +2071,13 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         buf.puts(x, y, spin, txt_color=th.invoking); x += 4
         buf.puts(x, y, label, txt_color=th.accent); x += len(label)
         buf.puts(x, y, stats, txt_color=th.muted)
+        if ctx._pending_inputs:
+            qtxt = ctx._pending_inputs[0].text
+            max_w = input_r[2] - total_w - 2
+            prefix = "queued: \""
+            if len(qtxt) > max_w - len(prefix) - 1:
+                qtxt = qtxt[:max(0, max_w - len(prefix) - 4)] + "..."
+            buf.puts(input_r[0] + 1, y, prefix + qtxt + "\"", txt_color=th.accent_alt)
     else:
         input_box(buf, inpt, input_r)
 
