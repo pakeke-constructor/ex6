@@ -41,12 +41,21 @@ def _capture_usage(event, app):
         w = windows.get(key)
         if w:
             usage[key] = {"utilization": w.get("utilization", 0), "resets_at": w.get("resetsAt", 0)}
-    if "utilization" in info:
-        usage["utilization"] = info["utilization"]
-        usage["resets_at"] = info.get("resetsAt", 0)
-        usage["rate_limit_type"] = info.get("rateLimitType", "")
+    # Show whichever window is closest to its limit. Top-level utilization is a fallback
+    # only; the CLI usually just reports it inside unifiedWindows.
+    rate_type = info.get("rateLimitType", "")
+    util = info.get("utilization")
+    resets_at = info.get("resetsAt", 0)
+    for key in ("five_hour", "seven_day"):
+        w = windows.get(key)
+        if w and (util is None or w.get("utilization", 0) > util):
+            rate_type, util, resets_at = key, w.get("utilization", 0), w.get("resetsAt", 0)
+    if util is not None:
+        usage["utilization"] = util
+        usage["resets_at"] = resets_at
+        usage["rate_limit_type"] = rate_type
     usage["ts"] = time.time()
-    app.debug_print(f"[claude] rate_limit: {info.get('rateLimitType')} util={info.get('utilization')}")
+    app.debug_print(f"[claude] rate_limit: {rate_type} util={util}")
 
 
 def _fmt_reset(secs):

@@ -14,19 +14,6 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
-Execute plan pasted-images-input.md.
-This will make copy-pasting stuff way more robust.
-
-
-
-Can you please make it so with anthropic models, usage is displayed bottom-right?
-See provider_openai and provder_anthropic.
-Should be same as openai, "x% used / 7d, resets in Xyz".
-For anthropic, the bar should be orange-colored, and it should show the proper reset time (not 7 days.)
-plan before implementing, you might need to experiment / search web a bit.
-
-
-
 I want to make it so it's easier for agents to create their own little local branch, and can make changes easily.
 
 
