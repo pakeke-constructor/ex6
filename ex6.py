@@ -301,38 +301,49 @@ def store_attachment(data: bytes, suffix: str) -> str:
     return path
 
 
-def clean_clipboard_whitespace():
+# When True, the TUI polls the clipboard every few frames and strips excess
+# whitespace that the terminal copies from the fixed-width ScreenBuffer layout.
+# Set to False in a plugin if you don't want this behaviour.
+CLIPBOARD_CLEANING = True
+_clipboard_last_seen = ""  # last-seen clipboard text for fast skip
+
+def _is_probably_equal(a: str, b: str):
+    """O(1) heuristic: length + 10 sampled chars at stepped offsets."""
+    n = len(a)
+    if n != len(b): return False
+    step = max(1, n // 10)
+    for i in range(0, n, step):
+        if a[i] != b[i]: return False
+    return True
+
+def _try_clean_clipboard():
     """
-    Ctrl+C clipboard cleaning pass.
-    
-    When the user selects text in the terminal and presses Ctrl+C, the terminal
-    copies the raw screen content to clipboard — including all the layout spaces
-    (padding, margins, fixed-width columns) that ex6's ScreenBuffer uses.
-    
-    The terminal handles the first Ctrl+C (copies to clipboard, does NOT forward
-    to the app). A second Ctrl+C (with no selection) reaches the app as KEY_CTRL_C.
-    
-    So the workflow is:
-      1. Select text in terminal → Ctrl+C (terminal copies raw text)
-      2. Ctrl+C again (no selection → app receives it → we clean the clipboard)
-    
-    Cleaning: strip leading/trailing whitespace per line, collapse internal
-    whitespace runs into single spaces, remove empty lines.
+    Reads clipboard text; if it has leading/trailing whitespace or internal
+    whitespace runs, clean it and write it back. Uses _is_probably_equal()
+    to skip work when the clipboard hasn't changed (O(1) even for huge strings).
     """
+    global _clipboard_last_seen
     import re
     try:
         import copykitten
         raw = copykitten.paste()
-        lines = []
-        for line in raw.splitlines():
-            cleaned = re.sub(r'[ \t]+', ' ', line.strip())
-            if cleaned:
-                lines.append(cleaned)
-        cleaned_text = '\n'.join(lines)
-        if cleaned_text != raw:
-            copykitten.copy(cleaned_text)
     except Exception:
-        pass
+        return
+    if _is_probably_equal(raw, _clipboard_last_seen):
+        return
+    _clipboard_last_seen = raw
+    lines = []
+    for line in raw.splitlines():
+        cleaned = re.sub(r'[ \t]+', ' ', line.strip())
+        if cleaned:
+            lines.append(cleaned)
+    cleaned_text = '\n'.join(lines)
+    if cleaned_text != raw:
+        try:
+            copykitten.copy(cleaned_text)
+            _clipboard_last_seen = cleaned_text
+        except Exception:
+            pass
 
 
 def clipboard_image_attachment() -> ImageAttachment | None:
@@ -2280,9 +2291,10 @@ def _tui_loop(tui: TUI):
 
     prev_mode = tui.mode
 
-    # Ctrl+C clipboard cleaning: see clean_clipboard_whitespace() docstring for details.
-    if inpt.consume('KEY_CTRL_C'):
-        clean_clipboard_whitespace()
+    # Clipboard cleaning: strip layout whitespace from clipboard every frame.
+    # See CLIPBOARD_CLEANING and _try_clean_clipboard() for details.
+    if CLIPBOARD_CLEANING:
+        _try_clean_clipboard()
 
     if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
         tui.ui_panel_stack.pop()
