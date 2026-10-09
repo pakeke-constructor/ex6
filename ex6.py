@@ -1026,6 +1026,7 @@ class Context:
     _scroll_up: int = 0
     _input_box: Optional['InputBox'] = None
     _scheduled: Optional[tuple] = field(default=None, init=False, repr=False)
+    _pending_inputs: list = field(default_factory=list, init=False, repr=False)
 
     @property
     def context_hooks(self):
@@ -1098,6 +1099,8 @@ class Context:
                 self.app.dispatch_command(self.app.tui, value.text)
         elif not self.is_running():
             self.invoke(value.text, attachments=value.attachments)
+        else:
+            self._pending_inputs.append(value)
 
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
@@ -1200,18 +1203,10 @@ class Context:
             self.llm_result = None
             self.pending_message = None
             self.llm_cot = self.llm_output_type = ""
-        try:
-            text = self.app.pipeline("transform_user_prompt", text, self)
-            self.append_message(Message(role="user", content=text, attachments=dict(attachments or {})))
-        except Exception:
-            with self._msg_lock:
-                self.llm_is_running = False
-                if self._clear_pending:
-                    self.clear()
-            raise
-
         def run():
             try:
+                text_ = app.pipeline("transform_user_prompt", text, self)
+                self.append_message(Message(role="user", content=text_, attachments=dict(attachments or {})))
                 should_loop = True
                 while should_loop and not self.stop_early and self._scheduled is None:
                     message = self._read_llm_stream(llm_fn)
@@ -1242,6 +1237,9 @@ class Context:
                 if scheduled is not None:
                     fn, args, kwargs = scheduled
                     fn(*args, **kwargs)
+                elif self._pending_inputs:
+                    next_input = self._pending_inputs.pop(0)
+                    self.submit_input(next_input)
 
         threading.Thread(target=run, daemon=True).start()
     

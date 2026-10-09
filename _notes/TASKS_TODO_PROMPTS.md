@@ -91,6 +91,9 @@ Go ahead, plan this briefly, then implement.
 
 
 
+
+
+
 ## idea for ex6 agents:
 Basically, I want to create more "specialist" agents that are good at a singular specific thing.
 EG:
