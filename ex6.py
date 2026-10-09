@@ -46,6 +46,11 @@ import tempfile
 from contextlib import closing
 
 
+# 3 lines per scroll
+ARROW_SCROLL_SPEED: int = 3
+
+
+
 ESC_DELAY: float = 0
 # NOTE: if you are running ex6 through ssh or something,
 # (eg on a VPS) you might want to set this to 25 or 50 or something.
@@ -2003,6 +2008,8 @@ def render_work_mode(tui, buf, inpt, r):
 
     if inpt.consume('KEY_PGUP'): ctx._scroll_up += available // 2
     if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - available // 2)
+    if inpt.consume('KEY_UP'): ctx._scroll_up += ARROW_SCROLL_SPEED
+    if inpt.consume('KEY_DOWN'): ctx._scroll_up = max(0, ctx._scroll_up - ARROW_SCROLL_SPEED)
     if ctx.is_running(): ctx._scroll_up = 0
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
