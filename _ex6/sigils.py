@@ -1,5 +1,6 @@
 import re
 import ex6
+from ex6 import handler
 from _ex6.models import M
 
 
@@ -13,7 +14,8 @@ Infer unknown sigils from surrounding prompt. Preserve user intent. Be concise.
 """
 
 
-def transform_user_prompt(ctx: ex6.Context, text: str) -> str:
+@handler
+def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
     sigils = list(dict.fromkeys(match.group(0) for match in _SIGIL_RE.finditer(text)))
     if not sigils:
         return text

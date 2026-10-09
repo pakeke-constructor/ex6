@@ -499,10 +499,18 @@ class App:
     def call(self, name, *args, **kwargs):
         if name in self.handleables:
             for _, fn in self.handlers[name]:
-                if fn(*args, **kwargs):
-                    return True
+                result = fn(*args, **kwargs)
+                if result:
+                    return result
             return self.handleables[name](*args, **kwargs)
         return self.overrides[name](*args, **kwargs)
+
+    def pipeline(self, name, value, *args, **kwargs):
+        for _, fn in self.handlers[name]:
+            result = fn(value, *args, **kwargs)
+            if result is not None:
+                value = result
+        return self.handleables[name](value, *args, **kwargs)
 
     def iter_commands(self):
         return self.commands.items()
@@ -983,7 +991,7 @@ class Context:
     model: str
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
     invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
-    transform_user_prompt: Optional[Callable[['Context', str], str]] = None
+
     messages: InitVar[Optional[list[Message]]] = None
     schema_id: Optional[str] = None
     max_tokens: int = 200000
@@ -1193,8 +1201,7 @@ class Context:
             self.pending_message = None
             self.llm_cot = self.llm_output_type = ""
         try:
-            if self.transform_user_prompt:
-                text = self.transform_user_prompt(self, text)
+            text = self.app.pipeline("transform_user_prompt", text, self)
             self.append_message(Message(role="user", content=text, attachments=dict(attachments or {})))
         except Exception:
             with self._msg_lock:
@@ -2068,6 +2075,10 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 
 
 
+
+@handleable
+def transform_user_prompt(text, ctx):
+    return text
 
 @handleable
 def render_work_mode_footer(tui, buf, r, ctx):
