@@ -77,6 +77,15 @@ output_renderer = _declaration_ctx("output_renderer")
 command = _declaration("command")
 overridable = _declaration("overridable")
 override = _declaration("override")
+handleable = _declaration("handleable")
+
+
+def handler(fn=None, *, order=0):
+    def mark(value):
+        setattr(value, "_ex6_declaration", "handler")
+        setattr(value, "_ex6_order", order)
+        return value
+    return mark if fn is None else mark(fn)
 
 
 
@@ -122,6 +131,7 @@ def _build_ctx_dump_lines(ctx, leading_blanks=0):
     for i, msg in enumerate(ctx.get_messages()):
         label = msg.role
         if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
+        if msg.attachments: label += f" ({len(msg.attachments)} attachment(s))"
         lines.append(f"--- [{i}] {label} ---")
         lines.append(tool_result_text(msg.get_msg(ctx)))
         if msg.tool_calls:
@@ -363,6 +373,8 @@ class App:
         self.overrides = {}
         self.default_implementations = {}
         self._overridden = set()
+        self.handleables = {}
+        self.handlers = {}
         self.theme = Theme()
         self.context_schemas = {}
         self.plugin_data = {}
@@ -422,11 +434,29 @@ class App:
         self.overrides[name] = fn
         return fn
 
+    def handleable(self, fn):
+        self.handleables[fn.__name__] = fn
+        self.handlers.setdefault(fn.__name__, [])
+        return fn
+
+    def handler(self, fn):
+        name = fn.__name__
+        if name not in self.handleables:
+            raise RuntimeError(f"'{name}' not handleable")
+        self.handlers[name].append((getattr(fn, "_ex6_order", 0), fn))
+        self.handlers[name].sort(key=lambda item: item[0])
+        return fn
+
     def get_implementation(self, name, default=False):
         registry = self.default_implementations if default else self.overrides
         return registry[name]
 
     def call(self, name, *args, **kwargs):
+        if name in self.handleables:
+            for _, fn in self.handlers[name]:
+                if fn(*args, **kwargs):
+                    return True
+            return self.handleables[name](*args, **kwargs)
         return self.overrides[name](*args, **kwargs)
 
     def iter_commands(self):
@@ -455,6 +485,8 @@ class App:
             elif kind == "command": self.command(value)
             elif kind == "overridable": self.overridable(value)
             elif kind == "override": self.override(value)
+            elif kind == "handleable": self.handleable(value)
+            elif kind == "handler": self.handler(value)
 
     def setup_module(self, module):
         if module.__name__ in self._setup_modules:
@@ -1654,7 +1686,7 @@ class InputBox:
     def _insert_attachment(self, attachment):
         token = f"[pasted-image 0x{Path(attachment.path).stem[:5]}]"
         n = 2
-        while token in self.text:
+        while token in self.text or token in self.attachments:
             token = f"[pasted-image 0x{Path(attachment.path).stem[:5]}-{n}]"
             n += 1
         self.attachments[token] = attachment
@@ -1992,7 +2024,7 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 
 
 
-@overridable
+@handleable
 def render_work_mode_footer(tui, buf, r, ctx):
     x, y, w, h = r
     th = tui.app.theme

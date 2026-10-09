@@ -239,25 +239,13 @@ def _fmt_reset(secs):
     return f"{h}h{m:02d}m" if h else f"{m}m"
 
 
-@ex6.override
-def render_work_mode_footer(tui, buf, r, ctx):
-    """Default yolo indicator, plus a subscription-usage bar for codex contexts."""
+def _render_openai_usage(tui, buf, x, y, w, th):
     import time
-    x, y, w, h = r
-    th = tui.app.theme
-    on = ctx.yolo
-    buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
-             txt_color=th.success if on else th.muted)
-
-    if ctx.invoke_llm is not invoke_llm:
-        return
-
     usage = tui.app.plugin_data.setdefault("openai:usage", {})
-    if "percent" not in usage:  # no invoke yet — usage headers unknown
+    if "percent" not in usage:
         msg = "(unknown usage)"
         buf.puts(x + w - len(msg) - 2, y, msg, txt_color=th.muted)
         return
-
     pct = usage["percent"]
     remaining = usage["reset_after"] - (time.time() - usage["ts"])
     filled = min(10, max(0, round(pct / 10)))
@@ -272,4 +260,17 @@ def render_work_mode_footer(tui, buf, r, ctx):
     buf.puts(bx + filled, y, "░" * (10 - filled), txt_color=th.muted)
     buf.puts(bx + 10, y, mid, txt_color=th.accent_alt)
     buf.puts(bx + 10 + len(mid), y, secondary, txt_color=th.muted)
+
+
+@ex6.handler
+def render_work_mode_footer(tui, buf, r, ctx):
+    if ctx.invoke_llm is not invoke_llm:
+        return False
+    x, y, w, h = r
+    th = tui.app.theme
+    on = ctx.yolo
+    buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
+             txt_color=th.success if on else th.muted)
+    _render_openai_usage(tui, buf, x, y, w, th)
+    return True
 

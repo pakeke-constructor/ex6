@@ -26,7 +26,7 @@ Provider integration is explicitly out of scope for now.
 
 ## Input behavior
 
-- Keep paste handling inside InputBox. Bracketed terminal paste continues to insert text; Ctrl+V/Alt+V queries the clipboard for an image because terminals cannot send image bytes through bracketed paste.
+- Keep paste handling inside InputBox. Bracketed terminal paste continues to insert text; Alt+V queries the clipboard for an image because terminals cannot send image bytes through bracketed paste.
 - Query clipboard through Pillow `ImageGrab.grabclipboard()` (Pillow is already a documented dependency).
 - Accept a clipboard bitmap or the first clipboard file which Pillow can identify as an image.
 - If clipboard has no image or clipboard image access is unsupported, leave draft unchanged.
@@ -39,7 +39,7 @@ Provider integration is explicitly out of scope for now.
 ## Implementation
 
 1. Add `attachments` to `Message` and allow `Context.invoke(text, attachments=())`.
-2. Let `InputBox` own draft attachments and all paste handling. On Ctrl+V/Alt+V, store a clipboard image and insert a collision-free token at cursor.
+2. Let `InputBox` own draft attachments and all paste handling. On Alt+V, store a clipboard image and insert a collision-free token at cursor.
 3. Let Context read referenced attachments on text submission, then clear draft attachment map. Keep generic/selection input callback behavior unchanged.
 4. Ensure `set_text` clears stale draft attachments.
 5. Make debug/context/token helpers continue treating message content as text; optionally annotate attachment count in debug dump, without embedding image bytes.

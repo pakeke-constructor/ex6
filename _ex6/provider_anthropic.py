@@ -31,6 +31,62 @@ from _ex6.provider import _log_invoke
 
 _MCP_PREFIX = "mcp__ex6__"
 
+
+def _capture_usage(event, app):
+    import time
+    info = event.get("rate_limit_info") or {}
+    windows = info.get("unifiedWindows") or {}
+    usage = app.plugin_data.setdefault("anthropic:usage", {})
+    for key in ("five_hour", "seven_day"):
+        w = windows.get(key)
+        if w:
+            usage[key] = {"utilization": w.get("utilization", 0), "resets_at": w.get("resetsAt", 0)}
+    if "utilization" in info:
+        usage["utilization"] = info["utilization"]
+        usage["resets_at"] = info.get("resetsAt", 0)
+        usage["rate_limit_type"] = info.get("rateLimitType", "")
+    usage["ts"] = time.time()
+    app.debug_print(f"[claude] rate_limit: {info.get('rateLimitType')} util={info.get('utilization')}")
+
+
+def _fmt_reset(secs):
+    secs = max(0, int(secs))
+    days, remainder = divmod(secs, 86400)
+    h, m = remainder // 3600, (remainder % 3600) // 60
+    if days:
+        return f"{days}d {h}h"
+    return f"{h}h{m:02d}m" if h else f"{m}m"
+
+
+@ex6.handler
+def render_work_mode_footer(tui, buf, r, ctx):
+    if ctx.invoke_llm is not invoke_llm:
+        return False
+    import time
+    x, y, w, h = r
+    th = tui.app.theme
+    on = ctx.yolo
+    buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
+             txt_color=th.success if on else th.muted)
+
+    usage = tui.app.plugin_data.get("anthropic:usage")
+    if not usage or "utilization" not in usage:
+        msg = "(unknown usage)"
+        buf.puts(x + w - len(msg) - 2, y, msg, txt_color=th.muted)
+        return True
+    pct = usage["utilization"] * 100
+    remaining = usage["resets_at"] - time.time()
+    rate_type = usage.get("rate_limit_type", "")
+    window = "5h" if "five_hour" in rate_type else "7d" if "seven_day" in rate_type else rate_type
+    filled = min(10, max(0, round(pct / 10)))
+    mid = f" {pct:.0f}% used / {window}, resets in {_fmt_reset(remaining)}"
+    bx = x + w - (10 + len(mid)) - 2
+    buf.puts(bx, y, "█" * filled, txt_color=(220, 140, 40))
+    buf.puts(bx + filled, y, "░" * (10 - filled), txt_color=th.muted)
+    buf.puts(bx + 10, y, mid, txt_color=(200, 150, 70))
+    return True
+
+
 # ctx -> _ClaudeProcess. Module-level (not data_volatile) so a stale process is
 # closed when replaced; otherwise it'd leak, as reader threads keep it alive.
 _processes = {}
@@ -171,9 +227,13 @@ class _ClaudeProcess:
     def _read_stdout(self):
         for line in self.proc.stdout:
             try:
-                self.events.put(("claude", json.loads(line)))
+                event = json.loads(line)
             except json.JSONDecodeError:
                 self.ctx.app.debug_print(f"[claude] invalid output: {line.rstrip()}")
+                continue
+            if event.get("type") == "rate_limit_event":
+                _capture_usage(event, self.ctx.app)
+            self.events.put(("claude", event))
         self.events.put(("exit", self.proc.wait()))
 
     def _read_stderr(self):
