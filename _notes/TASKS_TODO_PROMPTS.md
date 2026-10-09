@@ -79,15 +79,8 @@ DO NOT WRITE CODE, just plan.
 
 
 
-I want to improve sigils.
-Currently... it isnt *really* used, and it's kinda bad.
-FIRST IMPROVEMENT: make `transform_user_prompt` a handler override, via @ex6.handleable.
-Then, we should use `@handleable` for transform-user-prompt so it works globally.
-
-YOUR TASK: do that first. KISS, get something wired up. Less code is better. please be smart about it
-
-THEN, AFTERWARDS:
-i got a really good idea that i think could be super beneficial... mainly for UX.
+I want to improve sigils. Currently... it isnt *really* used, and it's kinda bad.
+i got a really good idea that i think could be super beneficial, mainly for UX.
 when a sigil is sent, the issue is that there's no observability. the agent just runs under the hood.
 A BETTER OPTION:
 - when a sigil is detected, the agent should be spun up, and it should open a UI panel. then, you should see the prompt being written in real-time. (like the ask-user-question panel kinda.)

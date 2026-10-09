@@ -156,7 +156,7 @@ def setup(app):
         auto_setup(app)
 
     # Inline prompts: write a line ending in ;;; to launch a coding agent
-    from _ex6.inline import setup as inline_setup
+    from _ex6.inline import setup_inline_watcher
     if app.tui and app.tui.current:
-        inline_setup(app, app.tui.current.fork("_inline"))
+        setup_inline_watcher(app, app.tui.current.fork("_inline"))
 

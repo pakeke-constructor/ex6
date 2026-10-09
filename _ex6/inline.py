@@ -185,7 +185,7 @@ def _watcher_loop(app, root: Path, template_ctx: Context, stop_event: threading.
                 app.debug_print(f"[inline] error processing {p}: {e}")
 
 
-def setup(app, ctx: Context):
+def setup_inline_watcher(app, ctx: Context):
     """Start inline watcher. ctx is a template Context — each inline prompt forks from it."""
     if not app.tui:
         return
