@@ -19,6 +19,68 @@ I want to make it so it's easier for agents to create their own little local bra
 
 
 
+
+
+;;a
+
+I want to create a new plugin, called `inline.py`.
+This basically provides a way to prompt LLMs from any file, in text.
+HOW DOES IT WORK?
+ANSWER: Basically, it uses watchfiles to watch the code directory.
+if there is a line that ends in `;;;`, that means a prompt has been created; and an agent should be spun up.
+-> This creates a new agent, and injects the prompt into the llm, and gets it running.
+Example:
+
+hello 123, this is a test.;;;
+-> The agent will receive prompt `hello 123, this is a test.` (And the line will get auto-deleted.)
+The agent will also be made aware of the exact file and line number that the prompt was made from.
+So in reality, it receives this:
+```
+(abc.py, line 348)
+hello 123, this is a test.
+```
+
+IMPORTANT: MAKE SURE THAT FILES IN THE .gitignore AREN'T WATCHED! use watch_filter.
+```py
+spec = PathSpec.from_lines("gitwildmatch", (root / ".gitignore").read_text().splitlines())
+def watch_filter(change, path):
+    relative_path = Path(path).resolve().relative_to(root).as_posix()
+    return not spec.match_file(relative_path)
+```
+
+MULTI-LINE PROMPTS:
+multi-line prompts are also supported:
+
+hello 123. this is an example of an inline prompt.
+once i type three semicolons, it will be dispatched to the model.
+The way it works is it will greedily search up/down the file from the semicolons.
+after reaching something that is NOT in the git work tree, (ie something that is not part of prompt,)
+it stops collecting.;;;
+
+AGENT SEES:
+```
+(abc.py, line 245)
+hello 123. this is an example of an inline prompt.
+once i type three semicolons, it will be dispatched to the model.
+The way it works is it will greedily search up/down the file from the semicolons.
+after reaching something that is NOT in the git work tree, (ie something that is not part of prompt,)
+it stops collecting.
+```
+
+YOUR TASK:
+Figure out what the best way to do this is.
+Should watchfiles be used? or should we just poll git working tree or something? 
+or both, idk?
+Give thoughts, and also consider the nature of ex6's runtime TUI loop.
+Is there a way to do this hyper-efficiently?
+DO NOT WRITE CODE, just plan.
+
+
+
+
+
+
+
 ## idea for ex6 agents:
 Basically, I want to create more "specialist" agents that are good at a singular specific thing.
 EG:
