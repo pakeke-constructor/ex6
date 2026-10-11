@@ -6,7 +6,8 @@ from _ex6.models import M
 
 
 SIGIL_MODEL = M.GEMINI31_FLASH_LITE.id
-_SIGIL_RE = re.compile(r";[ \t]*([A-Za-z][\w-]*)")
+_SIGILS = ("ssot", "git", "fast", "smp")
+_SIGIL_RE = re.compile(rf";[ \t]*({'|'.join(_SIGILS)})(?![\w-])", re.IGNORECASE)
 
 SYSTEM_PROMPT = """\
 You turn sigils in coding-agent prompts into short operational guidance.
