@@ -2227,6 +2227,9 @@ class TUI:
     log_keys: bool = False
     restart_requested: bool = False
 
+    def restart(self):
+        self.restart_requested = True
+
     def add_context(self, ctx):
         if ctx.app is not self.app:
             raise RuntimeError("Context belongs to another app")

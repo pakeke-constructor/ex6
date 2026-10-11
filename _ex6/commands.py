@@ -85,7 +85,7 @@ def yolo(tui):
 @ex6.command
 def restart(tui):
     'Restart ex6.'
-    tui.restart_requested = True
+    tui.restart()
 
 
 @ex6.command
