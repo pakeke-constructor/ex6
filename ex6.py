@@ -588,7 +588,11 @@ def run_tui():
         app.tui = None
 
     if tui.restart_requested:
-        os.execv(sys.executable, [sys.executable, *sys.argv])
+        args = [sys.executable, *sys.argv]
+        if os.name == "nt":
+            import subprocess
+            raise SystemExit(subprocess.call(args))
+        os.execv(sys.executable, args)
 
 
 @overridable
