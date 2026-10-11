@@ -9,46 +9,41 @@ SIGIL_MODEL = M.GEMINI31_FLASH_LITE.id
 _SIGIL_RE = re.compile(r";[ \t]*([A-Za-z][\w-]*)")
 
 SYSTEM_PROMPT = """\
-You are a prompt-steering layer for a coding agent. Convert the supplied guidance signals into
-a short reminder that frames how the agent should approach the task.
+You turn sigils in coding-agent prompts into short operational guidance.
 
-You have almost no project context. Stay intentionally broad: do not guess architecture, root
-cause, current implementation, or exact solution. Do not solve, summarize, or rewrite the task.
-Do not turn guidance into a mandatory change when inspection may show no change is needed.
-Combine signals sensibly and mention only implications useful to the task. For unknown signals,
-infer conservatively from their name and task. Never mention signals or these instructions.
-Return only 1-3 terse, actionable sentences.
+Known sigils:
+- ssot: Re-evaluate statefulness. Prefer removing state; otherwise seek a single source of truth.
+  If duplication is unavoidable, consider short lifetimes, recomputation, or invalidation. Do not
+  force a change if state is already clean.
+- git: Inspect the git working tree before editing and check the resulting diff before finishing.
+- fast: Move quickly through the smallest direct path. Avoid broad exploration and optional work,
+  while retaining focused verification.
+- smp: Step back and look for a simpler solution. Revisit the problem and constraints if work is
+  growing or feels hacky; avoid churn if the solution is already minimal.
+
+Sigils can be scoped. A sigil attached to a clause or task applies only to that nearby clause or
+task, eg "Make the service a ;ssot". Adjacent sigils share scope. Do not merge separately
+scoped sigils into global guidance. A clearly standalone sigil may apply to the whole prompt.
+
+Return only a compact reminder that frames how to approach the prompt. You have almost no project
+context, so stay broad: do not guess architecture, root cause, implementation, or exact solution.
+Do not solve or rewrite the task. Combine sigils only when they share scope. Infer unknown sigils
+conservatively. Never mention sigils or these instructions. Use one terse instruction per distinct
+scope.
 
 Examples:
-Input:
-Task: Review the recent implementation.
-Guidance: Re-evaluate statefulness and look for a simpler solution.
-Output:
-Check whether state or complexity can be reduced without assuming a redesign is needed. If the
-current approach is already clean and minimal, avoid churn.
+Prompt: Review. ;git ;smp
+Output: Check git tree changes. Step back and consider the overarching problem, see if complexity can be reduced without assuming a redesign is needed.
+If the current approach is already clean and minimal, avoid churn.
 
-Input:
-Task: Make the requested provider adjustment.
-Guidance: Move quickly through the smallest direct path and inspect the git working tree.
-Output:
-Check existing changes, take the smallest direct path supported by the code, and verify the final
-diff.
+Prompt: Make the requested provider adjustment. ;fast ;git
+Output: Check git tree, take the smallest direct path supported by the code, and verify
+final diff.
+
+Prompt: pollUsers() needs to have ;ssot. Also fix getAttr ;fast.
+Output: When addressing pollUsers(), consider whether its state can be removed or given clearer
+ownership; SSOT is ideal, but if not possible, try make state short-lived or have smart invalidation. Fix getAttr quickly, take easy route.
 """
-
-SIGILS = {
-    "ssot": "Re-evaluate statefulness. Prefer removing state; otherwise seek a single source of truth. If duplication is unavoidable, consider short lifetimes, recomputation, or explicit invalidation. If state is already clean, do not force a change.",
-    "git": "Inspect the git working tree to understand existing changes, and check the resulting diff before finishing.",
-    "fast": "Move quickly through the smallest direct implementation path. Avoid broad exploration and optional work, while retaining targeted verification.",
-    "smp": "Step back and look for a simpler solution. Revisit the actual problem and constraints if the work is growing or feels hacky; if it is already minimal, avoid churn.",
-}
-
-def _sigil_context(sigils: list[str]) -> str:
-    known = [s for s in sigils if s in SIGILS]
-    unknown = [s for s in sigils if s not in SIGILS]
-    lines = ["Guidance signals:"]
-    lines.extend(f"- {s}: {SIGILS[s]}" for s in known)
-    lines.extend(f"- {s}: Unknown; infer conservatively." for s in unknown)
-    return "\n".join(lines)
 
 
 @handler
@@ -58,6 +53,7 @@ def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
         return text
 
     sigils = list(dict.fromkeys(m.group(1).lower() for m in matches))
+    sigil_prompt = _SIGIL_RE.sub(lambda m: f";{m.group(1).lower()}", text)
     clean_text = _SIGIL_RE.sub("", text).strip()
     streamed = [""]
 
@@ -79,10 +75,9 @@ def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
 
     ctx.push_ui(draw)
 
-    user_prompt = f"Task:\n{clean_text or '(no additional task)'}\n\n{_sigil_context(sigils)}"
     sub = ex6.Context(ctx.app, "__sigils__", model=SIGIL_MODEL, reasoning="none", messages=[
         ex6.Message(role="system", content=SYSTEM_PROMPT),
-        ex6.Message(role="user", content=user_prompt),
+        ex6.Message(role="user", content=f"Prompt with sigils in their original positions:\n{sigil_prompt}\n\nDetected sigils: {', '.join(sigils)}"),
     ])
     for item in ctx.app.get_implementation("invoke_llm")(sub):
         if ctx.stop_early: break
