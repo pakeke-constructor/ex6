@@ -306,8 +306,8 @@ def store_attachment(data: bytes, suffix: str) -> str:
     return path
 
 
-# When True, the TUI polls the clipboard every few frames and strips excess
-# whitespace that the terminal copies from the fixed-width ScreenBuffer layout.
+# When True, the TUI polls the clipboard every few frames and collapses
+# consecutive spaces copied from the fixed-width ScreenBuffer layout.
 # Set to False in a plugin if you don't want this behaviour.
 CLIPBOARD_CLEANING = True
 _clipboard_last_seen = ""  # last-seen clipboard text for fast skip
@@ -323,9 +323,9 @@ def _is_probably_equal(a: str, b: str):
 
 def _try_clean_clipboard():
     """
-    Reads clipboard text; if it has leading/trailing whitespace or internal
-    whitespace runs, clean it and write it back. Uses _is_probably_equal()
-    to skip work when the clipboard hasn't changed (O(1) even for huge strings).
+    Reads clipboard text and collapses consecutive spaces outside leading
+    indentation. Uses _is_probably_equal() to skip work when the clipboard
+    hasn't changed (O(1) even for huge strings).
     """
     global _clipboard_last_seen
     import re
@@ -337,12 +337,12 @@ def _try_clean_clipboard():
     if _is_probably_equal(raw, _clipboard_last_seen):
         return
     _clipboard_last_seen = raw
-    lines = []
-    for line in raw.splitlines():
-        cleaned = re.sub(r'[ \t]+', ' ', line.strip())
-        if cleaned:
-            lines.append(cleaned)
-    cleaned_text = '\n'.join(lines)
+    parts = re.split(r'(\r\n|\r|\n)', raw)
+    for i in range(0, len(parts), 2):
+        line = parts[i]
+        indentation = len(line) - len(line.lstrip(' \t'))
+        parts[i] = line[:indentation] + re.sub(r' {2,}', ' ', line[indentation:])
+    cleaned_text = ''.join(parts)
     if cleaned_text != raw:
         try:
             copykitten.copy(cleaned_text)
@@ -2317,7 +2317,7 @@ def _tui_loop(tui: TUI):
 
     prev_mode = tui.mode
 
-    # Clipboard cleaning: strip layout whitespace from clipboard every frame.
+    # Clipboard cleaning: collapse consecutive non-indentation spaces every frame.
     # See CLIPBOARD_CLEANING and _try_clean_clipboard() for details.
     if CLIPBOARD_CLEANING:
         _try_clean_clipboard()
