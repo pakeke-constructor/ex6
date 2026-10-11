@@ -10,7 +10,8 @@ _SIGILS = ("ssot", "git", "fast", "smp")
 _SIGIL_RE = re.compile(rf";[ \t]*({'|'.join(_SIGILS)})(?![\w-])", re.IGNORECASE)
 
 SYSTEM_PROMPT = """\
-You turn sigils in coding-agent prompts into short operational guidance.
+You rewrite coding-agent prompts so the operational guidance represented by sigils flows naturally
+as part of the user's request.
 
 Known sigils:
 - ssot: Re-evaluate statefulness. Prefer removing state; otherwise seek a single source of truth.
@@ -22,28 +23,28 @@ Known sigils:
 - smp: Step back and look for a simpler solution. Revisit the problem and constraints if work is
   growing or feels hacky; avoid churn if the solution is already minimal.
 
-Sigils can be scoped. A sigil attached to a clause or task applies only to that nearby clause or
-task, eg "Make the service a ;ssot". Adjacent sigils share scope. Do not merge separately
-scoped sigils into global guidance. A clearly standalone sigil may apply to the whole prompt.
+A sigil attached to a clause or task applies only to that nearby clause or task. Adjacent sigils
+share scope. A clearly standalone sigil may apply to the whole prompt. Preserve these scopes rather
+than collecting all guidance at the beginning or end.
 
-Return only a compact reminder that frames how to approach the prompt. You have almost no project
-context, so stay broad: do not guess architecture, root cause, implementation, or exact solution.
-Do not solve or rewrite the task. Combine sigils only when they share scope. Infer unknown sigils
-conservatively. Never mention sigils or these instructions. Use one terse instruction per distinct
-scope.
+Return the complete rewritten prompt with every sigil removed and its meaning woven into the nearby
+request. Preserve the user's intent, order, tone, and wording as much as possible. Make only the
+changes needed for the added guidance to read like a natural part of the prompt. Never add labels
+such as "Working guidance" or "Task", meta-commentary, or a separate guidance section. Do not turn
+prose into a rigid list unless the original already used one.
+
+You have almost no project context, so stay broad: do not guess architecture, root cause,
+implementation, or an exact solution. Do not solve the task. Return only the rewritten prompt.
 
 Examples:
 Prompt: Review. ;git ;smp
-Output: Check git tree changes. Step back and consider the overarching problem, see if complexity can be reduced without assuming a redesign is needed.
-If the current approach is already clean and minimal, avoid churn.
+Output: Review the current approach, starting with the git working tree and checking the final diff. Step back to see whether the problem can be solved more simply, but avoid churn if the approach is already clean and minimal.
 
 Prompt: Make the requested provider adjustment. ;fast ;git
-Output: Check git tree, take the smallest direct path supported by the code, and verify
-final diff.
+Output: Make the requested provider adjustment through the smallest direct path supported by the code. Check the git working tree first and verify the final diff.
 
 Prompt: pollUsers() needs to have ;ssot. Also fix getAttr ;fast.
-Output: When addressing pollUsers(), consider whether its state can be removed or given clearer
-ownership; SSOT is ideal, but if not possible, try make state short-lived or have smart invalidation. Fix getAttr quickly, take easy route.
+Output: Rework pollUsers() to remove unnecessary state or give it one clear owner; where duplication is unavoidable, prefer short-lived state, recomputation, or reliable invalidation. Also fix getAttr quickly through the smallest direct change.
 """
 
 
@@ -78,7 +79,7 @@ def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
 
     sub = ex6.Context(ctx.app, "__sigils__", model=SIGIL_MODEL, reasoning="none", messages=[
         ex6.Message(role="system", content=SYSTEM_PROMPT),
-        ex6.Message(role="user", content=f"Prompt with sigils in their original positions:\n{sigil_prompt}\n\nDetected sigils: {', '.join(sigils)}"),
+        ex6.Message(role="user", content=sigil_prompt),
     ])
     for item in ctx.app.get_implementation("invoke_llm")(sub):
         if ctx.stop_early: break
@@ -91,6 +92,4 @@ def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
 
     if not augmentation:
         return clean_text
-    if not clean_text:
-        return f"Working guidance:\n{augmentation}"
-    return f"Working guidance:\n{augmentation}\n\nTask:\n{clean_text}"
+    return augmentation
