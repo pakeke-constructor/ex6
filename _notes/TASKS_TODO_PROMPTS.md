@@ -27,6 +27,13 @@ Then, add the following sigils:
 (... maybe some more?)
 ```
 
+REMINDER: the point of the sigils-agent should be to inject a reminder of the situation / steer the prompt a bit.
+We SHOULD NOT inject the full sigil-description in unconditionally.
+
+YOUR TASK:
+- wire up these sigils
+- make the sys prompt for the sigil-agent stronger
+- clear the `;sigil` from the prompt
 
 
 
