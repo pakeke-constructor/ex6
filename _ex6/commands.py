@@ -83,6 +83,12 @@ def yolo(tui):
 
 
 @ex6.command
+def restart(tui):
+    'Restart ex6.'
+    tui.restart_requested = True
+
+
+@ex6.command
 def crash(tui):
     'Force a crash (debug).'
     raise RuntimeError("Crash!")

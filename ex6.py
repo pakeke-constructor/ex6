@@ -587,6 +587,9 @@ def run_tui():
         threading.excepthook = old_thread_hook
         app.tui = None
 
+    if tui.restart_requested:
+        os.execv(sys.executable, [sys.executable, *sys.argv])
+
 
 @overridable
 def invoke_llm(ctx):
@@ -2218,6 +2221,7 @@ class TUI:
     stdout_sink: Any = None
     show_cot: bool = True
     log_keys: bool = False
+    restart_requested: bool = False
 
     def add_context(self, ctx):
         if ctx.app is not self.app:
@@ -2402,7 +2406,7 @@ def _run_tui_loop(tui: TUI, real_stdout, real_stderr):
 
     try:
         with term.cbreak(), term.hidden_cursor(), term.fullscreen(), term.bracketed_paste():
-            while True:
+            while not tui.restart_requested:
                 _tui_loop(tui)
     except Exception:
         import traceback
