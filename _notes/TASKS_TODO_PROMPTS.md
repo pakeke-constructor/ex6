@@ -20,10 +20,10 @@ SIGILS:
 Make sigil agent way better and smarter. Add a couple one-shot examples.
 Then, add the following sigils:
 ```
-;ssot = the user wants better state, ... etc
-;git = the user wants you to check git work tree
-;fast = the user wants you to move fast
-;smp = the user wants to encourage you to step back, look for simpler solution
+; ssot = the user wants better state, ... etc
+; git = the user wants you to check git work tree
+; fast = the user wants you to move fast
+; smp = the user wants to encourage you to step back, look for simpler solution
 (... maybe some more?)
 ```
 
@@ -33,7 +33,7 @@ We SHOULD NOT inject the full sigil-description in unconditionally.
 YOUR TASK:
 - wire up these sigils
 - make the sys prompt for the sigil-agent stronger
-- clear the `;sigil` from the prompt
+- clear any `; sigil`s from the prompt
 
 
 
