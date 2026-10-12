@@ -29,6 +29,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import secrets
 import shutil
 import socket
@@ -168,6 +169,9 @@ def _digest(is_error, content):
     """Fingerprint of a tool result, as sent by ex6 or echoed back by claude."""
     if isinstance(content, list):
         content = "".join(b["text"] for b in content if b["type"] == "text")
+    # claude replaces blank results with "(mcp__ex6__<tool> completed with no output)"
+    if not content.strip() or re.fullmatch(r"\(mcp__ex6__\w+ completed with no output\)", content):
+        content = ""
     return bool(is_error), hashlib.sha256(content.encode()).hexdigest()
 
 
