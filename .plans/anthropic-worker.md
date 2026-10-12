@@ -1,5 +1,7 @@
 # Anthropic provider: single-pump, no stalls
 
+Note: the MCP transport here (socket server, `conns`, stdio proxy) was replaced by an SDK MCP server; see claude-sdk-mcp.md. The rest still applies.
+
 ## Motivation
 
 `provider_anthropic.py` can stall forever after a tool call. Root cause: two independent unbounded waits fed by split state:
