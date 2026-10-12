@@ -74,9 +74,10 @@ def _declaration_ctx(kind):
     return _declaration(kind)
 
 
-CONTEXT_HOOK_KINDS = ("after_tool_calls", "after_llm_turn", "output_renderer")
+CONTEXT_HOOK_KINDS = ("after_tool_calls", "after_llm_turn", "output_renderer", "context_removed")
 
 after_tool_calls = _declaration_ctx("after_tool_calls")
+context_removed = _declaration_ctx("context_removed")
 after_llm_turn = _declaration_ctx("after_llm_turn")
 output_renderer = _declaration_ctx("output_renderer")
 command = _declaration("command")
@@ -588,6 +589,9 @@ def run_tui():
         app.tui = None
 
     if tui.restart_requested:
+        # os.execv skips atexit and Windows keeps this process alive, so release contexts now.
+        for ctx in list(tui.contexts):
+            tui.remove_context(ctx)
         args = [sys.executable, *sys.argv]
         if os.name == "nt":
             import subprocess
@@ -2243,10 +2247,12 @@ class TUI:
         return next((c for c in self.contexts if c.name == name), None)
 
     def remove_context(self, ctx):
-        if ctx in self.contexts:
-            self.contexts.remove(ctx)
+        if ctx not in self.contexts:
+            return
+        self.contexts.remove(ctx)
         if self.current is ctx:
             self.current = self.contexts[0] if self.contexts else None
+        self.app.run_context_hooks("context_removed", ctx)
 
     def __post_init__(self):
         from blessed import Terminal

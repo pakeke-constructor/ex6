@@ -3,6 +3,19 @@ Claude subscription backend: drives a long-lived `claude -p` process.
 ex6 tools are exposed through an MCP proxy; ex6 itself runs them and the proxy
 hands results back to claude by tool_use id.
 
+Why it's shaped this way:
+We're driving an external process we don't control, across three channels
+(stdin, stdout, MCP sockets) that can stall, reorder, crash, or quietly disagree
+with us. Earlier versions hung forever after tool calls. So the priority is:
+never hang, never silently diverge from what ex6 thinks happened.
+
+The claude process is treated as a disposable cache of ex6's history, not as
+state worth preserving. When anything is off, we throw it away and rebuild from
+history. That costs a lost prompt cache; trying to repair a confused process
+costs far more, and is where bugs hide. Keeping the moving parts few (one
+consumer, state derived from history) is what keeps that guarantee cheap.
+See .plans/anthropic-worker.md.
+
 Context overhead (can't be removed without --bare, which needs an API key):
 - system: "You are a Claude agent, built on Anthropic's Claude Agent SDK."
 - first user msg: <system-reminder>s with environment (cwd, platform, OS), model name, date.
@@ -11,6 +24,7 @@ See _notes/claude-p-findings.md.
 """
 import atexit
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,6 +36,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -30,6 +45,8 @@ from _ex6.provider import _log_invoke
 
 
 _MCP_PREFIX = "mcp__ex6__"
+_INACTIVITY_TIMEOUT = 300  # seconds without any claude/MCP event mid-turn
+_CONN_TIMEOUT = 30  # seconds for claude to call MCP for a tool result ex6 has ready
 
 
 def _capture_usage(event, app):
@@ -102,6 +119,13 @@ _processes = {}
 atexit.register(lambda: [p.close() for p in list(_processes.values())])
 
 
+@ex6.context_removed
+def _close_removed_context(ctx):
+    process = _processes.pop(ctx, None)
+    if process:
+        process.close()
+
+
 def _model_name(model):
     # "anthropic/claude-sonnet-4.6" -> "claude-sonnet-4-6"
     return model.split("/", 1)[-1].replace(".", "-")
@@ -115,6 +139,7 @@ def _mcp_tools(ctx):
             "name": fn["name"],
             "description": fn["description"],
             "inputSchema": fn["parameters"],
+            "_meta": {"anthropic/maxResultSizeChars": 500000},  # else claude swaps big results for a file preview
         })
     return tools
 
@@ -137,6 +162,13 @@ def _tool_result_payload(result):
             data = base64.b64encode(f.read()).decode("ascii")
         content.append({"type": "image", "data": data, "mimeType": attachment.mime_type})
     return {"content": content}
+
+
+def _digest(is_error, content):
+    """Fingerprint of a tool result, as sent by ex6 or echoed back by claude."""
+    if isinstance(content, list):
+        content = "".join(b["text"] for b in content if b["type"] == "text")
+    return bool(is_error), hashlib.sha256(content.encode()).hexdigest()
 
 
 def _bootstrap_prompt(ctx):
@@ -162,10 +194,8 @@ class _ClaudeProcess:
         self.system = _system_prompt(ctx)
         self.tools = _mcp_tools(ctx)
         self.seen = ()  # ex6 messages claude has been given
-        self.open_calls = []  # tool_use ids claude is waiting on
-        self.events = queue.Queue()  # claude stdout events
-        self.mcp_queue = queue.Queue()  # (tool_use_id, conn) from the MCP proxy
-        self.mcp_conns = {}
+        self.events = queue.Queue()  # ("claude", event) | ("mcp", tool_use_id, conn) | ("exit", code)
+        self.conns = {}  # tool_use_id -> MCP socket that arrived before ex6's result
         self.token = secrets.token_hex(16)
         self.closed = False
 
@@ -175,7 +205,7 @@ class _ClaudeProcess:
         port = self.server.getsockname()[1]
         threading.Thread(target=self._accept_mcp, daemon=True).start()
 
-        self.tmp = tempfile.TemporaryDirectory(prefix="ex6-claude-")
+        self.tmp = tempfile.TemporaryDirectory(prefix="ex6-claude-", ignore_cleanup_errors=True)
         folder = Path(self.tmp.name)
         prompt_path = folder / "system.txt"
         tools_path = folder / "tools.json"
@@ -213,7 +243,8 @@ class _ClaudeProcess:
 
         env = os.environ.copy()
         env.setdefault("CLAUDE_CODE_PROMPT_CACHE_TTL", "1h")
-        env.setdefault("MCP_TOOL_TIMEOUT", str(24 * 3600 * 1000))  # ex6 tools may wait on the user
+        env.setdefault("MCP_TOOL_TIMEOUT", str(2 * 3600 * 1000))  # ex6 tools may wait on the user
+        env.setdefault("MAX_MCP_OUTPUT_TOKENS", "1000000")  # ex6 tools own output size
         env["CLAUDE_CODE_ATTRIBUTION_HEADER"] = "0"
         env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
         env["CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"] = "1"
@@ -234,16 +265,24 @@ class _ClaudeProcess:
         threading.Thread(target=self._read_stderr, daemon=True).start()
 
     def _read_stdout(self):
-        for line in self.proc.stdout:
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                self.ctx.app.debug_print(f"[claude] invalid output: {line.rstrip()}")
-                continue
-            if event.get("type") == "rate_limit_event":
-                _capture_usage(event, self.ctx.app)
-            self.events.put(("claude", event))
-        self.events.put(("exit", self.proc.wait()))
+        code = "stdout closed"
+        try:
+            for line in self.proc.stdout:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    event = None
+                if not isinstance(event, dict):
+                    self.ctx.app.debug_print(f"[claude] invalid output: {line.rstrip()}")
+                    continue
+                if event.get("type") == "rate_limit_event":
+                    _capture_usage(event, self.ctx.app)
+                self.events.put(("claude", event))
+            code = self.proc.wait()
+        except Exception as e:
+            code = f"stdout reader crashed: {e!r}"
+        finally:
+            self.events.put(("exit", code))
 
     def _read_stderr(self):
         for line in self.proc.stderr:
@@ -253,18 +292,23 @@ class _ClaudeProcess:
         while not self.closed:
             try:
                 conn, _ = self.server.accept()
-                request = json.loads(conn.makefile("r", encoding="utf-8").readline())
-                if request.get("token") != self.token:
-                    conn.close()
-                    continue
-                self.mcp_queue.put((request["id"], conn))
             except OSError:
                 return
+            try:
+                conn.settimeout(5)  # a silent client can't block accepting
+                request = json.loads(conn.makefile("r", encoding="utf-8").readline())
+                if request["token"] != self.token:
+                    raise ValueError("bad token")
+                conn.settimeout(None)
+                self.events.put(("mcp", request["id"], conn))
+            except Exception as e:
+                self.ctx.app.debug_print(f"[claude] dropped MCP client: {e!r}")
+                conn.close()
 
     def new_messages(self, messages):
         """Messages ex6 added since claude's last turn, or None if the histories
         diverged (clear, truncate, edits, interrupted tool loop, changed prompt/tools)."""
-        if self.proc.poll() is not None:
+        if self.closed or self.proc.poll() is not None:
             return None
         if self.system != _system_prompt(self.ctx) or self.tools != _mcp_tools(self.ctx):
             return None
@@ -272,11 +316,14 @@ class _ClaudeProcess:
         if len(messages) <= len(seen) or any(a is not b for a, b in zip(seen, messages)):
             return None
         new = list(messages[len(seen):])
-        if new[0].role == "assistant":  # claude's own reply, appended by ex6
-            new = new[1:]
-        if self.open_calls:
-            ids = [m.tool_call_id for m in new]
-            return new if ids == self.open_calls else None
+        # claude's own reply, appended by ex6. Missing means it was dropped (e.g. stopped).
+        if new[0].role != "assistant":
+            return None
+        pending = {c["id"] for c in new[0].tool_calls or []}
+        new = new[1:]
+        if pending:
+            ok = len(new) == len(pending) and all(m.role == "tool" for m in new)
+            return new if ok and {m.tool_call_id for m in new} == pending else None
         if len(new) == 1 and new[0].role == "user":
             return new
         return None
@@ -286,25 +333,12 @@ class _ClaudeProcess:
         self.proc.stdin.write(json.dumps(event) + "\n")
         self.proc.stdin.flush()
 
-    def _mcp_conn(self, tool_use_id):
-        while tool_use_id not in self.mcp_conns:
-            try:
-                call_id, conn = self.mcp_queue.get(timeout=1)
-                self.mcp_conns[call_id] = conn
-            except queue.Empty:
-                if self.proc.poll() is not None:
-                    raise RuntimeError(f"Claude exited with code {self.proc.returncode}")
-        return self.mcp_conns.pop(tool_use_id)
-
-    def complete_tools(self, tool_messages):
-        for message in tool_messages:
-            value = message.get_msg(self.ctx)
-            if not isinstance(value, ex6.ToolResult):
-                value = ex6.ToolResult(str(value))
-            conn = self._mcp_conn(message.tool_call_id)
-            conn.sendall((json.dumps(_tool_result_payload(value)) + "\n").encode())
+    def _send(self, conn, result):
+        try:
+            conn.sendall((json.dumps(_tool_result_payload(result)) + "\n").encode())
+        finally:
             conn.close()
-        self.open_calls = []
+        return _digest(False, result.text)
 
     def _result(self, usage, output_tokens, calls, finish_reason):
         cache_read = usage.get("cache_read_input_tokens", 0)
@@ -314,16 +348,42 @@ class _ClaudeProcess:
         _log_invoke(self.ctx, [], result, cache_read, cache_write)
         return result
 
-    def read_turn(self):
-        """Yields one API call's worth of output: stops at tool calls or end of turn."""
+    def pump(self, results):
+        """Yields one API call's worth of output: stops at tool calls or end of turn.
+        results: {tool_use_id: ToolResult} for the calls claude is waiting on."""
+        sent = {}  # tool_use_id -> digest of the result delivered to claude
+        echoed = set()  # tool_use_ids claude confirmed with a matching tool_result
         calls = []
         usage = {}
         output_tokens = 0
+        stash, self.conns = self.conns, {}
+        for item in stash.items():  # conns that arrived before ex6 had results
+            self.events.put(("mcp", *item))
+        last_event = time.monotonic()
         while True:
-            kind, event = self.events.get()
-            if kind == "exit":
-                raise RuntimeError(f"Claude exited with code {event}")
+            if self.ctx.stop_early:
+                return
+            idle = time.monotonic() - last_event
+            if idle > _INACTIVITY_TIMEOUT or (idle > _CONN_TIMEOUT and len(sent) < len(results)):
+                self.ctx.app.debug_print(f"[claude] stalled: pending={sorted(results)} "
+                                         f"sent={sorted(sent)} conns={sorted(self.conns)}")
+                raise TimeoutError(f"Claude stalled for {idle:.0f}s")
+            try:
+                item = self.events.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            last_event = time.monotonic()
+            if item[0] == "exit":
+                raise RuntimeError(f"Claude exited: {item[1]}")
+            if item[0] == "mcp":
+                _, tool_use_id, conn = item
+                if tool_use_id in results and tool_use_id not in sent:
+                    sent[tool_use_id] = self._send(conn, results[tool_use_id])
+                else:
+                    self.conns[tool_use_id] = conn
+                continue
 
+            event = item[1]
             if event.get("type") == "stream_event":
                 inner = event["event"]
                 if inner["type"] == "message_start":
@@ -338,7 +398,7 @@ class _ClaudeProcess:
                         yield ex6.ResponseChunk("cot", delta["thinking"])
                 elif inner["type"] == "message_stop" and calls:
                     # claude emits one assistant event per block; message_stop follows all of them.
-                    self.open_calls = [c["id"] for c in calls]
+                    self._check_echoed(results, echoed)
                     yield self._result(usage, output_tokens, calls, "tool_calls")
                     return
 
@@ -348,21 +408,53 @@ class _ClaudeProcess:
                         name = block["name"].removeprefix(_MCP_PREFIX)
                         calls.append({"id": block["id"], "name": name, "args": block["input"]})
 
+            elif event.get("type") == "user":
+                # claude echoes every tool result it accepted; it must be exactly what ex6 sent.
+                for block in event["message"]["content"]:
+                    if block["type"] != "tool_result":
+                        continue
+                    tool_use_id = block["tool_use_id"]
+                    if tool_use_id not in sent:
+                        raise RuntimeError(f"Claude resolved tool call {tool_use_id} itself: "
+                                           f"{str(block.get('content'))[:200]}")
+                    if _digest(block.get("is_error"), block["content"]) != sent[tool_use_id]:
+                        raise RuntimeError(f"Claude altered the result of tool call {tool_use_id}")
+                    echoed.add(tool_use_id)
+
             elif event.get("type") == "result":
                 if event.get("is_error"):
-                    yield ex6.LLMResult(error=event.get("result") or "Claude invocation failed")
-                    return
+                    raise RuntimeError(event.get("result") or "Claude invocation failed")
+                self._check_echoed(results, echoed)
                 yield self._result(usage, output_tokens, [], event.get("stop_reason") or "stop")
                 return
 
+    def _check_echoed(self, results, echoed):
+        if echoed != set(results):
+            raise RuntimeError(f"Claude never confirmed tool results: {sorted(set(results) - echoed)}")
+
     def close(self):
+        """Idempotent and exception-proof; safe from any thread."""
         if self.closed:
             return
         self.closed = True
-        self.server.close()
+        for step in (self._kill, self.server.close, self._close_conns, self.tmp.cleanup):
+            try:
+                step()
+            except Exception as e:
+                self.ctx.app.debug_print(f"[claude] close: {step.__name__} failed: {e!r}")
+
+    def _kill(self):
+        # Kill first: Windows can't delete temp files a live child still holds.
         if self.proc.poll() is None:
-            self.proc.terminate()
-        self.tmp.cleanup()
+            if os.name == "nt":  # terminate() would orphan the MCP child (and node behind a .cmd shim)
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.proc.pid)], capture_output=True)
+            else:
+                self.proc.kill()
+        self.proc.wait(timeout=5)
+
+    def _close_conns(self):
+        for conn in list(self.conns.values()):
+            conn.close()
 
 
 def invoke_llm(ctx: ex6.Context):
@@ -371,21 +463,26 @@ def invoke_llm(ctx: ex6.Context):
     completed = False
     try:
         new = process.new_messages(messages) if process else None
-        if process is None or new is None:
+        results = {}
+        if new is None:
             if process:
                 ctx.app.debug_print("[claude] history diverged; restarting process")
                 process.close()
             process = _processes[ctx] = _ClaudeProcess(ctx)
             process.send_user(_bootstrap_prompt(ctx))
         elif new[-1].role == "tool":
-            process.complete_tools(new)
+            for message in new:
+                value = message.get_msg(ctx)
+                if not isinstance(value, ex6.ToolResult):
+                    value = ex6.ToolResult(str(value))
+                results[message.tool_call_id] = value
         else:
             process.send_user(new[-1].get_msg(ctx))
         process.seen = messages
 
         ctx.app.debug_print(f"[claude] model={ctx.model}")
-        yield from process.read_turn()
-        completed = True
+        yield from process.pump(results)
+        completed = not ctx.stop_early
     except Exception as e:
         ctx.app.debug_print(f"[claude] exception: {e}")
         result = ex6.LLMResult(error=str(e))
