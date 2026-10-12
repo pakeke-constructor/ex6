@@ -53,6 +53,10 @@ Output: Rework pollUsers() to remove unnecessary state or give it one clear owne
 FINAL IMPORTANT INSTRUCTIONS:
 The user's prompt will often contain a lot of key details and micro-wordings that are important for the project, but perhaps not too relevant to you.
 You should ALWAYS try to use the user's words as much as you can, especially if something is worded in a way where it might contain hidden meaning.
+Example:
+Input: ";git add dither to player".
+Output, BAD EXAMPLE: "check git working tree, then add a dither shader to player". <-- This is BAD, because `a dither shader` is implying one doesn't already exist. Also, it assumes that dithering is a shader.
+Output, GOOD EXAMPLE: "check git working tree, then add dither to player". <-- This is GOOD, preserves original user intent.
 """
 
 
