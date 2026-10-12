@@ -51,12 +51,17 @@ Output: Rework pollUsers() to remove unnecessary state or give it one clear owne
 
 
 FINAL IMPORTANT INSTRUCTIONS:
-The user's prompt will often contain a lot of key details and micro-wordings that are important for the project, but perhaps not too relevant to you.
-You should ALWAYS try to use the user's words as much as you can, especially if something is worded in a way where it might contain hidden meaning.
-Example:
+The user's prompt will often contain a lot of key details and micro-wordings that are important, but perhaps not too relevant or obvious to you.
+You should ALWAYS try to use the exact user's words as much as you can, especially if something is worded in a way where it might contain hidden meaning.
+Example 1:
 Input: ";git add dither to player".
 Output, BAD EXAMPLE: "check git working tree, then add a dither shader to player". <-- This is BAD, because `a dither shader` is implying one doesn't already exist. Also, it assumes that dithering is a shader.
 Output, GOOD EXAMPLE: "check git working tree, then add dither to player". <-- This is GOOD, preserves original user intent.
+
+Example 2:
+Input: ";ssot for bufr and sequencer system".
+Output, BAD EXAMPLE: "Check to see if Buffer and Sequencer systems can be made to represent a SSOT. ... blah blah". <-- This is BAD, because we are assumning the player misspelt `bufr` as `Buffer`. But in reality, `bufr` is correct. Also it assumes that both are systems.
+Output, GOOD EXAMPLE: "Check to see if bufr and sequencer system can be made to represent a SSOT. ... blah blah". <-- Much better, preserves intent.
 """
 
 
