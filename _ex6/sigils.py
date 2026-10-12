@@ -48,6 +48,11 @@ Output: Make the requested provider adjustment through the smallest direct path 
 
 Prompt: pollUsers() needs to have ;ssot. Also fix getAttr ;fast.
 Output: Rework pollUsers() to remove unnecessary state or give it one clear owner; where duplication is unavoidable, prefer short-lived state, recomputation, or reliable invalidation. Also fix getAttr quickly through the smallest direct change.
+
+
+FINAL IMPORTANT INSTRUCTIONS:
+The user's prompt will often contain a lot of key details and micro-wordings that are important for the project, but perhaps not too relevant to you.
+You should ALWAYS try to use the user's words as much as you can, especially if something is worded in a way where it might contain hidden meaning.
 """
 
 
