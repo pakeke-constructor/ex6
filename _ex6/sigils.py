@@ -6,7 +6,7 @@ from _ex6.models import M
 
 
 SIGIL_MODEL = M.GEMINI31_FLASH_LITE.id
-_SIGILS = ("ssot", "git", "fast", "smp", "read")
+_SIGILS = ("ssot", "git", "fast", "smp", "read", "short")
 _SIGIL_RE = re.compile(rf";[ \t]*({'|'.join(_SIGILS)})(?![\w-])", re.IGNORECASE)
 
 SYSTEM_PROMPT = """\
@@ -22,7 +22,9 @@ Known sigils:
   while retaining focused verification.
 - smp: Step back and look for a simpler solution. Revisit the problem and constraints if work is
   growing or feels hacky; avoid churn if the solution is already minimal.
-- read: Prioritize readable code, clear control flow, shallow indentation, and well-named variables
+- read: Prioritize readable code, clear control flow, shallow indentation, and well-named variables.
+- short: Make the code shorter by removing unnecessary code and comments and using concise forms,
+  while preserving readability.
 
 A sigil attached to a clause or task applies only to that nearby clause or task. Adjacent sigils
 share scope. A clearly standalone sigil may apply to the whole prompt. Preserve these scopes rather
