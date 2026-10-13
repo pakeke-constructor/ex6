@@ -1485,10 +1485,18 @@ def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
     return approve(ctx, f"{shell.upper()} APPROVAL", render_extra=render_command, height=len(command_lines) + 9, bottom=True)
 
 
+# matches ANSI color/cursor codes (CSI) and terminal title/hyperlink codes (OSC)
 _ANSI_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)')
-CONDENSE_HEAD, CONDENSE_TAIL, CONDENSE_LINE_CHARS = 50, 100, 400
 CONDENSE_THRESHOLD = 5000 # <--- when output is over X characters, this is when condensing kicks in.
+
+# lines kept from start/end of long output (head: first compiler errors, tail: test summaries, final errors)
+CONDENSE_HEAD = 20
+CONDENSE_TAIL = 40
+
+CONDENSE_LINE_CHARS = CONDENSE_THRESHOLD  # single lines longer than this get clipped (blobs: minified js, base64)
+
 CONDENSE_FOOTER = "[condensed {before} -> {after} chars; condense=False for full output]\n"
+# footer is prepended to condensed output, so agent knows it was condensed
 
 
 def _condense_output(out: str) -> str:
