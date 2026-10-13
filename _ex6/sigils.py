@@ -39,6 +39,11 @@ prose into a rigid list unless the original already used one.
 You have almost no project context, so stay broad: do not guess architecture, root cause,
 implementation, or an exact solution. Do not solve the task. Return only the rewritten prompt.
 
+If the conversation already has history, you will receive a <conversation_metadata> block before
+the prompt, then "PROMPT TO REWRITE:". The metadata is background only: use it to understand what
+short or vague words in the prompt refer to. Never rewrite, summarize, or quote the metadata, and
+do not add details from it that the user did not ask for.
+
 Examples:
 Prompt: Review. ;git ;smp
 Output: Review the current approach, starting with the git working tree and checking the final diff. Step back to see whether the problem can be solved more simply, but avoid churn if the approach is already clean and minimal.
@@ -63,6 +68,43 @@ Input: ";ssot for bufr and sequencer system".
 Output, BAD EXAMPLE: "Check to see if Buffer and Sequencer systems can be made to represent a SSOT. ... blah blah". <-- This is BAD, because we are assumning the player misspelt `bufr` as `Buffer`. But in reality, `bufr` is correct. Also it assumes that both are systems.
 Output, GOOD EXAMPLE: "Check to see if bufr and sequencer system can be made to represent a SSOT. ... blah blah". <-- Much better, preserves intent.
 """
+
+
+
+def _one_line(s: str, n: int = 120) -> str:
+    s = " ".join(str(s).split())
+    return s if len(s) <= n else s[:n - 3] + "..."
+
+
+def _build_metadata(ctx: ex6.Context) -> str:
+    msgs = [m for m in ctx.get_messages() if m.role != "system"]
+    first_user = next((m for m in msgs if m.role == "user"), None)
+    if not first_user:
+        return ""
+
+    turns = []
+    last_text = ""
+    for m in msgs:
+        text = ex6.tool_result_text(m.get_msg(ctx)) if m.role != "tool" else ""
+        if m.role == "user":
+            turns.append(f"- user: {_one_line(text)}")
+        elif m.role == "assistant":
+            if text.strip():
+                turns.append(f"- assistant: {_one_line(text)}")
+                last_text = text
+            for tc in m.tool_calls or []:
+                args = ", ".join(f"{k}={_one_line(v, 40)}" for k, v in tc.get("args", {}).items())
+                turns.append(f"- tool call: {tc['name']}({args})")
+
+    return (
+        "<conversation_metadata>\n"
+        "BACKGROUND ONLY. This is a summary of the conversation so far between the user and the coding agent.\n"
+        "It is NOT the prompt to rewrite. Use it only to understand what the user's words refer to.\n\n"
+        f"<first_user_prompt>\n{ex6.tool_result_text(first_user.get_msg(ctx))}\n</first_user_prompt>\n\n"
+        "<turns>\n" + "\n".join(turns) + "\n</turns>\n\n"
+        f"<last_agent_output_tail>\n{last_text[-1000:]}\n</last_agent_output_tail>\n"
+        "</conversation_metadata>"
+    )
 
 
 @handler
@@ -94,9 +136,13 @@ def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
 
     ctx.push_ui(draw)
 
+    metadata = _build_metadata(ctx)
+    user_content = sigil_prompt
+    if metadata:
+        user_content = f"{metadata}\n\nPROMPT TO REWRITE:\n{sigil_prompt}"
     sub = ex6.Context(ctx.app, "__sigils__", model=SIGIL_MODEL, reasoning="none", messages=[
         ex6.Message(role="system", content=SYSTEM_PROMPT),
-        ex6.Message(role="user", content=sigil_prompt),
+        ex6.Message(role="user", content=user_content),
     ])
     for item in ctx.app.get_implementation("invoke_llm")(sub):
         if ctx.stop_early: break
