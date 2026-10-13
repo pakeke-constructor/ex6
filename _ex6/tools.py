@@ -1485,10 +1485,67 @@ def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
     return approve(ctx, f"{shell.upper()} APPROVAL", render_extra=render_command, height=len(command_lines) + 9, bottom=True)
 
 
-def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
+_ANSI_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)')
+CONDENSE_HEAD, CONDENSE_TAIL, CONDENSE_LINE_CHARS = 50, 100, 400
+CONDENSE_THRESHOLD = 5000 # <--- when output is over X characters, this is when condensing kicks in.
+CONDENSE_FOOTER = "[condensed {before} -> {after} chars; condense=False for full output]\n"
+
+
+def _condense_output(out: str) -> str:
+    """
+    Strip ANSI/progress-bar noise, 
+    collapse repeated lines, 
+    clip long lines,
+    keep head+tail of long output.
+    """
+    if len(out) < CONDENSE_THRESHOLD:
+        # no point in condensing it
+        return out
+
+    lossy = False
+    rows = []  # [line, count]
+    # strip ANSI color/escape codes, normalize newlines
+    for line in _ANSI_RE.sub('', out.replace('\r\n', '\n')).split('\n'):
+        # progress bars redraw with '\r': keep only the final state of the line
+        line = line.rsplit('\r', 1)[-1].rstrip()
+        # clip very long lines (minified js, base64, etc)
+        if len(line) > CONDENSE_LINE_CHARS:
+            short_line = line[:CONDENSE_LINE_CHARS] + f" ...(+{len(line) - CONDENSE_LINE_CHARS} chars)"
+            if len(line) > len(short_line):
+                line = short_line
+                lossy = True
+        # count consecutive identical lines
+        if rows and rows[-1][0] == line:
+            rows[-1][1] += 1
+        else:
+            rows.append([line, 1])
+    # emit repeated lines once, with (xN) suffix. (repeated blank lines collapse silently)
+    lines = []
+    for line, n in rows:
+        if n > 1 and line:
+            line += f"  (x{n})"
+            lossy = True
+        lines.append(line)
+    # too many lines: keep head + tail (tail is larger; errors/summaries are usually at the end)
+    if len(lines) > CONDENSE_HEAD + CONDENSE_TAIL:
+        omitted = len(lines) - CONDENSE_HEAD - CONDENSE_TAIL
+        lines = lines[:CONDENSE_HEAD] + [f"... ({omitted} lines omitted) ..."] + lines[-CONDENSE_TAIL:]
+        lossy = True
+    text = '\n'.join(lines).strip()
+    if not lossy:
+        return text
+    # add footer; if footer makes it bigger than original, condensing wasn't worth it
+    footer = CONDENSE_FOOTER.format(before=len(out), after=len(text))
+    if len(footer + text) > len(out):
+        return out
+    return footer + text
+
+
+def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str:
     """Run a bash/shell command and return its output (stdout + stderr combined). Unix only.
     Use for: running tests, checking git status, installing packages, etc.
-    timeout: max seconds to wait (default 30)."""
+    timeout: max seconds to wait (default 30).
+    condense: collapse repeated lines, truncate long output. False = full raw output."""
     if _IS_WINDOWS:
         raise RuntimeError("bash is Unix-only")
     bp = shutil.which("bash")
@@ -1497,8 +1554,10 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
     denial = _approve_command(ctx, "bash", command)
     if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
     try:
-        result = subprocess.run([bp, "-c", command], capture_output=True, text=True, timeout=timeout, cwd=ctx.cwd)
-        out = result.stdout + result.stderr
+        result = subprocess.run([bp, "-c", command], capture_output=True, timeout=timeout, cwd=ctx.cwd)
+        out = (result.stdout + result.stderr).decode(locale.getpreferredencoding(False), errors='replace')
+        if condense:
+            out = _condense_output(out)
         if result.returncode != 0:
             out = f"[exit code {result.returncode}]\n" + out
         return out.strip() or "(no output)"
@@ -1507,10 +1566,11 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str:
 
 
 
-def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str | ex6.Operation:
+def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
     """Run a PowerShell command and return its output (stdout + stderr combined). Windows only.
     Use for: running tests, checking git status, installing packages, etc.
-    timeout: max seconds to wait (default 30)."""
+    timeout: max seconds to wait (default 30).
+    condense: collapse repeated lines, truncate long output. False = full raw output."""
     if not _IS_WINDOWS:
         raise RuntimeError("powershell is Windows-only")
     exe = shutil.which("pwsh") or shutil.which("powershell")
@@ -1561,6 +1621,8 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str | ex6.O
             stderr.close()
         if timed_out:
             return f"ERROR: command timed out after {timeout}s"
+        if condense:
+            out = _condense_output(out)
         if proc.returncode != 0:
             out = f"[exit code {proc.returncode}]\n" + out
         return out.replace('\r\n', '\n').strip() or "(no output)"
