@@ -15,7 +15,9 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
-i want to add a helper-wrapper for 
+i want to add a helper-wrapper for some tools.
+
+
 
 
 I want to make it so it's easier for agents to create their own little local branch, and can make changes easily.

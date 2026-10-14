@@ -1222,6 +1222,7 @@ class Context:
             self.llm_result = None
             self.pending_message = None
             self.llm_cot = self.llm_output_type = ""
+            self._scroll_up = 0
         def run():
             try:
                 text_ = app.pipeline("transform_user_prompt", text, self)
@@ -2018,7 +2019,6 @@ def render_work_mode(tui, buf, inpt, r):
 
     available = h - 1
 
-    if ctx.is_running(): ctx._scroll_up = 0
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
     prev_role = None
