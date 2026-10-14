@@ -2018,10 +2018,6 @@ def render_work_mode(tui, buf, inpt, r):
 
     available = h - 1
 
-    if inpt.consume('KEY_PGUP'): ctx._scroll_up += available // 2
-    if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - available // 2)
-    if inpt.consume('KEY_UP'): ctx._scroll_up += ARROW_SCROLL_SPEED
-    if inpt.consume('KEY_DOWN'): ctx._scroll_up = max(0, ctx._scroll_up - ARROW_SCROLL_SPEED)
     if ctx.is_running(): ctx._scroll_up = 0
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
@@ -2409,6 +2405,12 @@ def _tui_loop(tui: TUI):
         elif tui.mode == "work" and tui.current and tui.current.ui_stack:
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.current.ui_stack[-1](buf, inpt, r)
+        if tui.mode == "work":
+            available = main_r[3] - 1
+            if inpt.consume('KEY_PGUP'): tui.current._scroll_up += available // 2
+            if inpt.consume('KEY_PGDOWN'): tui.current._scroll_up = max(0, tui.current._scroll_up - available // 2)
+            if inpt.consume('KEY_UP'): tui.current._scroll_up += ARROW_SCROLL_SPEED
+            if inpt.consume('KEY_DOWN'): tui.current._scroll_up = max(0, tui.current._scroll_up - ARROW_SCROLL_SPEED)
         if tui.mode != prev_mode:
             buf.invalidate()
         buf.flush(term, tui.app.stdout)
