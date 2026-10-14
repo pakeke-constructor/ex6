@@ -1433,6 +1433,7 @@ class ScreenBuffer:
         self._invalidated = False
 
         def apply_style(fg, st, bg, s):
+            s = s.replace('\t', ' ')
             styled_fg = None
             if isinstance(fg, tuple):
                 styled_fg = term.color_rgb(*fg)

@@ -6,7 +6,7 @@ from _ex6.models import M
 
 
 SIGIL_MODEL = M.GEMINI31_FLASH_LITE.id
-_SIGILS = ("ssot", "git", "fast", "smp", "read", "short")
+_SIGILS = ("ssot", "git", "fast", "smp", "read", "short", "query")
 _SIGIL_RE = re.compile(rf";[ \t]*({'|'.join(_SIGILS)})(?![\w-])", re.IGNORECASE)
 
 SYSTEM_PROMPT = """\
@@ -25,6 +25,8 @@ Known sigils:
 - read: Prioritize readable code, clear control flow, shallow indentation, and well-named variables.
 - short: Make the code shorter by removing unnecessary code and comments and using concise forms,
   while preserving readability.
+- query: Do not write or edit any code; only answer the question or plan with the user. Be concise
+  and direct, respecting the user's time.
 
 A sigil attached to a clause or task applies only to that nearby clause or task. Adjacent sigils
 share scope. A clearly standalone sigil may apply to the whole prompt. Preserve these scopes rather
@@ -54,6 +56,9 @@ Output: Make the requested provider adjustment through the smallest direct path 
 
 Prompt: pollUsers() needs to have ;ssot. Also fix getAttr ;fast.
 Output: Rework pollUsers() to remove unnecessary state or give it one clear owner; where duplication is unavoidable, prefer short-lived state, recomputation, or reliable invalidation. Also fix getAttr quickly through the smallest direct change.
+
+Prompt: ;query why does the renderer flicker on resize?
+Output: Without writing or editing any code, explain why the renderer flickers on resize. Keep the answer concise and direct.
 
 
 FINAL IMPORTANT INSTRUCTIONS:
