@@ -1106,15 +1106,11 @@ def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
     ```
     # (context window too large)
 
-    handoff("", ready=False)
-    ->
-      Handoff tool guidelines:
-      ...
-      ...
-
-    *great, now that I know the guidelines, lets draft a smart handoff document:*
-    handoff("... (handoff text here)", ready=True)
-      -> handoff complete!
+    tool-call: handoff("", ready=False)
+    tool-result: (Handoff tool guidelines: \\n ... \\n ...)
+    cot: *great, now that I know the guidelines, lets draft a smart handoff document:*
+    tool-call: handoff("... (handoff text here)", ready=True)
+    # (handoff complete)
     ```
     """
     if not ready:
@@ -1128,7 +1124,7 @@ def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
 
 
 
-def ask_user(ctx: ex6.Context, question: str) -> str:
+def ask_user(ctx: ex6.Context, question: str) -> str: 
     """Ask user a question and wait for their response. Blocks until answered."""
     result = [None]
 
