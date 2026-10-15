@@ -2088,7 +2088,7 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         buf.puts(x, y, label, txt_color=th.accent); x += len(label)
         buf.puts(x, y, stats, txt_color=th.muted)
         if ctx._pending_inputs:
-            qtxt = ctx._pending_inputs[0].text
+            qtxt = ctx._pending_inputs[0].text.replace('\r', ' ').replace('\n', ' ')
             max_w = input_r[2] - total_w - 2
             prefix = "queued: \""
             if len(qtxt) > max_w - len(prefix) - 1:
