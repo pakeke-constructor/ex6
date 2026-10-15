@@ -1211,7 +1211,7 @@ class Context:
                 if item.input_tokens:
                     message._current_tokens = item.input_tokens + item.output_tokens
 
-    def invoke(self, text, llm_fn=None, attachments=None):
+    def invoke(self, text=None, llm_fn=None, attachments=None):
         app = self.app
         llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
         with self._msg_lock:
@@ -1225,8 +1225,9 @@ class Context:
             self._scroll_up = 0
         def run():
             try:
-                text_ = app.pipeline("transform_user_prompt", text, self)
-                self.append_message(Message(role="user", content=text_, attachments=dict(attachments or {})))
+                if text is not None:
+                    text_ = app.pipeline("transform_user_prompt", text, self)
+                    self.append_message(Message(role="user", content=text_, attachments=dict(attachments or {})))
                 should_loop = True
                 while should_loop and not self.stop_early and self._scheduled is None:
                     message = self._read_llm_stream(llm_fn)

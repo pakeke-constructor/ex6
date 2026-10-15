@@ -16,6 +16,18 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 i want to add a helper-wrapper for some tools.
+common idiom:
+```py
+handoff()
+-> # returns prompt that tells agent how to use it.
+"""
+here's `handoff(arg1, arg2, arg3)`.
+Your 
+"""
+
+
+
+```
 
 
 

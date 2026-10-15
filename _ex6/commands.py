@@ -75,6 +75,14 @@ def stop(tui):
 
 
 @ex6.command
+def go(tui):
+    'Start LLM without adding a user message.'
+    ctx = tui.current
+    if ctx and not ctx.is_running():
+        ctx.invoke()
+
+
+@ex6.command
 def yolo(tui):
     'Toggle auto-approve tools.'
     ctx = tui.current
