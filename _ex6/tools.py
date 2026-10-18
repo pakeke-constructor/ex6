@@ -37,6 +37,7 @@ import locale
 import tempfile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
+from _ex6.provider import supports_audio
 from ex6 import Context, Message
 from typing import Optional
 
@@ -851,6 +852,32 @@ def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
     attachment = ex6.ImageAttachment(managed_path, mime_type, transmitted_width,
                                      transmitted_height, detail)
     return ex6.ToolResult(text, (attachment,))
+
+
+_AUDIO_MIME_TYPES = {".wav": "audio/wav", ".mp3": "audio/mp3", ".flac": "audio/flac",
+                     ".ogg": "audio/ogg", ".aac": "audio/aac", ".aiff": "audio/aiff"}
+MAX_AUDIO_BYTES = 20 * 1024 * 1024
+
+
+def read_audio(ctx: ex6.Context, path: str) -> ex6.ToolResult:
+    """Read a local audio file (WAV, MP3, FLAC, OGG, AAC, AIFF)."""
+    if not supports_audio(ctx):
+        raise ValueError(f"Audio input is not supported for this context ({ctx.model}).")
+    p = ctx.resolve(path)
+    _check_sensitive_image_path(p)
+    if not os.path.isfile(p):
+        raise ValueError(f"'{path}' is not a file.")
+    ext = os.path.splitext(p)[1].lower()
+    mime_type = _AUDIO_MIME_TYPES.get(ext)
+    if mime_type is None:
+        raise ValueError(f"Unsupported audio format: {ext or 'unknown'}.")
+    size = os.path.getsize(p)
+    if size > MAX_AUDIO_BYTES:
+        raise ValueError(f"Audio exceeds {MAX_AUDIO_BYTES // (1024 * 1024)} MB limit.")
+    with open(p, "rb") as f:
+        data = f.read()
+    attachment = ex6.AudioAttachment(ex6.store_attachment(data, ext), mime_type)
+    return ex6.ToolResult(f"Loaded audio {path}\n{mime_type} · {_format_bytes(size)}", (attachment,))
 
 
 def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = None, line_numbers: Optional[bool] = False) -> str:

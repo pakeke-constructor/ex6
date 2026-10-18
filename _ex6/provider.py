@@ -8,6 +8,20 @@ import copy
 from _ex6.models import M, ModelInfo
 
 
+_audio_models = None
+
+
+def supports_audio(ctx: ex6.Context) -> bool:
+    """True if ctx uses this provider and OpenRouter lists audio input for its model."""
+    global _audio_models
+    if ctx.invoke_llm is not None:
+        return False
+    if _audio_models is None:
+        import urllib.request
+        with urllib.request.urlopen("https://openrouter.ai/api/v1/models", timeout=30) as r:
+            models = json.load(r)["data"]
+        _audio_models = {m["id"] for m in models if "audio" in m["architecture"]["input_modalities"]}
+    return ctx.model.split(":")[0] in _audio_models
 
 
 def _cache_file():
@@ -59,16 +73,18 @@ def _tool_content(result: ex6.ToolResult):
         return result.text
     content: list[dict] = [{"type": "text", "text": result.text}]
     for attachment in result.attachments:
-        if not isinstance(attachment, ex6.ImageAttachment):
-            raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
         if not os.path.isfile(attachment.path):
             raise ValueError(f"Attachment file is missing: {attachment.path}")
         with open(attachment.path, "rb") as f:
             encoded = base64.b64encode(f.read()).decode("ascii")
-        content.append({"type": "image_url", "image_url": {
-            "url": f"data:{attachment.mime_type};base64,{encoded}",
-            "detail": attachment.detail,
-        }})
+        url = f"data:{attachment.mime_type};base64,{encoded}"
+        if isinstance(attachment, ex6.ImageAttachment):
+            content.append({"type": "image_url", "image_url": {"url": url, "detail": attachment.detail}})
+        elif isinstance(attachment, ex6.AudioAttachment):
+            # OpenRouter drops input_audio parts in tool messages, but forwards audio data URLs in image_url.
+            content.append({"type": "image_url", "image_url": {"url": url}})
+        else:
+            raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
     return content
 
 
@@ -249,7 +265,7 @@ def _log_safe(value):
     if isinstance(value, list):
         return [_log_safe(v) for v in value]
     if isinstance(value, str) and value.startswith("data:") and ";base64," in value:
-        return "<image data omitted>"
+        return "<base64 data omitted>"
     return value
 
 

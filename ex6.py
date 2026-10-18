@@ -262,6 +262,11 @@ class ImageAttachment(Attachment):
 
 
 @dataclass(frozen=True)
+class AudioAttachment(Attachment):
+    pass
+
+
+@dataclass(frozen=True)
 class InputValue:
     text: str
     attachments: dict[str, Attachment] = field(default_factory=dict)
