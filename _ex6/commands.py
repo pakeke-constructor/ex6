@@ -107,6 +107,11 @@ def dmp(tui):
     'Dump current context to .EX6_CONTEXT_DUMP.txt.'
     ctx = tui.current
     if not ctx: return
+    with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
+        f.write(format_context(ctx))
+
+
+def format_context(ctx) -> str:
     lines = [f"=== Context: {ctx.name} ({ctx.model}) ===\n"]
     for i, msg in enumerate(ctx.get_messages()):
         label = msg.role
@@ -131,8 +136,7 @@ def dmp(tui):
                     lines.append(f"    {k} = {v_str}")
             lines.append(f"  </{name}>")
         lines.append("")
-    with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    return "\n".join(lines)
 
 
 @ex6.command

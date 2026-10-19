@@ -9,11 +9,16 @@ from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
 from _ex6.agents import SONNET, OPUS, LUNA, TERRA, SOL, ASTRA
+from _ex6.commands import format_context
 import ex6
 from ex6 import Context, Message
 import time
 import math
 import os
+import functools
+import shutil
+import threading
+import git
 
 
 
@@ -35,7 +40,7 @@ def split_tasks(text):
 
 
 def join_tasks(preamble, tasks):
-    return preamble + "\n\n".join(tasks)
+    return preamble + "".join(tasks)
 
 
 
@@ -122,6 +127,155 @@ MAIN_TOOLS = [
     git_working_tree,
     load_skill,
 ]
+
+
+
+
+
+BASE = "master"
+
+MAIN_PROMPT = Message(role="system", content="""\
+You are running unattended; no human will answer questions. Make reasonable decisions and note them in your final message.
+Put ALL temp files, smoke tests, screenshots and outputs in `workspace/`. Never delete anything in `workspace/`.
+Ignore `ex6.history/`. Don't commit; the harness commits.""")
+
+REVIEW_PROMPT = Message(role="system", content="""\
+You review a diff (`git diff master`) for one task. Do not edit code.
+Check: single-source-of-truth (no duplicated/fragile state), conciseness, simplicity, task actually done.
+Give short concrete feedback. Final line exactly `VERDICT: OK` or `VERDICT: CHANGES`.""")
+
+DOC_PROMPT = Message(role="system", content="""\
+You maintain AGENTS.md. Given a task and its diff (`git diff master`), update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha). Keep it short. If nothing to add, change nothing.""")
+
+
+# ctx.name -> list of dumped context windows for the current task
+_windows: dict[str, list[str]] = {}
+
+
+@functools.wraps(handoff)
+def _handoff(ctx: Context, txt: str, ready: bool = False) -> str:
+    if ready:
+        _windows.setdefault(ctx.name, []).append(format_context(ctx))
+    return handoff(ctx, txt, ready)
+
+
+READ_TOOLS = [glob, search, read_file, read_headers, read_body, COMMANDLINE_TOOL, git_working_tree]
+H_MAIN_TOOLS = [_handoff if t is handoff else t for t in MAIN_TOOLS]
+
+
+def run(ctx, prompt):
+    """Invoke ctx and block until it finishes. Returns final assistant text."""
+    ctx.invoke(prompt)
+    idle = 0
+    while True:
+        time.sleep(0.5)
+        if ctx.is_running():
+            idle = 0
+            continue
+        last = ctx.get_messages()[-1]
+        if last.role == "assistant" and not last.tool_calls:
+            return last.content
+        # Not running and not done: either the handoff re-invoke gap, or stopped/errored.
+        idle += 1
+        if idle > 6:
+            raise RuntimeError(f"{ctx.name} stopped without finishing")
+
+
+def read_text(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+
+def pop_task(path):
+    preamble, tasks = split_tasks(read_text(path))
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        f.write(join_tasks(preamble, tasks[1:]))
+    os.replace(path + ".tmp", path)
+
+
+
+def do_task(app, tasks_path, preamble, task, main, review, doc):
+    title = task.splitlines()[0][3:].strip()
+    app.debug_print(f"horizon: starting '{title}'")
+    _windows.clear()
+    for ctx in (main, review, doc):
+        ctx.clear()
+        ctx.purge_cache()
+
+    repo = git.Repo()
+    if repo.is_dirty(untracked_files=True):
+        raise RuntimeError("working tree dirty")
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    branch = f"horizon/{ts}"
+    repo.git.checkout(BASE)
+    repo.git.checkout("-b", branch)
+
+    run(main, f"{preamble}\n{task}")
+    repo.git.add(A=True)
+    verdict = run(review, f"Review the changes (`git diff master`) for this task:\n\n{task}")
+    if "VERDICT: CHANGES" in verdict:
+        run(main, f"Reviewer feedback:\n\n{verdict}\n\nAddress this feedback only, then stop.")
+        repo.git.add(A=True)
+    run(doc, f"Task that was just completed:\n\n{task}")
+
+    # finalize
+    repo.git.add(A=True)
+    repo.git.commit("--allow-empty", m=f"horizon: {title}")
+    repo.git.checkout(BASE)
+    repo.git.merge(branch, "--no-ff", m=f"horizon merge: {title}")
+    pop_task(tasks_path)
+
+    audit = os.path.join("ex6.history", f"{ts}_{repo.head.commit.hexsha[:7]}")
+    os.makedirs(audit)
+    if os.path.isdir("workspace"):
+        shutil.move("workspace", os.path.join(audit, "workspace"))
+    for ctx in (main, review, doc):
+        _windows.setdefault(ctx.name, []).append(format_context(ctx))
+    for name, dumps in _windows.items():
+        for i, d in enumerate(dumps):
+            with open(os.path.join(audit, f"{name}.{i}.txt"), "w", encoding="utf-8") as f:
+                f.write(d)
+    with open(os.path.join(audit, "task.md"), "w", encoding="utf-8") as f:
+        f.write(task)
+    repo.git.add("ex6.history")
+    repo.git.commit(m=f"horizon audit: {title}")
+
+
+def run_horizon(app, tasks_path, main=SOL, review=SOL, doc=SOL):
+    tui = app.tui
+    specs = [
+        ("main_agent", main, [TASK_SYSTEM_PROMPT.with_tools(H_MAIN_TOOLS), MAIN_PROMPT]),
+        ("review_agent", review, [REVIEW_PROMPT.with_tools(READ_TOOLS)]),
+        ("doc_agent", doc, [DOC_PROMPT.with_tools(READ_TOOLS + [write_file, edit_file])]),
+    ]
+    ctxs = []
+    for name, preset, msgs in specs:
+        old = tui.get_context(name)
+        if old: tui.remove_context(old)
+        ctx = Context(app, **{**preset, "name": name}, messages=msgs + [ENV_PROMPT, AGENTS_MD], yolo=True)
+        tui.add_context(ctx)
+        ctxs.append(ctx)
+
+    def loop():
+        try:
+            while True:
+                preamble, tasks = split_tasks(read_text(tasks_path))
+                if not tasks: break
+                do_task(app, tasks_path, preamble, tasks[0], *ctxs)
+            app.debug_print("horizon: all tasks done")
+        except Exception as e:
+            app.debug_print(f"horizon stopped: {e}")
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
+
+@ex6.command
+def horizon(tui, tasks_path: str):
+    'Run overnight task loop over a markdown task file.'
+    if not tasks_path: return
+    run_horizon(tui.app, os.path.abspath(tasks_path))
 
 
 
