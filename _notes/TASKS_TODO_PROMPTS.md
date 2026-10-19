@@ -66,7 +66,13 @@ def finalize_task(t):
 
 
 
-I want to formalize the 
+I want to formalize the approval / permissions system a bit.
+Currently, there is only yolo = True or False.
+Also, each tool call (see tools.py) does stuff it's own way, by opening a panel and stuff.
+I would prefer if there was a simpler way of doing this, like a more "formalized" approval system; but something still simple.
+
+Any ideas?
+My first idea would be exposing 
 
 
 

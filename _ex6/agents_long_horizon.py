@@ -132,8 +132,15 @@ Make reasonable decisions and note them in your final message.
 
 
 
-def review_diff(lgtm=False, feedback=""):
-    pass
+REVIEW_RESULT_KEY = "long_horizon:review_result"
+
+
+def review_diff(ctx: Context, lgtm: bool = False, feedback: str = "") -> str:
+    """Submit the review result. Set lgtm=true to approve; otherwise provide concise feedback describing required changes."""
+    if not lgtm and not feedback.strip():
+        raise ValueError("feedback is required when lgtm is false")
+    ctx.data_volatile[REVIEW_RESULT_KEY] = None if lgtm else feedback.strip()
+    return "Review submitted."
 
 REVIEW_PROMPT = Message(role="system", content="""\
 You are a review-agent specialized in finding simpler / better solutions, and ensuring clean code for tasks.
@@ -169,9 +176,8 @@ And finally; check that the task is actually done, and test for any obvious erro
 - Review git diff.
 - Do a deep exploration of surrounding systems.
 Give short feedback at a high level. The agent will be smart enough to interpret your high-level guidance, you SHOULD NOT write the exact code for them.
+- Conclude by calling `review_diff` exactly once. Set `lgtm=true` if the changes are acceptable; otherwise set `lgtm=false` and provide concise feedback describing required changes.
 </agent_strategy>
-
-Final line exactly `VERDICT: OK` or `VERDICT: CHANGES`.
 """)
 
 
@@ -259,8 +265,13 @@ def do_task(main_agent, preamble, t):
 def review(repo, review_agent, t):
     """Returns feedback if changes are needed, else None."""
     repo.git.add(A=True) # so new files show in `git diff master`
-    verdict = run(review_agent, f"Review the changes (`git diff master`) for this task:\n\n{t}")
-    return verdict if "VERDICT: CHANGES" in verdict else None
+    missing = object()
+    review_agent.data_volatile[REVIEW_RESULT_KEY] = missing
+    run(review_agent, f"Review the changes (`git diff master`) for this task:\n\n{t}")
+    result = review_agent.data_volatile[REVIEW_RESULT_KEY]
+    if result is missing:
+        raise RuntimeError("review_agent finished without calling review_diff")
+    return result
 
 
 def fix_review(main_agent, feedback):
@@ -321,7 +332,7 @@ def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=
     tui = app.tui
     specs = [
         ("main_agent", main_preset, [TASK_SYSTEM_PROMPT.with_tools(H_MAIN_TOOLS), MAIN_PROMPT]),
-        ("review_agent", review_preset, [REVIEW_PROMPT.with_tools(READ_TOOLS)]),
+        ("review_agent", review_preset, [REVIEW_PROMPT.with_tools(READ_TOOLS + [review_diff])]),
         ("doc_agent", doc_preset, [DOC_PROMPT.with_tools(READ_TOOLS + [write_file, edit_file])]),
     ]
     agents = []
