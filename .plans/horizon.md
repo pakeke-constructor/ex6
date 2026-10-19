@@ -19,8 +19,8 @@ while tasks:
 ```
 
 ## Dependency: tasklist
-Queue = markdown file, NOT in-memory list. See `.plans/tasklist.md`. `_ex6/tasklist.py` does not exist yet -> build it first (parse/render/load/save/peek/pop/append).
-Loop only uses `peek(path)` and `pop(path)`. Task file lives outside repo or gitignored (branch switching).
+Queue = markdown file, NOT in-memory list. See `.plans/tasklist.md`. Implemented in `_ex6/agents_long_horizon.py`: `string_to_tasks(text) -> (preamble, tasks)`, `tasks_to_string(preamble, tasks)`. Tasks = raw strings, heading included.
+Loop does its own file IO: peek = `tasks[0]`, pop = re-read file, drop `tasks[0]`, write back. Task file lives outside repo or gitignored (branch switching).
 
 ## Design
 New file `_ex6/horizon.py`. Imports `TASK_SYSTEM_PROMPT`, `MAIN_TOOLS` from `agents_long_horizon.py` and presets from `agents.py`.
@@ -43,7 +43,7 @@ Phases:
 - update_docs: doc agent gets `git diff master` + task; updates AGENTS.md only if something worth documenting.
 - finalize_task:
   1. `git add -A`, `git commit -m "horizon: {title}"`, `git checkout master`, `git merge --no-ff <branch>`.
-  2. `tasklist.pop(path)`.
+  2. pop task (re-read file, drop first, write).
   3. audit = `ex6.history/{timestamp}_{short_commit_id}/`.
   4. move `workspace/**` -> `audit/workspace/**`.
   5. write context dumps: `main_agent.0.txt`, `main_agent.1.txt`, `review_agent.0.txt`, `doc_agent.0.txt`, plus `task.md` (title+body).
@@ -80,9 +80,8 @@ doc:
 
 
 ## Files
-- `_ex6/tasklist.py` (new, per `.plans/tasklist.md`)
 - `_ex6/horizon.py` (new, ~150-200 lines)
-- `_ex6/agents_long_horizon.py` (TASK_SYSTEM_PROMPT, MAIN_TOOLS)
+- `_ex6/agents_long_horizon.py` (TASK_SYSTEM_PROMPT, MAIN_TOOLS, tasklist API)
 - `_ex6/commands.py` (extract `format_context` from `/dmp`)
 - `_ex6/tools.py` (`handoff`, `COMMANDLINE_TOOL`, `ENV_PROMPT`, `AGENTS_MD`)
 - `ex6.py` `Context.invoke` / `schedule` (handoff race context)

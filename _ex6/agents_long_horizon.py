@@ -17,6 +17,28 @@ import os
 
 
 
+# Task file: markdown, one `## ` heading per task (ignored inside ``` fences).
+# Each task is the raw text, heading line included.
+
+def string_to_tasks(text):
+    preamble, tasks, in_fence = "", [], False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        if not in_fence and line.startswith("## "):
+            tasks.append(line)
+        elif tasks:
+            tasks[-1] += line
+        else:
+            preamble += line
+    return preamble, tasks
+
+
+def tasks_to_string(preamble, tasks):
+    return preamble + "\n\n".join(tasks)
+
+
+
 
 TASK_SYSTEM_PROMPT = ex6.Message(
 role ="system",

@@ -29,19 +29,10 @@ Body of task. Any markdown.
 - Untouched tasks must round-trip byte-for-byte (human's formatting is sacred).
 
 ## API
-New plugin file: `_ex6/tasklist.py`. (`_ex6/tasks.py` already exists; it's the plan tool, don't touch it.)
-Plain functions, take a `path`. Task = small dataclass `Task(title: str, body: str)`.
-
-Pure:
-- `parse(text) -> (preamble: str, tasks: list[Task])`: fence-aware split.
-- `render(preamble, tasks) -> str`: inverse of parse. `render(*parse(t)) == t`.
-
-File:
-- `load(path) -> (preamble, tasks)`: missing file = `("", [])`.
-- `save(path, preamble, tasks)`: write `path + ".tmp"`, then `os.replace()` (atomic).
-- `peek(path) -> Task | None`
-- `pop(path) -> Task | None`: re-reads file fresh, removes first task, saves. Never writes back a stale copy (human may have edited during a multi-hour task).
-- `append(path, title, body)`: for agents that want to queue follow-up tasks.
+DONE, in `_ex6/agents_long_horizon.py`. User: "All we need [is] tasks_to_string and string_to_tasks."
+- `string_to_tasks(text) -> (preamble, tasks: list[str])`: fence-aware split. Each task = raw text, heading line included.
+- `tasks_to_string(preamble, tasks) -> str`: inverse. `tasks_to_string(*string_to_tasks(t)) == t`.
+Callers do file IO. When popping, re-read the file fresh first (human may have edited during a multi-hour task).
 
 That's all. No locking, no ids, no status fields. Done = popped (and archived by the caller into the audit folder).
 
@@ -57,5 +48,5 @@ Small pure test for `parse`/`render`: round-trip, fenced `##`, preamble, empty f
 `peek`/`pop`/`append`: temporary `smoke_test.py` against a tmp file, then delete it.
 
 ## Files
-- `_ex6/tasklist.py` (new)
+- `_ex6/agents_long_horizon.py`
 - `_notes/TASKS_TODO_PROMPTS.md` (design context for the loop that consumes this)
