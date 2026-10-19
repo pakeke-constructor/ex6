@@ -195,75 +195,98 @@ def pop_task(path):
 
 
 
-def do_task(app, tasks_path, preamble, task, main, review, doc):
-    title = task.splitlines()[0][3:].strip()
-    app.debug_print(f"horizon: starting '{title}'")
-    _windows.clear()
-    for ctx in (main, review, doc):
-        ctx.clear()
-        ctx.purge_cache()
-
-    repo = git.Repo()
+def make_new_git_branch(repo):
     if repo.is_dirty(untracked_files=True):
         raise RuntimeError("working tree dirty")
-    ts = time.strftime("%Y%m%d_%H%M%S")
-    branch = f"horizon/{ts}"
+    branch = f"horizon/{time.strftime('%Y%m%d_%H%M%S')}"
     repo.git.checkout(BASE)
     repo.git.checkout("-b", branch)
+    return branch
 
-    run(main, f"{preamble}\n{task}")
+
+def do_task(main_agent, preamble, t):
+    run(main_agent, f"{preamble}\n{t}")
+
+
+def review(repo, review_agent, t):
+    """Returns feedback if changes are needed, else None."""
+    repo.git.add(A=True) # so new files show in `git diff master`
+    verdict = run(review_agent, f"Review the changes (`git diff master`) for this task:\n\n{t}")
+    return verdict if "VERDICT: CHANGES" in verdict else None
+
+
+def fix_review(main_agent, feedback):
+    run(main_agent, f"Reviewer feedback:\n\n{feedback}\n\nAddress this feedback only, then stop.")
+
+
+def update_docs(repo, doc_agent, t):
     repo.git.add(A=True)
-    verdict = run(review, f"Review the changes (`git diff master`) for this task:\n\n{task}")
-    if "VERDICT: CHANGES" in verdict:
-        run(main, f"Reviewer feedback:\n\n{verdict}\n\nAddress this feedback only, then stop.")
-        repo.git.add(A=True)
-    run(doc, f"Task that was just completed:\n\n{task}")
+    run(doc_agent, f"Task that was just completed:\n\n{t}")
 
-    # finalize
+
+def finalize_task(repo, branch, tasks_path, t, agents):
+    title = t.splitlines()[0][3:].strip()
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon: {title}")
     repo.git.checkout(BASE)
     repo.git.merge(branch, "--no-ff", m=f"horizon merge: {title}")
     pop_task(tasks_path)
 
-    audit = os.path.join("ex6.history", f"{ts}_{repo.head.commit.hexsha[:7]}")
+    audit = os.path.join("ex6.history", f"{time.strftime('%Y%m%d_%H%M%S')}_{repo.head.commit.hexsha[:7]}")
     os.makedirs(audit)
     if os.path.isdir("workspace"):
         shutil.move("workspace", os.path.join(audit, "workspace"))
-    for ctx in (main, review, doc):
+    for ctx in agents:
         _windows.setdefault(ctx.name, []).append(format_context(ctx))
     for name, dumps in _windows.items():
         for i, d in enumerate(dumps):
             with open(os.path.join(audit, f"{name}.{i}.txt"), "w", encoding="utf-8") as f:
                 f.write(d)
     with open(os.path.join(audit, "task.md"), "w", encoding="utf-8") as f:
-        f.write(task)
+        f.write(t)
     repo.git.add("ex6.history")
     repo.git.commit(m=f"horizon audit: {title}")
 
+    _windows.clear()
+    for ctx in agents:
+        ctx.clear()
+        ctx.purge_cache() # reload AGENTS.md etc
 
-def run_horizon(app, tasks_path, main=SOL, review=SOL, doc=SOL):
+
+def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
+    repo = git.Repo()
+    while True:
+        preamble, tasks = split_tasks(read_text(tasks_path))
+        if not tasks: return
+        t = tasks[0]
+
+        branch = make_new_git_branch(repo)
+        do_task(main_agent, preamble, t)
+        feedback = review(repo, review_agent, t)
+        if feedback:
+            fix_review(main_agent, feedback)
+        update_docs(repo, doc_agent, t)
+        finalize_task(repo, branch, tasks_path, t, [main_agent, review_agent, doc_agent])
+
+
+def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=SOL):
     tui = app.tui
     specs = [
-        ("main_agent", main, [TASK_SYSTEM_PROMPT.with_tools(H_MAIN_TOOLS), MAIN_PROMPT]),
-        ("review_agent", review, [REVIEW_PROMPT.with_tools(READ_TOOLS)]),
-        ("doc_agent", doc, [DOC_PROMPT.with_tools(READ_TOOLS + [write_file, edit_file])]),
+        ("main_agent", main_preset, [TASK_SYSTEM_PROMPT.with_tools(H_MAIN_TOOLS), MAIN_PROMPT]),
+        ("review_agent", review_preset, [REVIEW_PROMPT.with_tools(READ_TOOLS)]),
+        ("doc_agent", doc_preset, [DOC_PROMPT.with_tools(READ_TOOLS + [write_file, edit_file])]),
     ]
-    ctxs = []
+    agents = []
     for name, preset, msgs in specs:
         old = tui.get_context(name)
         if old: tui.remove_context(old)
         ctx = Context(app, **{**preset, "name": name}, messages=msgs + [ENV_PROMPT, AGENTS_MD], yolo=True)
         tui.add_context(ctx)
-        ctxs.append(ctx)
+        agents.append(ctx)
 
     def loop():
         try:
-            while True:
-                preamble, tasks = split_tasks(read_text(tasks_path))
-                if not tasks: break
-                do_task(app, tasks_path, preamble, tasks[0], *ctxs)
-            app.debug_print("horizon: all tasks done")
+            horizon_loop(tasks_path, *agents)
         except Exception as e:
             app.debug_print(f"horizon stopped: {e}")
 
