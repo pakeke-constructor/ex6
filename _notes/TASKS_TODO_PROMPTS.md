@@ -72,7 +72,18 @@ Also, each tool call (see tools.py) does stuff it's own way, by opening a panel 
 I would prefer if there was a simpler way of doing this, like a more "formalized" approval system; but something still simple.
 
 Any ideas?
-My first idea would be exposing 
+My first idea would be exposing approval as a handler, perhaps?
+But then again, should it be OR-gated (if any approve, it's approved?)
+or, should it be OR-gated, as in, if any disapprove, it's disapproved?
+I'm leaning towards the former.
+
+GOAL:
+- allow subagents/special classifiers to auto-approve or deny tools
+- allow to user to fully control approval pipeline
+- allow different approvals to exist per tool
+
+my question for you: Are there any alternative paradigms or ideas that could work here?
+something simple that fits with philosophy.
 
 
 
