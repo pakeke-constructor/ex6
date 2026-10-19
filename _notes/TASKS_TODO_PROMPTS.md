@@ -15,6 +15,30 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
+horizon plugin:
+Long running agents that run all-night-long.
+```py
+# human; writes all tasks in a file.
+process_all_tasks(task_agent)
+while tasks:
+    t = tasks.peek()
+    do_task(main_agent, t, can_loop=True)
+    if review(review_agent) # ssot, conciseness, simplicity
+        do_task(main_agent, t, can_loop=False)
+
+    update_docs(doc_agent, t) # updates agents.md
+
+    merge_process(t); tasks.pop()
+    # merges into master.
+    # creates a folder that is titled the commit.
+
+```
+
+
+
+
+
+
 i want to add a helper-wrapper for some tools.
 common idiom:
 ```py
@@ -24,10 +48,9 @@ handoff()
 here's `handoff(arg1, arg2, arg3)`.
 Your 
 """
-
-
-
 ```
+
+
 
 
 
