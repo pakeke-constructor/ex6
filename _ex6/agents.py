@@ -125,7 +125,7 @@ MAIN_TOOLS = [
 EX6_DIR = os.path.dirname(os.path.abspath(ex6.__file__))
 
 
-INTRO_TEMPLATE = """
+EX6_INTRO_TEMPLATE = """
 <ex6_agent>
 You are operating in the `{cwd}` codebase.
 This project uses ex6, a plugin-based, hyper-minimal coding-agent harness/TUI.
@@ -144,7 +144,7 @@ then ex6's AGENTS.md file.
 </ex6_agent>
 """
 
-RULES_TEMPLATE = """
+EX6_RULES_TEMPLATE = """
 <ex6_rules>
 NEVER edit the core ex6 repo (`{ex6_dir}`) unless explicitly asked.
 Generally only edit project plugins: `_ex6/**`. (Same as `{cwd}/_ex6/**`)
@@ -152,12 +152,12 @@ Generally only edit project plugins: `_ex6/**`. (Same as `{cwd}/_ex6/**`)
 """
 
 
-def _intro(ctx):
-    return INTRO_TEMPLATE.format(cwd=ctx.cwd or os.getcwd(), ex6_dir=EX6_DIR)
+def _ex6_intro(ctx):
+    return EX6_INTRO_TEMPLATE.format(cwd=ctx.cwd or os.getcwd(), ex6_dir=EX6_DIR)
 
 
-def _rules(ctx):
-    return RULES_TEMPLATE.format(cwd=ctx.cwd or os.getcwd(), ex6_dir=EX6_DIR)
+def _ex6_rules(ctx):
+    return EX6_RULES_TEMPLATE.format(cwd=ctx.cwd or os.getcwd(), ex6_dir=EX6_DIR)
 
 
 def _ex6_agents_md(ctx):
@@ -165,9 +165,9 @@ def _ex6_agents_md(ctx):
         return f.read()
 
 
-EX6_INTRO = ex6.Message(role="system", content=_intro, overview="ex6-intro")
+EX6_INTRO = ex6.Message(role="system", content=_ex6_intro, overview="ex6-intro")
 EX6_AGENTS_MD = ex6.Message(role="system", content=_ex6_agents_md, overview="AGENTS.md (ex6)")
-EX6_RULES = ex6.Message(role="system", content=_rules, overview="ex6-rules")
+EX6_RULES = ex6.Message(role="system", content=_ex6_rules, overview="ex6-rules")
 
 
 def setup_ex6_specialist(app):
@@ -204,8 +204,7 @@ def custom_setup(app: ex6.App, messages):
     tui = app.tui
     assert tui
 
-    from agent_ex6_specialist import direct_setup
-    direct_setup(app)
+    setup_ex6_specialist(app)
 
     for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
         tui.add_context(Context(app, **preset, messages=messages))
