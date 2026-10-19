@@ -207,7 +207,7 @@ Otherwise, if the code is clean and minimal; that's fine, carry on.
 
 @ex6.command
 def smp(tui, additional_msg: Optional[str]):
-    'Simplify command. Invokes agent, asking it to attempt to simpllfy or shorten recent code'
+    'Simplify command. Invokes agent, asking it to attempt to simplify or shorten recent code'
     ctx = tui.current
     if not ctx: return
     msg = SMP
@@ -235,6 +235,26 @@ def ssot(tui, additional_msg: Optional[str]):
     ctx = tui.current
     if not ctx: return
     msg = SSOT_CHECK
+    if additional_msg:
+        msg += "\n\nAdditional user note:" + additional_msg
+    ctx.invoke(msg)
+
+
+
+SHORT = r'''
+Review the code you just worked on, and remove redundant code.
+Look for: dead/unused code, duplicated logic, unnecessary checks or error handling, needless variables/indirection, and comments that restate the code.
+Prefer concise forms, but keep it readable; no clever one-liners.
+Don't change behaviour too much.
+If the code is already short and clean; that's fine, no changes needed.
+'''
+
+@ex6.command
+def short(tui, additional_msg: Optional[str]):
+    'Shorten command. Invokes agent, asking it to remove redundant code'
+    ctx = tui.current
+    if not ctx: return
+    msg = SHORT
     if additional_msg:
         msg += "\n\nAdditional user note:" + additional_msg
     ctx.invoke(msg)
