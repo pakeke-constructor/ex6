@@ -53,16 +53,14 @@ You are a long-running coding agent who writes simple, minimal code.
 
 <goal>
 Solve the task with minimal bloat.
+Don't be narrow-minded: Consider the overarching system, and consider the APIs used.
 Prefer direct implementation path.
 </goal>
 
 <agent_strategy>
-- Understand request, constraints, user intent first.
-- Classify scope fast: small/local task, vs broad/ambiguous task.
-- Small/local: read target code, implement, test, done.
-- Broad/ambiguous: understand/map-out problem, think, then implement.
-
-ALWAYS check changes afterwards. (Check git diff and/or run tests)
+- Firstly, Understand request, constraints, and intent of the task.
+- Scope out the relevant files, and learn about the existing systems.
+- IF YOU GET STUCK: Consider the *intention* of the task, and how it affects the end user / api consumers. You are free to relax / change the requirements if the problem is particularly difficult, or hacky.
 </agent_strategy>
 
 <agent_tactics>
@@ -72,8 +70,8 @@ ALWAYS check changes afterwards. (Check git diff and/or run tests)
 - If your approach is blocked, don't brute force. Step back, try a different angle, or ask.
 - Avoid backwards-compatibility hacks. If something is unused, delete it.
 
-<plans>
-The `.plans/**` folder is a list of markdown files, representing plans.
+<workspace>
+The `.workspace/**` folder is a list of markdown files, representing plans.
 
 If the user asks to plan stuff, or if you want to plan, write a concisely named `.md` file into the `.plans/` folder.
 Eg: `.plans/buffers1.md`. (This plan is called "buffers1"; Make sure the name is easy to type.)
@@ -135,17 +133,56 @@ MAIN_TOOLS = [
 BASE = "master"
 
 MAIN_PROMPT = Message(role="system", content="""\
-You are running unattended; no human will answer questions. Make reasonable decisions and note them in your final message.
+You are running unattended; no human will answer questions.
+Make reasonable decisions and note them in your final message.
 Put ALL temp files, smoke tests, screenshots and outputs in `workspace/`. Never delete anything in `workspace/`.
-Ignore `ex6.history/`. Don't commit; the harness commits.""")
+After you are finished, your workspace/** folder will be saved for auditability purposes; this way, (your human can help you more in the future).
+In the meantime, 
+... blah blah todo.
+""")
+
+
 
 REVIEW_PROMPT = Message(role="system", content="""\
-You review a diff (`git diff master`) for one task. Do not edit code.
-Check: single-source-of-truth (no duplicated/fragile state), conciseness, simplicity, task actually done.
-Give short concrete feedback. Final line exactly `VERDICT: OK` or `VERDICT: CHANGES`.""")
+You are a review-agent specialized in finding simpler / better solutions, and ensuring clean code for tasks.
+You review stuff at quite a high-level; the agent will be smart enough to 
+
+# Main failures you must check for, step by step:
+
+## Statefulness:
+- Firstly, try to avoid state if possible. Immutable data is very robust.
+- Otherwise, if the state can't be removed, try make it a single-source-of-truth (SSOT).
+- Otherwise, if state must be duplicated, then make sure the state is either short-lived or recomputed frequently.
+- Lastly, if the bad state can't be short-lived or recomputed, think about a way to invalidate it, or make the consumers aware of the duplication.
+Don't forget the bigger picture. 
+
+## Conciseness:
+Every token added is an extra token that must be read in the future.
+(A simple defensive if branch may seem harmless; but in a piece of code that is read frequently by hundreds of future agents, the cost adds up in terms of context window bloat.)
+You should check to see for excessive comments, redundant error-checking, or any other places where the code can be shortened/simplfied whilst retaining readability.
+
+## Code reuse and architecture:
+Look at new function and new piece of code that was created.
+Is all of this code placed in the right place, or should it be restructured to be elsewhere?
+Are there existing functions or existing 
+
+## Simplicity:
+Take a step back, and check for a simpler solution.
+If lot of code was added/changed, take a step back and evaluate the actual problem.
+If the new code seems hacky, look at callers/users of the system, and reason about the intention of the system; maybe something else can change, or the requirements can be relaxed.
+
+And finally; check that the task is actually done, and test for any obvious errors.
+Give short feedback at a high level. The agent will be smart enough to interpret your high-level guidance, you SHOULD NOT write the exact code for them.
+Final line exactly `VERDICT: OK` or `VERDICT: CHANGES`.
+""")
+
+
 
 DOC_PROMPT = Message(role="system", content="""\
-You maintain AGENTS.md. Given a task and its diff (`git diff master`), update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha). Keep it short. If nothing to add, change nothing.""")
+You maintain AGENTS.md. Given a task and its diff (`git diff master`), update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha). Keep it short. If nothing to add, change nothing.
+
+""")
+
 
 
 # ctx.name -> list of dumped context windows for the current task
@@ -302,40 +339,4 @@ def horizon(tui, tasks_path: str):
 
 
 
-def auto_setup(app):
-    messages = [
-        TASK_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
-        ENV_PROMPT,
-        AGENTS_MD,
-    ]
-    custom_setup(app, messages=messages)
-
-
-def custom_setup(app: ex6.App, messages):
-    messages = messages or [
-        TASK_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
-        ENV_PROMPT,
-        AGENTS_MD,
-    ]
-
-    tui = app.tui
-    assert tui
-
-    for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
-        tui.add_context(Context(app, **preset, messages=messages))
-    tui.current = tui.get_context(SOL["name"])
-
-
-
-
-
-
-def setup(app):
-    if os.getcwd() == os.path.dirname(os.path.abspath(ex6.__file__)):
-        auto_setup(app)
-
-    # Inline prompts: write a line ending in ;;; to launch a coding agent
-    from _ex6.inline import setup_inline_watcher
-    if app.tui and app.tui.current:
-        setup_inline_watcher(app, app.tui.current.fork("_inline"))
 
