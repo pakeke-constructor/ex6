@@ -31,11 +31,38 @@ Plugins give absolute control over everything, from orchestration to tools.
 - `ex6.py`: project file. EVERYTHING is layed out in this file.
 
 ex6.py Classes:
+Core:
+- `App`: plugin registry (commands, overrides, handlers, context hooks), theme, budget. `app.call(name, ...)` dispatches overridables/handleables.
+- `TUI`: holds contexts, `current`, mode (selection/work/help/scroll), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
+- `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, per-context `invoke_llm`. `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
+- `Message`: represents a message (system, user, assistant, tool). Content can be str, ToolResult, or callable(ctx) for dynamic/lazy content (snapshotted for caching).
+- `DailyBudget`: daily spend tracking + limit (`app.budget`).
+- `Theme`: color palette dataclass (`app.theme`).
+
+LLM / tools:
+- `ResponseChunk`: streamed chunk from invoke_llm ("text" or "cot").
+- `LLMResult`: final result of invoke_llm: tokens, tool_calls, finish_reason, error, cost.
+- `ToolResult`: tool output: text + attachments.
+- `PendingTool`: a tool call awaiting its result.
+- `Operation`: long-running tool work; tool returns cancel/poll fns, core polls until done.
+- `ToolCall`: display row for a tool call (status running/ok/error).
+- `Attachment` / `ImageAttachment` / `AudioAttachment`: file-backed attachments (path, mime).
+- `InputValue`: submitted input text + attachments.
+- `StrictDataDict`: dict that only allows str/int/float/bool/None.
+
+Rendering / input:
 - `ScreenBuffer`: used to render to screen.
-- `InputPass`: cleared every frame; handles input management/blocking
+- `WrapWriter`: char writer that wraps at width (`buf.writer(x, y, w)`).
 - `Region`: represents (x,y,w,h) tuple; used for immediate-mode layout.
-- `Context`: represents a LLM context window (and potentially a running LLM.)
-- `Message`: represents a message (system, user, assistant). Can return content dynamically/lazily.
+- `InputPass`: cleared every frame; handles input management/blocking (`inpt.consume(key)`).
+- `InputBox`: text input widget (cursor, word nav, image paste).
+
+Plugin decorators:
+- `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
+- `@ex6.override`: replace an overridable fn (invoke_llm, call_tools, make_input, render_* fns).
+- `@ex6.handler(order=0)`: add a handler to a handleable chain (approve_tool, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
+- `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
+- `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
 
 _ex6/**: Built-in plugins
 
@@ -46,6 +73,22 @@ _ex6/**: Built-in plugins
 Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add even define what terminal-UI is.
 
 Loading: core `_ex6/` (next to ex6.py) loads first, then project `_ex6/` (cwd). Files/subfolders starting with `_` are skipped. Files load in sorted order (hence `z_` prefix = load last).
+
+## Overrides vs handlers:
+ex6 core has default fns that plugins can replace or extend. Two mechanisms, because two kinds of extension point:
+- Override: exactly one implementation makes sense (e.g. which LLM backend, how the work-mode is drawn). A plugin replaces the default wholesale. Only one override per fn; a second one raises an error, so conflicts can't hide.
+- Handler: many plugins should get a say (e.g. tool approval, prompt rewriting). Handlers stack in `order`. For `app.call`, the first truthy result wins, else the default runs. For `app.pipeline` (`transform_user_prompt`), each handler transforms the value in turn.
+
+```python
+@ex6.override
+def invoke_llm(ctx):           # replaces the default backend
+    yield ex6.ResponseChunk("text", "hi")
+
+@ex6.handler
+def approve_tool(ctx, tool, args):
+    if ctx.name.startswith("explore"): return True   # allow
+    # return None -> abstain, next handler decides
+```
 
 ## Core plugins:
 Tools / agents:
@@ -77,9 +120,10 @@ Not loaded (underscore-prefixed):
 - _ex6/_plugin_examples/ - example plugins (commands, output_renderer, loading_cube)
 
 
+<ui-ux>
 ## UI layout / UX:
-ex6 has two modes: selection-mode, and work-mode.
-<ui_description>
+ex6 has two modes: selection-mode and work-mode.
+
 **Selection-mode:**  
 Displays list of named context-windows, user chooses what one to work in.
 This UI has 2 panels, split horizontally:
@@ -90,11 +134,9 @@ Right panel - displays model information
 Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)
 User may be prompted to answer questions / clarifications by the LLM. Such questions should be isolated in the context that asked them.
 
-**User-Input:**
 Both work-mode AND selection-mode have a command-input-box at the bottom.
 The user may choose to type commands, (and/or talk to the LLM if in work-mode)
-
-</ui_description>
+</ui-ux>
 
 <IMPORTANT_DETAILS>
 - You are working with an experienced engineer. Be terse; don't over-explain.
