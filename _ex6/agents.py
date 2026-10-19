@@ -11,6 +11,7 @@ from ex6 import Context, Message
 import time
 import math
 import os
+from typing import Any
 
 
 
@@ -95,6 +96,16 @@ ANALYTICAL_MODEL = M.GPT_52_CODEX.id
 PLANNER_MODEL = M.OPUS_46.id
 
 
+# Partial contexts: Context(app, **OPUS) or ctx.override(**OPUS)
+SONNET: dict[str, Any] = dict(name="anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
+OPUS: dict[str, Any]   = dict(name="anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
+LUNA: dict[str, Any]   = dict(name="oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
+TERRA: dict[str, Any]  = dict(name="oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
+# right now, GPT_56_SOL is stronger that GPT-6.
+SOL: dict[str, Any]    = dict(name="oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", invoke_llm=invoke_llm_openai)
+ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
+
+
 
 
 
@@ -128,22 +139,9 @@ def custom_setup(app: ex6.App, messages):
     tui = app.tui
     assert tui
 
-    # tui.add_context(Context(app, "c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages))
-    tui.add_context(Context(app, "anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
-    tui.add_context(Context(app, "anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
-
-    # tui.add_context(Context(app, "c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages))
-    # tui.add_context(Context(app, "c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages))
-    # tui.add_context(Context(app, "c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages))
-
-    _=tui.add_context(Context(app, "oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    _=tui.add_context(Context(app, "oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-
-    # right now, GPT_56_SOL is stronger that GPT-6.
-    c=tui.add_context(Context(app, "oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-
-    _=tui.add_context(Context(app, "oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    tui.current = c
+    for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
+        tui.add_context(Context(app, **preset, messages=messages))
+    tui.current = tui.get_context(SOL["name"])
 
 
 

@@ -8,6 +8,7 @@ from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
+from _ex6.agents import SONNET, OPUS, LUNA, TERRA, SOL, ASTRA
 import ex6
 from ex6 import Context, Message
 import time
@@ -121,22 +122,9 @@ def custom_setup(app: ex6.App, messages):
     tui = app.tui
     assert tui
 
-    # tui.add_context(Context(app, "c_opus", model=M.OPUS_LATEST.id, reasoning="high", messages=messages))
-    tui.add_context(Context(app, "anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
-    tui.add_context(Context(app, "anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_anthropic))
-
-    # tui.add_context(Context(app, "c_codex", model=M.CODEX_LATEST.id, reasoning="high", messages=messages))
-    # tui.add_context(Context(app, "c_zGLM", model=M.GLM_LATEST.id, reasoning="high", messages=messages))
-    # tui.add_context(Context(app, "c_kimi", model=M.KIMI_LATEST.id, reasoning="high", messages=messages))
-
-    _=tui.add_context(Context(app, "oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    _=tui.add_context(Context(app, "oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-
-    # right now, GPT_56_SOL is stronger that GPT-6.
-    c=tui.add_context(Context(app, "oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-
-    _=tui.add_context(Context(app, "oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", messages=messages, invoke_llm=invoke_llm_openai))
-    tui.current = c
+    for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
+        tui.add_context(Context(app, **preset, messages=messages))
+    tui.current = tui.get_context(SOL["name"])
 
 
 

@@ -1068,6 +1068,13 @@ class Context:
     def after_llm_turn(self, fn):
         return self.add_context_hook("after_llm_turn", fn)
 
+    def override(self, **settings):
+        """Set fields from a partial-context dict, eg: ctx.override(**OPUS)"""
+        for k, v in settings.items():
+            assert hasattr(self, k), f"Context has no field {k!r}"
+            setattr(self, k, v)
+        return self
+
     def get_messages(self) -> tuple:
         with self._msg_lock:
             return tuple(self._messages)
