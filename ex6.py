@@ -1068,13 +1068,6 @@ class Context:
     def after_llm_turn(self, fn):
         return self.add_context_hook("after_llm_turn", fn)
 
-    def override(self, **settings):
-        """Set fields from a partial-context dict, eg: ctx.override(**OPUS)"""
-        for k, v in settings.items():
-            assert hasattr(self, k), f"Context has no field {k!r}"
-            setattr(self, k, v)
-        return self
-
     def get_messages(self) -> tuple:
         with self._msg_lock:
             return tuple(self._messages)
@@ -1113,8 +1106,12 @@ class Context:
         return self.pending_message is not None
 
     def __post_init__(self, messages):
-        if messages:
-            self._messages.extend(messages)
+        for m in messages or ():
+            # Copy defensively: messages are often shared module-level constants.
+            m = copy.copy(m)
+            m.tools = list(m.tools)
+            m.attachments = dict(m.attachments)
+            self._messages.append(m)
         if self.schema_id:
             self.app.context_schemas.setdefault(self.schema_id, self)
 

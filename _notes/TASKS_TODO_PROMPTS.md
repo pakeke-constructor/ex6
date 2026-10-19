@@ -28,10 +28,23 @@ while tasks:
 
     update_docs(doc_agent, t) # updates agents.md
 
-    merge_process(t); tasks.pop()
-    # merges into master.
-    # creates a folder that is titled the commit.
+    finish_task(t, ...)
 
+"""
+throughout the task, the agent uses a folder called `workspace/**`.
+It uses this folder to put ALL of it's screenshots, outputs, 
+
+
+
+"""
+
+def merge_stuff(t):
+    """
+    - merges the current branch into master.
+    - pops tasks from the json list.
+    - creates a new folder, called `ex6.history/{timestamp}_{commit_id}/**
+    - moves EVERYTHING from workspace into that folder
+    """
 ```
 
 

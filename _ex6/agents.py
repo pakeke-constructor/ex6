@@ -96,7 +96,7 @@ ANALYTICAL_MODEL = M.GPT_52_CODEX.id
 PLANNER_MODEL = M.OPUS_46.id
 
 
-# Partial contexts: Context(app, **OPUS) or ctx.override(**OPUS)
+# Partial contexts: Context(app, **OPUS)
 SONNET: dict[str, Any] = dict(name="anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
 OPUS: dict[str, Any]   = dict(name="anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
 LUNA: dict[str, Any]   = dict(name="oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
