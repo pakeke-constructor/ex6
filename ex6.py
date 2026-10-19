@@ -70,16 +70,12 @@ def _declaration(kind):
     return mark
 
 
-def _declaration_ctx(kind):
-    return _declaration(kind)
-
-
 CONTEXT_HOOK_KINDS = ("after_tool_calls", "after_llm_turn", "output_renderer", "context_removed")
 
-after_tool_calls = _declaration_ctx("after_tool_calls")
-context_removed = _declaration_ctx("context_removed")
-after_llm_turn = _declaration_ctx("after_llm_turn")
-output_renderer = _declaration_ctx("output_renderer")
+after_tool_calls = _declaration("after_tool_calls")
+context_removed = _declaration("context_removed")
+after_llm_turn = _declaration("after_llm_turn")
+output_renderer = _declaration("output_renderer")
 command = _declaration("command")
 overridable = _declaration("overridable")
 override = _declaration("override")
@@ -432,7 +428,7 @@ class App:
         self.overrides[name] = fn
         return fn
 
-    def handleable(self, fn):
+    def _register_handleable(self, fn):
         self.handleables[fn.__name__] = fn
         self.handlers.setdefault(fn.__name__, [])
         return fn
@@ -493,7 +489,7 @@ class App:
             elif kind == "command": self.command(value)
             elif kind == "overridable": self.overridable(value)
             elif kind == "override": self.override(value)
-            elif kind == "handleable": self.handleable(value)
+            elif kind == "handleable": self._register_handleable(value)
             elif kind == "handler": self.handler(value)
 
     def setup_module(self, module):
