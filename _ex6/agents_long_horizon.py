@@ -22,7 +22,7 @@ import git
 
 
 
-# Task file: markdown, one `## ` heading per task (ignored inside ``` fences).
+# Task file: markdown, one `##` heading per task (ignored inside ``` fences); title optional.
 # Each task is the raw text, heading line included.
 
 def split_tasks(text):
@@ -30,7 +30,7 @@ def split_tasks(text):
     for line in text.splitlines(keepends=True):
         if line.lstrip().startswith("```"):
             in_fence = not in_fence
-        if not in_fence and line.startswith("## "):
+        if not in_fence and (line.startswith("## ") or line.rstrip() == "##"):
             tasks.append(line)
         elif tasks:
             tasks[-1] += line
@@ -163,7 +163,8 @@ You should check to see for excessive comments, redundant error-checking, or any
 ## Code reuse and architecture:
 Look at new function and new piece of code that was created.
 Is all of this code placed in the right place, or should it be restructured to be elsewhere?
-Are there existing functions or existing 
+A common failure mode of coding agents is to put a function in the files that it is familiar with, instead of placing it somewhere that makes sense.
+Part of your job is guarding against that; if a new API is exposed, you should do some quick checks to see if there's a smarter place to put it.
 
 ## Simplicity:
 Take a step back, and check for a simpler solution.
@@ -283,8 +284,14 @@ def update_docs(repo, doc_agent, t):
     run(doc_agent, f"Task that was just completed:\n\n{t}")
 
 
+def clean_task(t):
+    """Drop a bare `##` heading so untitled tasks are just their description."""
+    head, _, rest = t.partition("\n")
+    return rest.strip() + "\n" if head.strip() == "##" else t
+
+
 def finalize_task(repo, branch, tasks_path, t, agents):
-    title = t.splitlines()[0][3:].strip()
+    title = t.strip().splitlines()[0].removeprefix("## ").strip()[:72]
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon: {title}")
     repo.git.checkout(BASE)
@@ -317,7 +324,7 @@ def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
     while True:
         preamble, tasks = split_tasks(read_text(tasks_path))
         if not tasks: return
-        t = tasks[0]
+        t = clean_task(tasks[0])
 
         branch = make_new_git_branch(repo)
         do_task(main_agent, preamble, t)

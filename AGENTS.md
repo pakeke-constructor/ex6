@@ -100,7 +100,7 @@ Tools / agents:
 - _ex6/skills.py - load_skill tool; progressive disclosure of `_ex6/_skills/*.md` (yaml frontmatter)
 - _ex6/tasks.py - plan_write/plan_read/plan_add_log/plan_done/plan_list tools, backed by `.plans/*.md`
 - _ex6/agents.py - basic agent definitions (system prompts, model presets), as an example. Projects usually define their own agents. Also starts inline watcher.
-- _ex6/agents_long_horizon.py - /horizon: overnight loop over a markdown task file (one `## ` heading per task)
+- _ex6/agents_long_horizon.py - /horizon: overnight loop over a markdown task file (one `##` heading per task; title optional)
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
