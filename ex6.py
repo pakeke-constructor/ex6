@@ -77,9 +77,9 @@ context_removed = _declaration("context_removed")
 after_llm_turn = _declaration("after_llm_turn")
 output_renderer = _declaration("output_renderer")
 command = _declaration("command")
-overridable = _declaration("overridable")
+_overridable = _declaration("overridable")
 override = _declaration("override")
-handleable = _declaration("handleable")
+_handleable = _declaration("handleable")
 
 
 def handler(fn=None, *, order=0):
@@ -114,6 +114,13 @@ def dbg(tui):
     print(f"({len(tui.app.debug_buffer)} entries)\n")
     for line in tui.app.debug_buffer:
         print(line)
+
+@command
+def yolo(tui):
+    'Toggle auto-approve tools.'
+    ctx = tui.current
+    if not ctx: return
+    ctx.yolo = not ctx.yolo
 
 
 def get_folder() -> Path:
@@ -382,6 +389,7 @@ class App:
         self._registered_modules = set()
         self._setup_modules = set()
         self._register_module(sys.modules[__name__])
+        self.handlers["approve_tool"].append((100, _approve_yolo))
 
     def debug_print(self, *args, **kwargs):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -413,7 +421,7 @@ class App:
     def after_llm_turn(self, fn):
         return self.add_context_hook("after_llm_turn", fn)
 
-    def overridable(self, fn):
+    def _register_overridable(self, fn):
         self.default_implementations[fn.__name__] = fn
         self.overrides.setdefault(fn.__name__, fn)
         return fn
@@ -487,7 +495,7 @@ class App:
             kind = getattr(value, "_ex6_declaration", None)
             if kind in CONTEXT_HOOK_KINDS: self.add_context_hook(kind, value)
             elif kind == "command": self.command(value)
-            elif kind == "overridable": self.overridable(value)
+            elif kind == "overridable": self._register_overridable(value)
             elif kind == "override": self.override(value)
             elif kind == "handleable": self._register_handleable(value)
             elif kind == "handler": self.handler(value)
@@ -542,7 +550,7 @@ def run_tui():
         os.execv(sys.executable, args)
 
 
-@overridable
+@_overridable
 def invoke_llm(ctx):
     """Override this to use real LLM."""
     for _ in range(60):
@@ -863,7 +871,7 @@ def _poll_operation(ctx, operation: Operation):
     return value
 
 
-@overridable
+@_overridable
 def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     '''
     Blocks the thread until tools are complete.
@@ -1785,7 +1793,7 @@ class InputBox:
         return self.text.strip()
 
 
-@overridable
+@_overridable
 def make_input(on_submit):
     return InputBox(on_submit)
 
@@ -1794,7 +1802,7 @@ def make_input(on_submit):
 # --- SELECTION MODE UI ---
 
 
-@overridable
+@_overridable
 def render_selection_mode_context_name(tui, buf, ctx, x, y):
     th = tui.app.theme
     selected = ctx is tui.current
@@ -1813,7 +1821,7 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
     x += len(toks)
     buf.puts(x, y, suffix, txt_color=th.warning)
 
-@overridable
+@_overridable
 def render_selection_left(tui, buf, inpt, r, allow_nav=True):
     x, y, w, h = r
     th = tui.app.theme
@@ -1840,7 +1848,7 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
         buf.puts(x + 1, row, prefix, txt_color=th.selection if selected else None)
         tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(prefix), row)
 
-@overridable
+@_overridable
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
     th = tui.app.theme
     token_count = ctx.token_count()
@@ -1855,7 +1863,7 @@ def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
     buf.puts(x + bar_w - 1, y, "]", txt_color=th.muted)
     buf.puts(x + bar_w + 1, y, tok_str, txt_color=th.accent_alt)
 
-@overridable
+@_overridable
 def render_selection_right(tui, buf, r):
     x, y, w, h = r
     th = tui.app.theme
@@ -1910,7 +1918,7 @@ def _default_tool_row(tc, result):
 
 
 
-@overridable
+@_overridable
 def render_work_mode(tui, buf, inpt, r):
     x, y, w, h = r
     ctx = tui.current
@@ -1988,7 +1996,7 @@ def render_work_mode(tui, buf, inpt, r):
     tui.app.call("render_context_window_bar", tui, buf, ctx, x + label_w, y, bar_w)
 
 
-@overridable
+@_overridable
 def render_work_mode_input(tui, buf, inpt, input_r, input_box):
     ctx = tui.current
     th = tui.app.theme
@@ -2026,11 +2034,26 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 
 
 
-@handleable
+@_handleable
 def transform_user_prompt(text, ctx):
     return text
 
-@handleable
+
+def request_approval(ctx, tool, args):
+    """Run the approve_tool chain. True = approved, "reason" = denied, None = no handler decided."""
+    if ctx.stop_early:
+        return "stopped"
+    return ctx.app.call("approve_tool", ctx, tool, args)
+
+@_handleable
+def approve_tool(ctx, tool, args):
+    """Handlers return True (allow), "reason" (deny), or None (abstain)."""
+    return None
+
+def _approve_yolo(ctx, tool, args):
+    if ctx.yolo: return True
+
+@_handleable
 def render_work_mode_footer(tui, buf, r, ctx):
     x, y, w, h = r
     th = tui.app.theme

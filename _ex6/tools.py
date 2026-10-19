@@ -267,7 +267,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
         else:
             old = ""
         diff = _make_diff(old, content)
-        denial = approve(ctx, f"Write file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        denial = _approve(ctx, "write_file", {"file": file, "content": content}, f"Write file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
         d = os.path.dirname(p)
         if d: os.makedirs(d, exist_ok=True)
@@ -381,7 +381,7 @@ def patch_file(ctx: ex6.Context, file: str, patch: str) -> str:
             old = f.read()
         updated = _apply_file_patch(old, patch)
         diff = _make_diff(old, updated)
-        denial = approve(ctx, f"Patch file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        denial = _approve(ctx, "patch_file", {"file": file, "patch": patch}, f"Patch file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial:
             raise ValueError(f"User denied your patch_file request, with reason: {denial}")
         with open(p, "w", encoding="utf-8", newline="") as f:
@@ -414,7 +414,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
         def do_edit(original):
             new_content = content.replace(original, replace, 1)
             diff = _make_diff(original, replace)
-            denial = approve(ctx, f"Edit file: {file}", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+            denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
             if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
             with open(p, "w") as f:
                 f.write(new_content)
@@ -537,7 +537,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         old_text = "".join(lines)
         new_text = "".join(new_lines)
         diff = _make_diff(old_text, new_text)
-        denial = approve(ctx, f"Edit file: {file} (lines {start}-{end})", render_extra=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        denial = _approve(ctx, "edit_file_lines", {"file": file, "start": start, "end": end, "content": content}, f"Edit file: {file} (lines {start}-{end})", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
         with open(p, "w") as f:
             f.writelines(new_lines)
@@ -1384,58 +1384,6 @@ def _render_diff(ctx, buf, diff_lines, x, y, w, h, filename=None):
     return len(visible) + (1 if truncated else 0)
 
 
-def approve(ctx: ex6.Context, description: str, render_extra=None, height=None, bottom=False) -> str | None:
-    """Show approval dialog. ENTER=approve (returns None), text+ENTER=deny (returns reason).
-    render_extra: optional fn(buf, x, y, w, h) called below the chrome to render extra info."""
-    if ctx.stop_early:
-        return "stopped"
-    if ctx.yolo:
-        return None
-    result = [False, None]  # [answered, denial_reason]
-
-    def on_submit(value):
-        result[0] = True
-        result[1] = value.text if value.text.strip() else None
-        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-
-    input_draw = ctx.app.call("make_input", on_submit)
-
-    def draw(buf: ex6.ScreenBuffer, inpt, r):
-        th = ctx.app.theme
-        panel = ex6.Region(*r)
-        if height is not None:
-            panel_h = min(panel[3], height)
-            panel_y = panel[1] + panel[3] - panel_h if bottom else panel[1]
-            panel = ex6.Region(panel[0], panel_y, panel[2], panel_h)
-        content = panel.shrink(3, 1)
-
-        buf.fill(panel, char=' ', bg_color=None)
-        buf.rect_line(panel, txt_color=th.accent)
-        buf.puts(content[0], content[1], description[:content[2]], txt_color=th.accent_alt, style='bold')
-        buf.puts(content[0], content[1] + 1, "ENTER approve | type reason + ENTER to deny"[:content[2]], txt_color=th.muted)
-        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
-            result[0] = True
-            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-            return
-        input_r = ex6.Region(content[0], content[1] + 2, content[2], 1)
-        input_draw(buf, inpt, input_r, txt_color=th.warning)
-        if render_extra:
-            extra_r = ex6.Region(content[0], content[1] + 4, content[2], max(0, content[3] - 4))
-            if extra_r[3] > 0:
-                render_extra(buf, *extra_r)
-
-    ctx.push_ui(draw)
-
-    while draw in ctx.ui_stack:
-        if ctx.stop_early:
-            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-            return "stopped"
-        time.sleep(0.05)
-
-    return "stopped" if ctx.stop_early else result[1]
-
-
-
 def _get_agents_md(ctx):
     root = ctx.cwd or os.getcwd()
     for p in [ "AGENTS.md", "CLAUDE.md", ".claude/CLAUDE.md",]:
@@ -1493,8 +1441,64 @@ Usage: safe_cwd("tag_name")"""
     return safe_cwd
 
 
-def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
-    command_lines = command.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+def _command_lines(command: str) -> list[str]:
+    return command.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+
+
+def _ask_human(ctx, title, preview=None, height=None):
+    """Human approval panel. ENTER=approve (True), text+ENTER=deny (reason). No TUI = approve.
+    preview: fn(buf, x, y, w, h). height: short panel at bottom of screen."""
+    if ctx.app.tui is None:
+        return True # No TUI; so just continue
+
+    result = [None]  # denial reason
+
+    def on_submit(value):
+        result[0] = value.text if value.text.strip() else None
+        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+
+    input_draw = ctx.app.call("make_input", on_submit)
+
+    def draw(buf, inpt, r):
+        th = ctx.app.theme
+        panel = ex6.Region(*r)
+        if height is not None:
+            panel_h = min(panel[3], height)
+            panel = ex6.Region(panel[0], panel[1] + panel[3] - panel_h, panel[2], panel_h)
+        content = panel.shrink(3, 1)
+        buf.fill(panel, char=' ', bg_color=None)
+        buf.rect_line(panel, txt_color=th.accent)
+        buf.puts(content[0], content[1], title[:content[2]], txt_color=th.accent_alt, style='bold')
+        buf.puts(content[0], content[1] + 1, "ENTER approve | type reason + ENTER to deny"[:content[2]], txt_color=th.muted)
+        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
+            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+            return
+        input_draw(buf, inpt, ex6.Region(content[0], content[1] + 2, content[2], 1), txt_color=th.warning)
+        preview_r = ex6.Region(content[0], content[1] + 4, content[2], max(0, content[3] - 4))
+        if preview and preview_r[3] > 0:
+            preview(buf, *preview_r)
+
+    ctx.push_ui(draw)
+    while draw in ctx.ui_stack:
+        if ctx.stop_early:
+            ctx.ui_stack.remove(draw)
+            return "stopped"
+        time.sleep(0.05)
+    if ctx.stop_early:
+        return "stopped"
+    return result[0] or True
+
+
+def _approve(ctx, tool, args, title, preview=None, height=None) -> str | None:
+    """Approval chain, then human panel if no handler decided. Returns None if approved, else denial reason."""
+    verdict = ex6.request_approval(ctx, tool, args)
+    if verdict is None:
+        verdict = _ask_human(ctx, title, preview, height)
+    return None if verdict is True else verdict
+
+
+def _approve_command(ctx: ex6.Context, tool: str, args: dict) -> str | None:
+    command_lines = _command_lines(args["command"])
 
     def render_command(buf, x, y, w, h):
         th = ctx.app.theme
@@ -1505,7 +1509,7 @@ def _approve_command(ctx: ex6.Context, shell: str, command: str) -> str | None:
         buf.rect_line(command_r, txt_color=th.warning)
         buf.print_contained('\n'.join(command_lines), command_r.shrink(2, 1), txt_color=th.warning, wrap=False)
 
-    return approve(ctx, f"{shell.upper()} APPROVAL", render_extra=render_command, height=len(command_lines) + 9, bottom=True)
+    return _approve(ctx, tool, args, f"{tool.upper()} APPROVAL", preview=render_command, height=len(command_lines) + 9)
 
 
 # matches ANSI color/cursor codes (CSI) and terminal title/hyperlink codes (OSC)
@@ -1582,7 +1586,7 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = Tru
     bp = shutil.which("bash")
     if not bp:
         return "ERROR: bash not found"
-    denial = _approve_command(ctx, "bash", command)
+    denial = _approve_command(ctx, "bash", {"command": command, "timeout": timeout, "condense": condense})
     if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
     try:
         result = subprocess.run([bp, "-c", command], capture_output=True, timeout=timeout, cwd=ctx.cwd)
@@ -1607,7 +1611,7 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool
     exe = shutil.which("pwsh") or shutil.which("powershell")
     if not exe:
         return "ERROR: powershell not found"
-    denial = _approve_command(ctx, "PowerShell", command)
+    denial = _approve_command(ctx, "powershell", {"command": command, "timeout": timeout, "condense": condense})
     if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
     stdout, stderr = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     try:

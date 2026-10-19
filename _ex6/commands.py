@@ -83,14 +83,6 @@ def go(tui):
 
 
 @ex6.command
-def yolo(tui):
-    'Toggle auto-approve tools.'
-    ctx = tui.current
-    if not ctx: return
-    ctx.yolo = not ctx.yolo
-
-
-@ex6.command
 def restart(tui):
     'Restart ex6.'
     tui.restart()
