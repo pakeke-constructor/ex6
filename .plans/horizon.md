@@ -6,6 +6,57 @@ Each task gets its own branch, a review pass, a docs pass, then gets merged + ar
 Everything the agents did goes into an audit folder, so "the human operator [can] audit EVERY change that happened, and see exactly what went wrong and why."
 Super basic version first. Keep custom agent sys-prompts "deliberately simple and short".
 
+<original-user-spec>
+horizon plugin:
+Long running agents that run all-night-long.
+
+```py
+# human; writes all tasks in a file.
+process_all_tasks(task_agent)
+
+while tasks:
+    make_new_git_branch() # from master
+
+    t = tasks.peek()
+    do_task(main_agent, t, can_loop=True)
+    if review(review_agent) # ssot, conciseness, simplicity
+        do_task(main_agent, t, can_loop=False)
+
+    update_docs(doc_agent, t) # updates agents.md
+
+    finalize_task(t, ...)
+
+
+"""
+throughout the task, the agent uses a folder called `workspace/**`.
+
+It uses this folder to put ALL of it's screenshots, outputs, and especially any of it's temp files that it uses to test stuff / smoke-tests.
+
+The agent doesn't need to delete anything from workspace; it should keep everything for auditability.
+This gives the system incredibly good observability.
+
+-----------------------------
+
+For the `tasks.peek()` and `tasks.pop()` stuff:
+it should NOT use an actual in-memory list.
+instead, it should
+
+"""
+
+def finalize_task(t):
+    """
+    - merges the current branch into master.
+    - pops tasks from the json list.
+    - creates a new folder, called `ex6.history/{timestamp}_{commit_id}/**. (Lets call this folder the `audit` folder for brevity.)
+    - moves EVERYTHING from workspace/** into audit/workspace/**
+    - copies a list of agent-context windows into audit. So you get `main_agent.0.txt`, main_agent.1.txt`, etc etc. `review_agent.0.txt`, `doc_agent.0.txt`.
+    - This will allow the human operator to audit EVERY change that happened, and see exactly what went wrong and why.
+    """
+```
+
+</original-user-spec>
+
+
 ## Loop (from spec)
 ```py
 while tasks:
