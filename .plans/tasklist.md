@@ -29,9 +29,9 @@ Body of task. Any markdown.
 - Untouched tasks must round-trip byte-for-byte (human's formatting is sacred).
 
 ## API
-DONE, in `_ex6/agents_long_horizon.py`. User: "All we need [is] tasks_to_string and string_to_tasks."
-- `string_to_tasks(text) -> (preamble, tasks: list[str])`: fence-aware split. Each task = raw text, heading line included.
-- `tasks_to_string(preamble, tasks) -> str`: inverse. `tasks_to_string(*string_to_tasks(t)) == t`.
+DONE, in `_ex6/agents_long_horizon.py`. User: "All we need [is] tasks_to_string and string_to_tasks." (renamed to split_tasks/join_tasks)
+- `split_tasks(text) -> (preamble, tasks: list[str])`: fence-aware split. Each task = raw text, heading line included.
+- `join_tasks(preamble, tasks) -> str`: inverse. `join_tasks(*split_tasks(t)) == t`.
 Callers do file IO. When popping, re-read the file fresh first (human may have edited during a multi-hour task).
 
 That's all. No locking, no ids, no status fields. Done = popped (and archived by the caller into the audit folder).

@@ -19,7 +19,7 @@ while tasks:
 ```
 
 ## Dependency: tasklist
-Queue = markdown file, NOT in-memory list. See `.plans/tasklist.md`. Implemented in `_ex6/agents_long_horizon.py`: `string_to_tasks(text) -> (preamble, tasks)`, `tasks_to_string(preamble, tasks)`. Tasks = raw strings, heading included.
+Queue = markdown file, NOT in-memory list. See `.plans/tasklist.md`. Implemented in `_ex6/agents_long_horizon.py`: `split_tasks(text) -> (preamble, tasks)`, `join_tasks(preamble, tasks)`. Tasks = raw strings, heading included.
 Loop does its own file IO: peek = `tasks[0]`, pop = re-read file, drop `tasks[0]`, write back. Task file lives outside repo or gitignored (branch switching).
 
 ## Design

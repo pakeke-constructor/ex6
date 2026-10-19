@@ -20,7 +20,7 @@ import os
 # Task file: markdown, one `## ` heading per task (ignored inside ``` fences).
 # Each task is the raw text, heading line included.
 
-def string_to_tasks(text):
+def split_tasks(text):
     preamble, tasks, in_fence = "", [], False
     for line in text.splitlines(keepends=True):
         if line.lstrip().startswith("```"):
@@ -34,7 +34,7 @@ def string_to_tasks(text):
     return preamble, tasks
 
 
-def tasks_to_string(preamble, tasks):
+def join_tasks(preamble, tasks):
     return preamble + "\n\n".join(tasks)
 
 
