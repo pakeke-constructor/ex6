@@ -120,64 +120,6 @@ def dbg(tui):
         print(line)
 
 
-@command
-def ctx(tui):
-    tui.enter_scroll_mode()
-    ctx = tui.current
-    if not ctx:
-        print("No active context."); return
-    print("\n".join(_build_ctx_dump_lines(ctx, leading_blanks=5)))
-
-
-def _build_ctx_dump_lines(ctx, leading_blanks=0):
-    lines = []
-    if leading_blanks:
-        lines.extend([""] * leading_blanks)
-    lines.append(f"=== Context: {ctx.name} ({ctx.model}) ===\n")
-    for i, msg in enumerate(ctx.get_messages()):
-        label = msg.role
-        if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
-        if msg.attachments: label += f" ({len(msg.attachments)} attachment(s))"
-        lines.append(f"--- [{i}] {label} ---")
-        lines.append(tool_result_text(msg.get_msg(ctx)))
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
-                name = tc['name']
-                args = tc.get("args", {})
-                if not args:
-                    lines.append(f"  <{name} />")
-                else:
-                    lines.append(f"  <{name}>")
-                    for k, v in args.items():
-                        v_str = str(v)
-                        if '\n' in v_str:
-                            lines.append(f"    {k} =")
-                            for line in v_str.split('\n'):
-                                lines.append(f"      {line}")
-                        else:
-                            lines.append(f"    {k} = {v_str}")
-                    lines.append(f"  </{name}>")
-        lines.append("")
-    return lines
-
-
-@command
-def dmp(tui):
-    ctx = tui.current
-    if not ctx: return
-    lines = _build_ctx_dump_lines(ctx)
-    with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-
-@command
-def dbg_keys(tui):
-    """Toggle key debug logging."""
-    tui.log_keys = not tui.log_keys
-    tui.app.debug_print(f"Key logging {'ON' if tui.log_keys else 'OFF'}")
-
-
-
 def get_folder() -> Path:
     """Returns app data folder: %APPDATA%/ex6 on Windows, ~/ex6 on Unix."""
     if sys.platform == "win32":
@@ -1306,27 +1248,6 @@ class Context:
             self._read_hashes = {}
             self._line_snapshots = {}
             self.data_volatile = {}
-
-    def dump_context(self) -> str:
-        if not self.schema_id:
-            raise RuntimeError("Context has no schema_id")
-        messages = []
-        for message in self.get_messages():
-            messages.append({
-                "role": message.role,
-                "content": tool_result_text(message.get_msg(self)),
-                "tools": [fn.__name__ for fn in message.tools],
-                "tool_calls": message.tool_calls,
-                "tool_call_id": message.tool_call_id,
-                "overview": message.overview,
-            })
-        return json.dumps({
-            "format": 1,
-            "schema_id": self.schema_id,
-            "name": self.name,
-            "messages": messages,
-            "data": dict(self.data),
-        }, ensure_ascii=False, indent=2)
 
     def clone_with_context(self, serialized_context: str) -> 'Context':
         payload = json.loads(serialized_context)

@@ -102,6 +102,46 @@ def crash(tui):
     raise RuntimeError("Crash!")
 
 
+@ex6.command
+def dmp(tui):
+    'Dump current context to .EX6_CONTEXT_DUMP.txt.'
+    ctx = tui.current
+    if not ctx: return
+    lines = [f"=== Context: {ctx.name} ({ctx.model}) ===\n"]
+    for i, msg in enumerate(ctx.get_messages()):
+        label = msg.role
+        if msg.tool_call_id: label += f" (tool_call_id={msg.tool_call_id})"
+        if msg.attachments: label += f" ({len(msg.attachments)} attachment(s))"
+        lines.append(f"--- [{i}] {label} ---")
+        lines.append(ex6.tool_result_text(msg.get_msg(ctx)))
+        for tc in msg.tool_calls or []:
+            name = tc['name']
+            args = tc.get("args", {})
+            if not args:
+                lines.append(f"  <{name} />")
+                continue
+            lines.append(f"  <{name}>")
+            for k, v in args.items():
+                v_str = str(v)
+                if '\n' in v_str:
+                    lines.append(f"    {k} =")
+                    for line in v_str.split('\n'):
+                        lines.append(f"      {line}")
+                else:
+                    lines.append(f"    {k} = {v_str}")
+            lines.append(f"  </{name}>")
+        lines.append("")
+    with open(".EX6_CONTEXT_DUMP.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+@ex6.command
+def dbg_keys(tui):
+    'Toggle key debug logging.'
+    tui.log_keys = not tui.log_keys
+    tui.app.debug_print(f"Key logging {'ON' if tui.log_keys else 'OFF'}")
+
+
 def _llm_one_shot(app, model: str, system: str, user: str) -> str:
     """Synchronously run one LLM call. Returns assistant text."""
     ctx = ex6.Context(app, name="__tmp_cm__", model=model, reasoning="none")
