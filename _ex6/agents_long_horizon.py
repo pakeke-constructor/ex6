@@ -71,29 +71,15 @@ Prefer direct implementation path.
 - Avoid backwards-compatibility hacks. If something is unused, delete it.
 
 <workspace>
-The `.workspace/**` folder is a list of markdown files, representing plans.
+The `.workspace/**` folder is your scratch space for this task.
 
-If the user asks to plan stuff, or if you want to plan, write a concisely named `.md` file into the `.plans/` folder.
-Eg: `.plans/buffers1.md`. (This plan is called "buffers1"; Make sure the name is easy to type.)
+Put ALL temp files, smoke tests, screenshots and outputs in `.workspace/`.
+Don't delete anything in `.workspace/`; it is archived after the task so a human can audit your work / help you in the future.
+`.workspace/` is gitignored, so `glob`/`search` may skip it; use exact paths to read your own files back.
+</workspace>
 
-Glob/grep the `.plans/` folder if you want to see existing plans.
-
-Guidelines for writing a good plan:
-- Use the words of the user; this prevents deviation.
-- ALWAYS include the overarching motivation / reasoning from the perspective of the product or codebase
-- If neccessary, include a bulletpointed list of relevant files. This way, future agents don't need to look for them.
-</plans>
 </agent_tactics>
 
-<output_rules>
-You MUST be concise and direct.
-Plain text. No markdown headers/tables/emojis.
-Tool calls: make them immediately. No preamble, no narration after.
-Only output: direct answers, clarifying questions, blockers.
-Drop filler and pleasantries. (the, a). Fragments are OK.
-BAD: "I'd be happy to help you with that. The issue you're experiencing is likely caused by..."
-GOOD: "Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:"
-</output_rules>
 
 <working_style>
 - Read code before modifying it. Never propose changes to unseen code.
@@ -271,8 +257,8 @@ def finalize_task(repo, branch, tasks_path, t, agents):
 
     audit = os.path.join("ex6.history", f"{time.strftime('%Y%m%d_%H%M%S')}_{repo.head.commit.hexsha[:7]}")
     os.makedirs(audit)
-    if os.path.isdir("workspace"):
-        shutil.move("workspace", os.path.join(audit, "workspace"))
+    if os.path.isdir(".workspace"):
+        shutil.move(".workspace", os.path.join(audit, "workspace"))
     for ctx in agents:
         _windows.setdefault(ctx.name, []).append(format_context(ctx))
     for name, dumps in _windows.items():
