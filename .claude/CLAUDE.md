@@ -75,8 +75,8 @@ Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add
 Loading: core `_ex6/` (next to ex6.py) loads first, then project `_ex6/` (cwd). Files/subfolders starting with `_` are skipped. Files load in sorted order (hence `z_` prefix = load last).
 
 ## Overrides vs handlers:
-ex6 core has default fns that plugins can replace or extend. Two mechanisms, because two kinds of extension point:
-- Override: exactly one implementation makes sense (e.g. which LLM backend, how the work-mode is drawn). A plugin replaces the default wholesale. Only one override per fn; a second one raises an error, so conflicts can't hide.
+ex6 core has default fns that plugins can replace or extend. Two types, Overrides and Handlers:
+- Override: exactly one implementation (e.g. which LLM backend, how the work-mode is drawn). A plugin replaces the default wholesale. Only one override per fn; a second one raises an error, so conflicts can't hide.
 - Handler: many plugins should get a say (e.g. tool approval, prompt rewriting). Handlers stack in `order`. For `app.call`, the first truthy result wins, else the default runs. For `app.pipeline` (`transform_user_prompt`), each handler transforms the value in turn.
 
 ```python
