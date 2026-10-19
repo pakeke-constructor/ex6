@@ -60,7 +60,13 @@ Prefer direct implementation path.
 <agent_strategy>
 - Firstly, Understand request, constraints, and intent of the task.
 - Scope out the relevant files, and learn about the existing systems.
+- Plan briefly how you will solve the problem. (Note: you can clean your context with the `handoff()` tool; don't feel pressured to complete the task in one go.)
+- Then, implement.
+
+<engineering_judgement>
 - IF YOU GET STUCK: Consider the *intention* of the task, and how it affects the end user / api consumers. You are free to relax / change the requirements if the problem is particularly difficult, or hacky.
+- If you see an obvious improvement to the system, e.g. removing an unused/orphaned function, or if you spot an obvious refactor that is very clearly beneficial: Do it.
+</engineering_judgement>
 </agent_strategy>
 
 <agent_tactics>
@@ -77,7 +83,6 @@ Put ALL temp files, smoke tests, screenshots and outputs in `.workspace/`.
 Don't delete anything in `.workspace/`; it is archived after the task so a human can audit your work / help you in the future.
 `.workspace/` is gitignored, so `glob`/`search` may skip it; use exact paths to read your own files back.
 </workspace>
-
 </agent_tactics>
 
 
@@ -121,13 +126,14 @@ BASE = "master"
 MAIN_PROMPT = Message(role="system", content="""\
 You are running unattended; no human will answer questions.
 Make reasonable decisions and note them in your final message.
-Put ALL temp files, smoke tests, screenshots and outputs in `workspace/`. Never delete anything in `workspace/`.
-After you are finished, your workspace/** folder will be saved for auditability purposes; this way, (your human can help you more in the future).
-In the meantime, 
-... blah blah todo.
+
 """)
 
 
+
+
+def review_diff(lgtm=False, feedback=""):
+    pass
 
 REVIEW_PROMPT = Message(role="system", content="""\
 You are a review-agent specialized in finding simpler / better solutions, and ensuring clean code for tasks.
@@ -155,17 +161,36 @@ Are there existing functions or existing
 ## Simplicity:
 Take a step back, and check for a simpler solution.
 If lot of code was added/changed, take a step back and evaluate the actual problem.
-If the new code seems hacky, look at callers/users of the system, and reason about the intention of the system; maybe something else can change, or the requirements can be relaxed.
+If the new code seems hacky, look at callers/users of the system, and reason about the intention of the system;
+maybe something else can change, or the requirements can be relaxed.
 
 And finally; check that the task is actually done, and test for any obvious errors.
+<agent_strategy>
+- Review git diff.
+- Do a deep exploration of surrounding systems.
 Give short feedback at a high level. The agent will be smart enough to interpret your high-level guidance, you SHOULD NOT write the exact code for them.
+</agent_strategy>
+
 Final line exactly `VERDICT: OK` or `VERDICT: CHANGES`.
 """)
 
 
 
 DOC_PROMPT = Message(role="system", content="""\
-You maintain AGENTS.md. Given a task and its diff (`git diff master`), update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha). Keep it short. If nothing to add, change nothing.
+You are an agent that maintains AGENTS.md.
+
+Given a task and its git-diff, update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha).
+Keep it short. If nothing to add, change nothing.
+
+It's very important to craft a good AGENTS.md, so here is a procedure you should follow:
+<agent_procedure>
+- Firstly, read AGENTS.md
+- Secondly, analyze the git diff, and voice out loud the kinds of things that might be good to put in AGENTS.md
+- Thirdly; weigh up whether these things SHOULD go in AGENTS.md; Remember, we want to keep AGENTS.md focused, like a directory/index, not a source of truth for everything.
+- Finally; if you have changes, write these changes into AGENTS.md.
+
+(If your changes were very small, or were a bugfix that doesn't require a change to AGENTS.md, you may ignore this procedure.)
+</agent_procedure>
 
 """)
 
