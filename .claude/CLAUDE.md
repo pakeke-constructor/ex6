@@ -3,7 +3,7 @@
 # Project: ex6
 A plugin-based, hyper-minimal harness and TUI for coding agents/assistants
 
-<core_problem>
+<core-problem>
 ## Core problem:
 Existing coding agent harness are often bloated, and inject a tonne of stuff, tools, tokens into context windows implicitly.
 
@@ -12,7 +12,7 @@ This is great for noobs. Not so great for high-performing engineers who want to 
 Likewise, with a prebuilt harness, you have a lot less control over tools and control-flow.
 
 Where are my tokens going? Is this well-optimized and specialized for my exact use case?
-</core_problem>
+</core-problem>
 
 <solution>
 ## Solution and project goals:
@@ -28,7 +28,8 @@ Plugins give absolute control over everything, from orchestration to tools.
 </solution>
 
 <architecture>
-- `ex6.py`: project file. EVERYTHING is layed out in this file.
+- `ex6.py`: project file. EVERYTHING is laid out in this file.
+- Printing/debugging: never print to stdout (breaks the TUI). Use `app.debug_print()` (same signature as print), e.g. `ctx.app.debug_print(...)`.
 
 ex6.py Classes:
 Core:
@@ -63,17 +64,17 @@ Plugin decorators:
 - `@ex6.handler(order=0)`: add a handler to a handleable chain (approve_tool, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
 - `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
-
-_ex6/**: Built-in plugins
-
 </architecture>
 
+<plugin-ideology>
 ## Plugin ideology:
-`_ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `_ex6` folder, calling their `setup(app)` function.
-Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, add even define what terminal-UI is.
+`_ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `_ex6` folder, and calls `setup(app)` if a file defines it.
+Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, and even define what terminal-UI is.
 
 Loading: core `_ex6/` (next to ex6.py) loads first, then project `_ex6/` (cwd). Files/subfolders starting with `_` are skipped. Files load in sorted order (hence `z_` prefix = load last).
+</plugin-ideology>
 
+<overrides-vs-handlers>
 ## Overrides vs handlers:
 ex6 core has default fns that plugins can replace or extend. Two types, Overrides and Handlers:
 - Override: exactly one implementation (e.g. which LLM backend, how the work-mode is drawn). A plugin replaces the default wholesale. Only one override per fn; a second one raises an error, so conflicts can't hide.
@@ -89,7 +90,9 @@ def approve_tool(ctx, tool, args):
     if ctx.name.startswith("explore"): return True   # allow
     # return None -> abstain, next handler decides
 ```
+</overrides-vs-handlers>
 
+<core-plugins>
 ## Core plugins:
 Tools / agents:
 - _ex6/tools.py - all core tool-definitions: read_file, edit_file, patch_file, powershell, read_body, read_headers, explore_agent, handoff, etc. Also ENV_PROMPT, AGENTS_MD messages.
@@ -118,6 +121,7 @@ UI / commands:
 Not loaded (underscore-prefixed):
 - _ex6/_test.py - old test agent setup
 - _ex6/_plugin_examples/ - example plugins (commands, output_renderer, loading_cube)
+</core-plugins>
 
 
 <ui-ux>
@@ -126,9 +130,9 @@ ex6 has two modes: selection-mode and work-mode.
 
 **Selection-mode:**  
 Displays list of named context-windows, user chooses what one to work in.
-This UI has 2 panels, split horizontally:
-Left panel - used to select model
-Right panel - displays model information
+This UI has 2 panels, side by side:
+Left panel - used to select context
+Right panel - displays context information
 
 **Work-mode:**  
 Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)
@@ -138,12 +142,12 @@ Both work-mode AND selection-mode have a command-input-box at the bottom.
 The user may choose to type commands, (and/or talk to the LLM if in work-mode)
 </ui-ux>
 
-<IMPORTANT_DETAILS>
+<important-details>
 - You are working with an experienced engineer. Be terse; don't over-explain.
 - Simple code > "correct" code. No unnecessary error handling, no overengineering for the sake of "best practices".
 - No complex one-liners, no deep nesting, no clever abstractions.
 - If a feature needs >300 new lines, stop and ask how to simplify.
 - Do not write huge and fragile test classes. For simple pure functions, testing is OK. For anything big, write a temporary `smoke_test.py` python file, and then delete it afterwards.
-</IMPORTANT_DETAILS>
+</important-details>
 
 
