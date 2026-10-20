@@ -14,6 +14,18 @@ import os
 from typing import Any
 
 
+def context_usage_reminder(ctx: Context):
+    """after_tool_calls hook: appends `[context: Xk/Yk used]` to the last tool result each time usage crosses a 10% step."""
+    msgs = ctx.get_messages()
+    if not msgs or msgs[-1].role != "tool": return
+    used = ctx.token_count()
+    bucket = used * 10 // ctx.max_tokens
+    last = ctx.data_volatile.get("context_usage_bucket", 0)
+    ctx.data_volatile["context_usage_bucket"] = bucket # tracks downward too, so /pop re-arms it
+    if bucket <= last: return
+    r = msgs[-1].content
+    msgs[-1].content = ex6.ToolResult(f"{r.text}\n\n[context: {round(used/1000)}k/{round(ctx.max_tokens/1000)}k used]", r.attachments)
+
 
 
 MAIN_SYSTEM_PROMPT = ex6.Message(

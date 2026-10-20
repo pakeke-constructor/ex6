@@ -8,7 +8,7 @@ from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
-from _ex6.agents import SONNET, OPUS, LUNA, TERRA, SOL, ASTRA
+from _ex6.agents import SONNET, OPUS, LUNA, TERRA, SOL, ASTRA, context_usage_reminder
 from _ex6.commands import format_context
 import ex6
 from ex6 import Context, Message
@@ -61,12 +61,18 @@ Prefer direct implementation path.
 <agent_strategy>
 - Firstly, Understand request, constraints, and intent of the task.
 - Scope out the relevant files, and learn about the existing systems.
-- Plan briefly how you will solve the problem. (Note: you can clean your context with the `handoff()` tool; don't feel pressured to complete the task in one go.)
-- Then, implement.
+- Break down the problem as much as you can, and try to optimize as much as you can for simplicity; less code is better.
+- (Note: you can clean your context with the `handoff()` tool; don't feel pressured to complete the task in one go.)
+- Then, slowly implement.
+
+Generally, for big tasks, it should consist of a few phases:
+PHASE 1: Plan. Explore codebase, map out problem-space. Write some brief high-level ideas. Then, use handoff() tool for PHASE-2.
+PHASE 2: Implement. Code the solution, make changes. If you run into big issues, feel free to flip back to PHASE-1 plan-mode
+PHASE 3: Smoke test. If you need, write a file into .workspace, and use it to test the stuff you just worked on.
 
 <engineering_judgement>
 - IF YOU GET STUCK: Consider the *intention* of the task, and how it affects the end user / api consumers. You are free to relax / change the requirements if the problem is particularly difficult, or hacky.
-- If you see an obvious improvement to the system, e.g. removing an unused/orphaned function, or if you spot an obvious refactor that is very clearly beneficial: Do it.
+- If you see an obvious improvement to the codebase, e.g. removing an unused/orphaned function, or if you spot an obvious refactor that is very clearly beneficial: Do it.
 </engineering_judgement>
 </agent_strategy>
 
@@ -371,6 +377,7 @@ def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=
         ctx = Context(app, **{**preset, "name": name}, messages=msgs + [ENV_PROMPT, AGENTS_MD], yolo=True)
         tui.add_context(ctx)
         agents.append(ctx)
+    agents[0].after_tool_calls(context_usage_reminder)
 
     def loop():
         try:
