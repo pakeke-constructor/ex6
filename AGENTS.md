@@ -35,7 +35,7 @@ ex6.py Classes:
 Core:
 - `App`: plugin registry (commands, overrides, handlers, context hooks), theme, budget. `app.call(name, ...)` dispatches overridables/handleables.
 - `TUI`: holds contexts, `current`, mode (selection/work/help/scroll), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
-- `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, per-context `invoke_llm`. `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
+- `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, per-context `invoke_llm`. Plugins can store info in `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
 - `Message`: represents a message (system, user, assistant, tool). Content can be str, ToolResult, or callable(ctx) for dynamic/lazy content (snapshotted for caching).
 - `DailyBudget`: daily spend tracking + limit (`app.budget`).
 - `Theme`: color palette dataclass (`app.theme`).

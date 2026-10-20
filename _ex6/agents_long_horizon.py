@@ -291,7 +291,17 @@ def fix_review(main_agent, feedback):
 
 def update_docs(repo, doc_agent, t):
     repo.git.add(A=True)
-    run(doc_agent, f"Task that was just completed:\n\n{t}")
+    agents_md_before = read_text("AGENTS.md")
+    run(doc_agent, f"Task that was just completed:\n\n<task>{t}</task>\n\nYour job: Update the AGENTS.md if neccessary.")
+    if read_text("AGENTS.md") != agents_md_before:
+        run(doc_agent, """\
+Reread the entire AGENTS.md.
+
+Do your additions match the surrounding document's style, density, and level of abstraction?
+Are they durable navigation/gotcha information, or merely implementation details from the task?
+
+Rewrite or remove anything that does not fit. Preserve useful detail where the surrounding document is detailed. If the changes already fit, do nothing.
+""")
 
 
 def clean_task(t):
