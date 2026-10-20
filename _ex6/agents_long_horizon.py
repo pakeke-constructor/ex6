@@ -18,6 +18,7 @@ import os
 import functools
 import shutil
 import threading
+import traceback
 import git
 
 
@@ -203,14 +204,20 @@ It's very important to craft a good AGENTS.md, so here is a procedure you should
 
 
 
-# ctx.name -> list of dumped context windows for the current task
-_windows: dict[str, list[str]] = {}
+CONTEXTS_DIR = os.path.join(".workspace", "contexts")
+
+
+def dump_context(ctx):
+    os.makedirs(CONTEXTS_DIR, exist_ok=True)
+    i = sum(f.startswith(ctx.name + ".") for f in os.listdir(CONTEXTS_DIR))
+    with open(os.path.join(CONTEXTS_DIR, f"{ctx.name}.{i}.txt"), "w", encoding="utf-8") as f:
+        f.write(format_context(ctx))
 
 
 @functools.wraps(handoff)
 def _handoff(ctx: Context, txt: str, ready: bool = False) -> str:
     if ready:
-        _windows.setdefault(ctx.name, []).append(format_context(ctx))
+        dump_context(ctx)
     return handoff(ctx, txt, ready)
 
 
@@ -259,16 +266,12 @@ def make_new_git_branch(repo):
     return branch
 
 
-def do_task(main_agent, preamble, t):
-    run(main_agent, f"{preamble}\n{t}")
-
-
-def review(repo, review_agent, t):
+def review(repo, review_agent, t, summary):
     """Returns feedback if changes are needed, else None."""
     repo.git.add(A=True) # so new files show in `git diff master`
     missing = object()
     review_agent.data_volatile[REVIEW_RESULT_KEY] = missing
-    run(review_agent, f"Review the changes (`git diff master`) for this task:\n\n{t}")
+    run(review_agent, f"Review the changes (`git diff master`) for this task:\n\n{t}\n\nThe agent's final message:\n\n{summary}")
     result = review_agent.data_volatile[REVIEW_RESULT_KEY]
     if result is missing:
         raise RuntimeError("review_agent finished without calling review_diff")
@@ -290,33 +293,41 @@ def clean_task(t):
     return rest.strip() + "\n" if head.strip() == "##" else t
 
 
+def task_title(t):
+    return t.strip().splitlines()[0].removeprefix("## ").strip()[:72]
+
+
+def fail_task(repo, t, agents, error):
+    """Commit the failed attempt on its branch (for audit); the task is then retried from scratch."""
+    repo.git.add(A=True)
+    repo.git.commit("--allow-empty", m=f"horizon failed: {task_title(t)}\n\n{error}")
+    for ctx in agents:
+        dump_context(ctx) # .workspace survives; archived with the next successful attempt
+        ctx.clear()
+        ctx.purge_cache()
+
+
 def finalize_task(repo, branch, tasks_path, t, agents):
-    title = t.strip().splitlines()[0].removeprefix("## ").strip()[:72]
+    title = task_title(t)
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon: {title}")
     os.makedirs(".workspace", exist_ok=True)
     with open(os.path.join(".workspace", "changes.diff"), "w", encoding="utf-8") as f:
         f.write(repo.git.diff(BASE, "HEAD"))
+    for ctx in agents:
+        dump_context(ctx)
     repo.git.checkout(BASE)
     repo.git.merge(branch, "--no-ff", m=f"horizon merge: {title}")
     pop_task(tasks_path)
 
     audit = os.path.join("ex6.history", f"{time.strftime('%Y%m%d_%H%M%S')}_{repo.head.commit.hexsha[:7]}")
     os.makedirs(audit)
-    if os.path.isdir(".workspace"):
-        shutil.move(".workspace", os.path.join(audit, "workspace"))
-    for ctx in agents:
-        _windows.setdefault(ctx.name, []).append(format_context(ctx))
-    for name, dumps in _windows.items():
-        for i, d in enumerate(dumps):
-            with open(os.path.join(audit, f"{name}.{i}.txt"), "w", encoding="utf-8") as f:
-                f.write(d)
+    shutil.move(".workspace", os.path.join(audit, "workspace"))
     with open(os.path.join(audit, "task.md"), "w", encoding="utf-8") as f:
         f.write(t)
     repo.git.add(A=True) # ex6.history + popped tasks file (if tracked)
     repo.git.commit(m=f"horizon audit: {title}")
 
-    _windows.clear()
     for ctx in agents:
         ctx.clear()
         ctx.purge_cache() # reload AGENTS.md etc
@@ -324,18 +335,26 @@ def finalize_task(repo, branch, tasks_path, t, agents):
 
 def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
     repo = git.Repo()
-    while True:
+    agents = [main_agent, review_agent, doc_agent]
+    failures = 0
+    while failures < 3:
         preamble, tasks = split_tasks(read_text(tasks_path))
         if not tasks: return
         t = clean_task(tasks[0])
 
         branch = make_new_git_branch(repo)
-        do_task(main_agent, preamble, t)
-        feedback = review(repo, review_agent, t)
-        if feedback:
-            fix_review(main_agent, feedback)
-        update_docs(repo, doc_agent, t)
-        finalize_task(repo, branch, tasks_path, t, [main_agent, review_agent, doc_agent])
+        try:
+            summary = run(main_agent, f"{preamble}\n{t}")
+            feedback = review(repo, review_agent, t, summary)
+            if feedback:
+                fix_review(main_agent, feedback)
+            update_docs(repo, doc_agent, t)
+            finalize_task(repo, branch, tasks_path, t, agents)
+            failures = 0
+        except Exception:
+            fail_task(repo, t, agents, traceback.format_exc())
+            failures += 1
+    raise RuntimeError("3 failures in a row; stopping")
 
 
 def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=SOL):
