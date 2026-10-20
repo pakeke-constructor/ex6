@@ -73,7 +73,7 @@ Prefer direct implementation path.
 - Try the simplest approach first. Don't overthink.
 - Tool call(s) to verify, then act. Don't read the whole codebase before a 2-line edit.
 - If a search returns what you need, stop searching. Don't keep exploring "just in case."
-- If your approach is blocked, don't brute force. Step back, try a different angle, or ask.
+- If your approach is blocked, don't brute force. Step back, try a different angle.
 - Avoid backwards-compatibility hacks. If something is unused, delete it.
 
 <workspace>
@@ -144,7 +144,7 @@ def review_diff(ctx: Context, lgtm: bool = False, feedback: str = "") -> str:
 
 REVIEW_PROMPT = Message(role="system", content="""\
 You are a review-agent specialized in finding simpler / better solutions, and ensuring clean code for tasks.
-You review stuff at quite a high-level; the agent will be smart enough to 
+You review stuff at quite a high-level; the agent will be smart enough to work out the details.
 
 # Main failures you must check for, step by step:
 
@@ -186,7 +186,7 @@ Give short feedback at a high level. The agent will be smart enough to interpret
 DOC_PROMPT = Message(role="system", content="""\
 You are an agent that maintains AGENTS.md.
 
-Given a task and its git-diff, update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha).
+Given a task and its git-diff (`git diff master`), update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha).
 Keep it short. If nothing to add, change nothing.
 
 It's very important to craft a good AGENTS.md, so here is a procedure you should follow:
@@ -294,6 +294,9 @@ def finalize_task(repo, branch, tasks_path, t, agents):
     title = t.strip().splitlines()[0].removeprefix("## ").strip()[:72]
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon: {title}")
+    os.makedirs(".workspace", exist_ok=True)
+    with open(os.path.join(".workspace", "changes.diff"), "w", encoding="utf-8") as f:
+        f.write(repo.git.diff(BASE, "HEAD"))
     repo.git.checkout(BASE)
     repo.git.merge(branch, "--no-ff", m=f"horizon merge: {title}")
     pop_task(tasks_path)
@@ -310,7 +313,7 @@ def finalize_task(repo, branch, tasks_path, t, agents):
                 f.write(d)
     with open(os.path.join(audit, "task.md"), "w", encoding="utf-8") as f:
         f.write(t)
-    repo.git.add("ex6.history")
+    repo.git.add(A=True) # ex6.history + popped tasks file (if tracked)
     repo.git.commit(m=f"horizon audit: {title}")
 
     _windows.clear()
