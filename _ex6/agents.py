@@ -196,7 +196,9 @@ def setup_ex6_specialist(app):
         EX6_AGENTS_MD,
         EX6_RULES,
     ]
-    app.tui.add_context(Context(app, **{**SOL, "name": "ex6_agent"}, messages=messages))
+    ctx = Context(app, **{**SOL, "name": "ex6_agent"}, messages=messages)
+    ctx.after_tool_calls(context_usage_reminder)
+    app.tui.add_context(ctx)
 
 
 
@@ -224,7 +226,9 @@ def custom_setup(app: ex6.App, messages):
     setup_ex6_specialist(app)
 
     for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
-        tui.add_context(Context(app, **preset, messages=messages))
+        ctx = Context(app, **preset, messages=messages)
+        ctx.after_tool_calls(context_usage_reminder)
+        tui.add_context(ctx)
     tui.current = tui.get_context(SOL["name"])
 
 
