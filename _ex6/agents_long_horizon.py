@@ -210,13 +210,14 @@ It's very important to craft a good AGENTS.md, so here is a procedure you should
 
 
 
-CONTEXTS_DIR = os.path.join(".workspace", "contexts")
+HISTORY_DIR = ".ex6.history"
+PENDING_DIR = os.path.join(HISTORY_DIR, "_pending") # context dumps, until the audit folder is named
 
 
 def dump_context(ctx):
-    os.makedirs(CONTEXTS_DIR, exist_ok=True)
-    i = sum(f.startswith(ctx.name + ".") for f in os.listdir(CONTEXTS_DIR))
-    with open(os.path.join(CONTEXTS_DIR, f"{ctx.name}.{i}.txt"), "w", encoding="utf-8") as f:
+    os.makedirs(PENDING_DIR, exist_ok=True)
+    i = sum(f.startswith(ctx.name + ".") for f in os.listdir(PENDING_DIR))
+    with open(os.path.join(PENDING_DIR, f"{ctx.name}.{i}.txt"), "w", encoding="utf-8") as f:
         f.write(format_context(ctx))
 
 
@@ -303,12 +304,24 @@ def task_title(t):
     return t.strip().splitlines()[0].removeprefix("## ").strip()[:72]
 
 
+def archive(t, tag):
+    """Move this task's context dumps + .workspace into a new history folder. Leaves no _pending behind."""
+    audit = os.path.join(HISTORY_DIR, f"{time.strftime('%Y%m%d_%H%M%S')}_{tag}")
+    os.makedirs(PENDING_DIR, exist_ok=True)
+    os.rename(PENDING_DIR, audit)
+    if os.path.exists(".workspace"):
+        shutil.move(".workspace", os.path.join(audit, ".workspace"))
+    with open(os.path.join(audit, "task.md"), "w", encoding="utf-8") as f:
+        f.write(t)
+    return audit
+
+
 def fail_task(repo, t, agents, error):
     """Commit the failed attempt on its branch (for audit); the task is then retried from scratch."""
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon failed: {task_title(t)}\n\n{error}")
     for ctx in agents:
-        dump_context(ctx) # .workspace survives; archived with the next successful attempt
+        dump_context(ctx) # dumps + .workspace survive; archived with the next successful attempt
         ctx.clear()
         ctx.purge_cache()
 
@@ -317,22 +330,19 @@ def finalize_task(repo, branch, tasks_path, t, agents):
     title = task_title(t)
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon: {title}")
-    os.makedirs(".workspace", exist_ok=True)
-    with open(os.path.join(".workspace", "changes.diff"), "w", encoding="utf-8") as f:
-        f.write(repo.git.diff(BASE, "HEAD"))
+    diff = repo.git.diff(BASE, "HEAD")
     for ctx in agents:
         dump_context(ctx)
     repo.git.checkout(BASE)
     repo.git.merge(branch, "--no-ff", m=f"horizon merge: {title}")
     pop_task(tasks_path)
 
-    audit = os.path.join("ex6.history", f"{time.strftime('%Y%m%d_%H%M%S')}_{repo.head.commit.hexsha[:7]}")
-    os.makedirs(audit)
-    shutil.move(".workspace", os.path.join(audit, "workspace"))
-    with open(os.path.join(audit, "task.md"), "w", encoding="utf-8") as f:
-        f.write(t)
-    repo.git.add(A=True) # ex6.history + popped tasks file (if tracked)
-    repo.git.commit(m=f"horizon audit: {title}")
+    audit = archive(t, repo.head.commit.hexsha[:7])
+    with open(os.path.join(audit, "changes.diff"), "w", encoding="utf-8") as f:
+        f.write(diff)
+    repo.git.add(A=True) # popped tasks file (if tracked)
+    if repo.is_dirty():
+        repo.git.commit(m=f"horizon audit: {title}")
 
     for ctx in agents:
         ctx.clear()
@@ -343,6 +353,7 @@ def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
     repo = git.Repo()
     agents = [main_agent, review_agent, doc_agent]
     failures = 0
+    shutil.rmtree(PENDING_DIR, ignore_errors=True) # stale dumps from an aborted run / stray handoffs; archive() empties it after every task
     while failures < 3:
         preamble, tasks = split_tasks(read_text(tasks_path))
         if not tasks: return
@@ -360,10 +371,23 @@ def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
         except Exception:
             fail_task(repo, t, agents, traceback.format_exc())
             failures += 1
+    archive(t, "failed")
     raise RuntimeError("3 failures in a row; stopping")
 
 
-def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=SOL):
+HORIZON_LOCK = threading.Lock() # one loop at a time; they'd share _pending, .workspace and git
+
+
+def assert_horizon_valid():
+    if HORIZON_LOCK.locked():
+        raise RuntimeError("horizon already running")
+    if os.path.exists(".gitignore"):
+        ignored = [l.strip().strip("/") for l in read_text(".gitignore").splitlines()]
+        assert HISTORY_DIR in ignored, f"{HISTORY_DIR} must be in .gitignore"
+
+
+def run_horizon(app, tasks_path, main_preset=OPUS, review_preset=OPUS, doc_preset=OPUS):
+    assert_horizon_valid()
     tui = app.tui
     specs = [
         ("main_agent", main_preset, [TASK_SYSTEM_PROMPT.with_tools(H_MAIN_TOOLS), MAIN_PROMPT]),
@@ -377,6 +401,7 @@ def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=
         ctx = Context(app, **{**preset, "name": name}, messages=msgs + [ENV_PROMPT, AGENTS_MD], yolo=True)
         tui.add_context(ctx)
         agents.append(ctx)
+
     agents[0].after_tool_calls(context_usage_reminder)
 
     def loop():
@@ -384,7 +409,10 @@ def run_horizon(app, tasks_path, main_preset=SOL, review_preset=SOL, doc_preset=
             horizon_loop(tasks_path, *agents)
         except Exception as e:
             app.debug_print(f"horizon stopped: {e}")
+        finally:
+            HORIZON_LOCK.release()
 
+    HORIZON_LOCK.acquire() # commands run on the TUI thread, so nothing can race the locked() check above
     threading.Thread(target=loop, daemon=True).start()
 
 
