@@ -750,6 +750,7 @@ _IMAGE_FORMATS = {"PNG", "JPEG", "WEBP", "GIF", "BMP"}
 MAX_IMAGE_SOURCE_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
 MAX_IMAGE_OUTPUT_BYTES = 50 * 1024 * 1024
+MIN_IMAGE_DIMENSION = 512  # smaller images get integer nearest-neighbor upscaling
 
 
 def _looks_like_image(path, data):
@@ -816,10 +817,15 @@ def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
     except (UnidentifiedImageError, OSError) as e:
         raise ValueError(f"Corrupt or unsupported image '{path}'.") from e
 
-    width, height = image.size
-    resized = max(width, height) > max_dimension
+    longest = max(image.size)
+    resized = longest > max_dimension
     if resized:
         image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+    elif longest < MIN_IMAGE_DIMENSION:
+        scale = min((MIN_IMAGE_DIMENSION + longest - 1) // longest, max_dimension // longest)
+        if scale > 1:
+            image = image.resize((image.width * scale, image.height * scale), Image.Resampling.NEAREST)
+            resized = True
 
     has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
     use_png = has_alpha or resized or source_format in ("PNG", "GIF", "WEBP", "BMP")
