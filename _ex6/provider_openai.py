@@ -100,21 +100,21 @@ def _codex_client(access_token, account_id):
     )
 
 
+def _input_image(attachment):
+    if not isinstance(attachment, ex6.ImageAttachment):
+        raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
+    if not os.path.isfile(attachment.path):
+        raise ValueError(f"Attachment file is missing: {attachment.path}")
+    with open(attachment.path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("ascii")
+    return {"type": "input_image", "image_url": f"data:{attachment.mime_type};base64,{encoded}",
+            "detail": attachment.detail}
+
+
 def _responses_tool_output(result: ex6.ToolResult):
     if not result.attachments:
         return result.text
-    output = [{"type": "input_text", "text": result.text}]
-    for attachment in result.attachments:
-        if not isinstance(attachment, ex6.ImageAttachment):
-            raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
-        if not os.path.isfile(attachment.path):
-            raise ValueError(f"Attachment file is missing: {attachment.path}")
-        with open(attachment.path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("ascii")
-        output.append({"type": "input_image", "image_url":
-                       f"data:{attachment.mime_type};base64,{encoded}",
-                       "detail": attachment.detail})
-    return output
+    return [{"type": "input_text", "text": result.text}] + [_input_image(a) for a in result.attachments]
 
 
 def _to_responses_input(ctx: ex6.Context):
@@ -137,8 +137,10 @@ def _to_responses_input(ctx: ex6.Context):
                 items.append({"type": "function_call", "call_id": tc["id"],
                               "name": tc["name"], "arguments": json.dumps(tc["args"])})
         else:  # user
-            items.append({"type": "message", "role": "user",
-                          "content": [{"type": "input_text", "text": c}]})
+            content = [{"type": "input_text", "text": c}]
+            for token, attachment in m.attachments.items():
+                content += [{"type": "input_text", "text": token}, _input_image(attachment)]
+            items.append({"type": "message", "role": "user", "content": content})
     return "\n\n".join(instructions), items
 
 

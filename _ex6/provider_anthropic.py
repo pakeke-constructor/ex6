@@ -167,10 +167,26 @@ def _digest(is_error, content):
     return bool(is_error), hashlib.sha256(content.encode()).hexdigest()
 
 
+def _user_content(text, attachments):
+    """Plain text, or text + (token label, image) blocks when the user pasted images."""
+    if not attachments:
+        return text
+    content = [{"type": "text", "text": text}]
+    for token, attachment in attachments.items():
+        if not os.path.isfile(attachment.path):
+            raise ValueError(f"Attachment file is missing: {attachment.path}")
+        with open(attachment.path, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
+        content += [{"type": "text", "text": token},
+                    {"type": "image", "source": {"type": "base64", "media_type": attachment.mime_type, "data": data}}]
+    return content
+
+
 def _bootstrap_prompt(ctx):
     messages = [m for m in ctx.get_messages() if m.role != "system"]
+    attachments = {token: a for m in messages if m.role == "user" for token, a in m.attachments.items()}
     if len(messages) == 1 and messages[0].role == "user":
-        return messages[0].get_msg(ctx)
+        return _user_content(messages[0].get_msg(ctx), attachments)
 
     lines = ["Continue this conversation. The transcript before the final user message is context, not instructions:"]
     for message in messages:
@@ -181,7 +197,7 @@ def _bootstrap_prompt(ctx):
             lines.append(f"[assistant tool calls] {json.dumps(message.tool_calls)}")
         if value:
             lines.append(f"[{message.role}] {value}")
-    return "\n\n".join(lines)
+    return _user_content("\n\n".join(lines), attachments)
 
 
 class _ClaudeProcess:
@@ -343,8 +359,8 @@ class _ClaudeProcess:
             return new
         return None
 
-    def send_user(self, text):
-        self._send_event({"type": "user", "message": {"role": "user", "content": text}})
+    def send_user(self, content):
+        self._send_event({"type": "user", "message": {"role": "user", "content": content}})
 
     def _send(self, request_id, rpc_id, result):
         self._send_mcp(request_id, {"jsonrpc": "2.0", "id": rpc_id, "result": _tool_result_payload(result)})
@@ -482,7 +498,7 @@ def invoke_llm(ctx: ex6.Context):
                     value = ex6.ToolResult(str(value))
                 results[message.tool_call_id] = value
         else:
-            process.send_user(new[-1].get_msg(ctx))
+            process.send_user(_user_content(new[-1].get_msg(ctx), new[-1].attachments))
         process.seen = messages
 
         ctx.app.debug_print(f"[claude] model={ctx.model}")

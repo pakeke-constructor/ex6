@@ -68,16 +68,20 @@ def _apply_cache_control(content: str | list[dict], cc: dict) -> list[dict]:
     return blocks
 
 
+def _data_url(attachment):
+    if not os.path.isfile(attachment.path):
+        raise ValueError(f"Attachment file is missing: {attachment.path}")
+    with open(attachment.path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("ascii")
+    return f"data:{attachment.mime_type};base64,{encoded}"
+
+
 def _tool_content(result: ex6.ToolResult):
     if not result.attachments:
         return result.text
     content: list[dict] = [{"type": "text", "text": result.text}]
     for attachment in result.attachments:
-        if not os.path.isfile(attachment.path):
-            raise ValueError(f"Attachment file is missing: {attachment.path}")
-        with open(attachment.path, "rb") as f:
-            encoded = base64.b64encode(f.read()).decode("ascii")
-        url = f"data:{attachment.mime_type};base64,{encoded}"
+        url = _data_url(attachment)
         if isinstance(attachment, ex6.ImageAttachment):
             content.append({"type": "image_url", "image_url": {"url": url, "detail": attachment.detail}})
         elif isinstance(attachment, ex6.AudioAttachment):
@@ -91,6 +95,11 @@ def _tool_content(result: ex6.ToolResult):
 def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
     value = m.get_msg(ctx)
     content = _tool_content(value) if isinstance(value, ex6.ToolResult) else value
+    if m.attachments:
+        content = [{"type": "text", "text": content}]
+        for token, attachment in m.attachments.items():
+            content += [{"type": "text", "text": token},
+                        {"type": "image_url", "image_url": {"url": _data_url(attachment), "detail": attachment.detail}}]
     d: dict = {"role": m.role, "content": content}
     if m.tool_calls:
         d["tool_calls"] = [
