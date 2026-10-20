@@ -1894,61 +1894,90 @@ def render_selection_right(tui, buf, r):
 
     buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
 
-    # Tools column on the right edge, separated by a vertical line.
+    msgs_end_x = x + w - 2
     tools = list(ctx.get_tools())
-    msg_end = x + w - 2
     if tools:
-        tw = min(max(len(t) for t in tools), (w - 4) // 3)
-        tx = x + w - 2 - tw
-        sx = tx - 2
-        buf.vline((sx, y + 4, 1, h - 5), txt_color=th.accent)
-        buf.put(sx, y + 3, '┬', txt_color=th.accent)
-        buf.put(sx, y + h - 1, '┴', txt_color=th.accent)
-        for i, name in enumerate(tools[:h - 5]):
-            buf.puts(tx, y + 4 + i, name[:tw], txt_color=th.accent_alt, style='bold')
-        msg_end = sx - 1
+        msgs_end_x = _render_tools_column(buf, r, tools, th)
 
-    # Group consecutive assistant/tool messages into one row.
+    groups = _group_agent_turns(ctx.get_messages())
+    if not groups:
+        buf.puts(x + 2, y + 4, "(no messages)", style='dim')
+        return
+
+    rows = []
+    for group in groups:
+        rows.extend(_overview_rows(group, th))
+
+    last_row_y = y + h - 2
+    for row_y, (segments, bg) in enumerate(rows, start=y + 4):
+        if row_y > last_row_y: break
+        buf.puts(x + 1, row_y, " " * (msgs_end_x - x - 1), bg_color=bg)
+        seg_x = x + 2
+        for text, color in segments:
+            text = text[:max(0, msgs_end_x - seg_x)]
+            buf.puts(seg_x, row_y, text, txt_color=color, bg_color=bg)
+            seg_x += len(text)
+
+
+def _render_tools_column(buf, r, tools, th):
+    """Draw tool names on the right edge, behind a vertical separator. Returns the x where messages must stop."""
+    x, y, w, h = r
+    names_w = min(max(len(t) for t in tools), (w - 4) // 3)
+    names_x = x + w - 2 - names_w
+    sep_x = names_x - 2
+    buf.vline((sep_x, y + 4, 1, h - 5), txt_color=th.accent)
+    buf.put(sep_x, y + 3, '┬', txt_color=th.accent)
+    buf.put(sep_x, y + h - 1, '┴', txt_color=th.accent)
+    for i, name in enumerate(tools[:h - 5]):
+        buf.puts(names_x, y + 4 + i, name[:names_w], txt_color=th.accent_alt, style='bold')
+    return sep_x - 1
+
+
+def _group_agent_turns(msgs):
+    """Collapse runs of consecutive assistant/tool messages into lists; other messages stay as-is."""
     groups = []
-    for msg in ctx.get_messages():
-        if msg.role not in ("assistant", "tool"):
+    for msg in msgs:
+        is_agent_msg = msg.role in ("assistant", "tool")
+        if not is_agent_msg:
             groups.append(msg)
         elif groups and isinstance(groups[-1], list):
             groups[-1].append(msg)
         else:
             groups.append([msg])
+    return groups
 
-    rows = []
-    for g in groups:
-        if isinstance(g, list):
-            turns = sum(m.role == "assistant" for m in g)
-            calls = Counter(tc["name"] for m in g for tc in m.tool_calls or [])
-            rows.append(([(f"assistant ×{turns}" if turns > 1 else "assistant", th.success, None),
-                          (" " + _tokstr(g), th.muted, None),
-                          ("  " + " ".join(f"{n}×{c}" if c > 1 else n for n, c in calls.items()), th.muted, None)], None))
-            last = g[-1]
-            final = " ".join((_msg_text(last) or "").split()) if last.role == "assistant" else ""
-            if final:
-                rows.append(([(">" + final, th.text, None)], None))
-        elif g.role == "user":
-            preview = " ".join((_msg_text(g) or "").split())
-            rows.append(([("  " + preview, th.muted, None)], th.user_background))
-        else:
-            rows.append(([(g.overview or g.role, th.accent, None),
-                          (" " + _tokstr([g]), th.muted, None)], None))
 
-    row = y + 4
-    for segs, bg in rows:
-        if row >= y + h - 1: break
-        buf.puts(x + 1, row, " " * (msg_end - x - 1), bg_color=bg)
-        cx = x + 2
-        for text, color, style in segs:
-            text = text[:max(0, msg_end - cx)]
-            buf.puts(cx, row, text, txt_color=color, style=style, bg_color=bg)
-            cx += len(text)
-        row += 1
-    if not groups:
-        buf.puts(x + 2, row, "(no messages)", style='dim')
+def _overview_rows(group, th):
+    """Rows of (segments, bg) for one group; each segment is (text, color)."""
+    if isinstance(group, list):
+        return _agent_turn_rows(group, th)
+    if group.role == "user":
+        return [([("  " + _one_line(_msg_text(group)), th.muted)], th.user_background)]
+    label = group.overview or group.role
+    return [([(label, th.accent), (" " + _tokstr([group]), th.muted)], None)]
+
+
+def _agent_turn_rows(msgs, th):
+    turns = sum(m.role == "assistant" for m in msgs)
+    label = f"assistant ×{turns}" if turns > 1 else "assistant"
+
+    call_counts = Counter(tc["name"] for m in msgs for tc in m.tool_calls or [])
+    calls_str = " ".join(f"{name}×{n}" if n > 1 else name for name, n in call_counts.items())
+
+    summary = [(label, th.success), (" " + _tokstr(msgs), th.muted), ("  " + calls_str, th.muted)]
+    rows = [(summary, None)]
+
+    last = msgs[-1]
+    if last.role != "assistant":
+        return rows
+    final_text = _one_line(_msg_text(last))
+    if final_text:
+        rows.append(([(">" + final_text, th.text)], None))
+    return rows
+
+
+def _one_line(text):
+    return " ".join((text or "").split())
 
 
 def _msg_text(msg):
