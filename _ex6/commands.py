@@ -287,7 +287,7 @@ def cm(tui, msg: Optional[str]):
 
     def run():
         subprocess.run(["git", "add", "."], capture_output=True)
-        diff = subprocess.run(["git", "diff", "HEAD"], capture_output=True, text=True).stdout
+        diff = subprocess.run(["git", "diff", "-M", "-D", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
             output_lines.append("No changes to commit.")
             done_time[0] = time.time()
@@ -301,7 +301,7 @@ def cm(tui, msg: Optional[str]):
         if len(diff) > 8000:
             output_lines.append("Large diff; using git diff --stat summary.")
             diff_for_llm = subprocess.run(
-                ["git", "diff", "--stat", "HEAD"], capture_output=True, text=True
+                ["git", "diff", "--stat", "-M", "HEAD"], capture_output=True, text=True
             ).stdout
             if len(diff_for_llm) > 8000:
                 diff_for_llm = diff_for_llm[:8000] + "\n[Summary truncated.]"

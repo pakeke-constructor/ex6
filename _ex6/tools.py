@@ -1676,28 +1676,15 @@ def git_working_tree(ctx: ex6.Context) -> str:
     except Exception:
         return "ERROR: not in git repository"
 
-    branch = repo.active_branch.name if not repo.head.is_detached else "(detached)"
-    status_lines = [f"## {branch}"]
+    status = repo.git.status("--short", "--branch")
 
-    staged_paths = [d.a_path for d in repo.index.diff("HEAD")]
-    unstaged_paths = [d.a_path for d in repo.index.diff(None)]
-    untracked_paths = list(repo.untracked_files)
-
-    for p in staged_paths:
-        status_lines.append(f"M  {p}")
-    for p in unstaged_paths:
-        status_lines.append(f" M {p}")
-    for p in untracked_paths:
-        status_lines.append(f"?? {p}")
-    if len(status_lines) == 1:
-        status_lines.append("(clean)")
-
-    unstaged_diff = repo.git.diff("--no-ext-diff", "--", ".").strip() or "(no unstaged diff)"
-    staged_diff = repo.git.diff("--cached", "--no-ext-diff", "--", ".").strip() or "(no staged diff)"
+    # -M: pure renames show as headers only. -D: deleted files show no content.
+    unstaged_diff = repo.git.diff("-M", "-D", "--no-ext-diff", "--", ".").strip() or "(no unstaged diff)"
+    staged_diff = repo.git.diff("--cached", "-M", "-D", "--no-ext-diff", "--", ".").strip() or "(no staged diff)"
 
     return (
         "=== git status --short --branch ===\n"
-        + "\n".join(status_lines)
+        + status
         + "\n\n=== git diff (unstaged) ===\n"
         + unstaged_diff
         + "\n\n=== git diff --cached (staged) ===\n"
