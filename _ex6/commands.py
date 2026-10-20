@@ -167,7 +167,7 @@ ci: ...
 refactor(...) ...
 
 Key strategies:
-- If small one-line change and is unclear what the purpose is, it's likely a fix
+- If it's a small, tiny change and is unclear what the purpose is: Do NOT guess. Just say `chore(file)` or `fix(file)`, with nothing else. Do NOT guess.
 - If many changes to existing systems, but the API / user facing code remains the same, it's likely a refactor
 - If there's a CLEAR improvement, i.e. an new API to use, or new feature users will see, it's likely a feature, (feat)
 
