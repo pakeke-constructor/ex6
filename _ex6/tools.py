@@ -790,7 +790,12 @@ def _format_bytes(size):
 
 def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
                detail: str = "auto") -> ex6.ToolResult:
-    """Read a local screenshot/image (PNG, JPEG, WebP, GIF, or BMP)."""
+    """
+    Read a local screenshot/image (PNG, JPEG, WebP, GIF, or BMP).
+    
+    NOTE: If the image is smaller than 512 pixels on it's longest side, read_image will upscale the image uniformly by an integer factor until at least one of it's sides 512 pixels.
+    (This helps you read pixelart images and small glyphs)
+    """
     if not 256 <= max_dimension <= 8192:
         raise ValueError("max_dimension must be between 256 and 8192.")
     if detail not in ("auto", "low", "high"):
