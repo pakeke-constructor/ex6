@@ -4,7 +4,7 @@ import sys
 import json
 import hashlib
 from pathlib import Path
-from collections import deque
+from collections import deque, Counter
 from datetime import datetime
 import math
 
@@ -1893,23 +1893,77 @@ def render_selection_right(tui, buf, r):
     tui.app.call("render_context_window_bar", tui, buf, ctx, x + 2, y + 2, bar_w)
 
     buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
-    row = y + 4
-    msgs = ctx.get_messages()
-    for msg in msgs:
-        if row >= y + h - 1: break
-        label = msg.overview or msg.role
-        content = msg.content if isinstance(msg.content, str) else msg._snapshot
-        if content is not None:
-            toks = get_token_estimate(content)
-            tokstr = f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
+
+    # Tools column on the right edge, separated by a vertical line.
+    tools = list(ctx.get_tools())
+    msg_end = x + w - 2
+    if tools:
+        tw = min(max(len(t) for t in tools), (w - 4) // 3)
+        tx = x + w - 2 - tw
+        sx = tx - 2
+        buf.vline((sx, y + 4, 1, h - 5), txt_color=th.accent)
+        buf.put(sx, y + 3, '┬', txt_color=th.accent)
+        buf.put(sx, y + h - 1, '┴', txt_color=th.accent)
+        for i, name in enumerate(tools[:h - 5]):
+            buf.puts(tx, y + 4 + i, name[:tw], txt_color=th.accent_alt, style='bold')
+        msg_end = sx - 1
+
+    # Group consecutive assistant/tool messages into one row.
+    groups = []
+    for msg in ctx.get_messages():
+        if msg.role not in ("assistant", "tool"):
+            groups.append(msg)
+        elif groups and isinstance(groups[-1], list):
+            groups[-1].append(msg)
         else:
-            tokstr = "(func)"
-        role_colors = {'system':th.accent,'user':th.text,'tool':th.error,'assistant':th.success}
-        buf.puts(x + 2, row, label, txt_color=role_colors.get(msg.role, th.text))
-        buf.puts(x + 2 + len(label) + 1, row, tokstr, txt_color=th.muted)
+            groups.append([msg])
+
+    rows = []
+    for g in groups:
+        if isinstance(g, list):
+            turns = sum(m.role == "assistant" for m in g)
+            calls = Counter(tc["name"] for m in g for tc in m.tool_calls or [])
+            rows.append(([(f"assistant ×{turns}" if turns > 1 else "assistant", th.success, None),
+                          (" " + _tokstr(g), th.muted, None),
+                          ("  " + " ".join(f"{n}×{c}" if c > 1 else n for n, c in calls.items()), th.muted, None)], None))
+            last = g[-1]
+            final = " ".join((_msg_text(last) or "").split()) if last.role == "assistant" else ""
+            if final:
+                rows.append(([(">" + final, th.text, None)], None))
+        elif g.role == "user":
+            preview = " ".join((_msg_text(g) or "").split())
+            rows.append(([("  " + preview, th.muted, None)], th.user_background))
+        else:
+            rows.append(([(g.overview or g.role, th.accent, None),
+                          (" " + _tokstr([g]), th.muted, None)], None))
+
+    row = y + 4
+    for segs, bg in rows:
+        if row >= y + h - 1: break
+        buf.puts(x + 1, row, " " * (msg_end - x - 1), bg_color=bg)
+        cx = x + 2
+        for text, color, style in segs:
+            text = text[:max(0, msg_end - cx)]
+            buf.puts(cx, row, text, txt_color=color, style=style, bg_color=bg)
+            cx += len(text)
         row += 1
-    if not msgs:
+    if not groups:
         buf.puts(x + 2, row, "(no messages)", style='dim')
+
+
+def _msg_text(msg):
+    """Message text without evaluating callables; None if not yet snapshotted."""
+    if callable(msg.content):
+        return msg._snapshot
+    return tool_result_text(msg.content)
+
+
+def _tokstr(msgs):
+    texts = [_msg_text(m) for m in msgs]
+    if all(t is None for t in texts):
+        return "(func)"
+    toks = sum(get_token_estimate(t) for t in texts if t is not None)
+    return f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
 
 
 
