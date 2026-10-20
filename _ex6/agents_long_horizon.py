@@ -1,14 +1,9 @@
 
 
 
-from _ex6.provider_openai import invoke_llm as invoke_llm_openai
-from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic
-from _ex6.models import M
-from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_file, read_file, read_image, ask_user_question, handoff, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file, read_audio
+from _ex6.tools import handoff, AGENTS_MD, ENV_PROMPT
 from _ex6.skills import load_skill
-from _ex6.web_tools import websearch_agent
-from _ex6.provider import cache_manually
-from _ex6.agents import SONNET, OPUS, LUNA, TERRA, SOL, ASTRA, context_usage_reminder
+from _ex6.agents import OPUS, READ, WRITE, SHELL, SUBAGENTS, context_usage_reminder
 from _ex6.commands import format_context
 import ex6
 from ex6 import Context, Message
@@ -114,19 +109,6 @@ Don't delete anything in `.workspace/`; it is archived after the task so a human
 
 
 
-MAIN_TOOLS = [
-    glob, search,
-    read_file, read_image, read_headers, read_body,
-    write_file, edit_file,
-    handoff,
-    COMMANDLINE_TOOL, explore_agent, websearch_agent,
-    git_working_tree,
-    load_skill,
-]
-
-
-
-
 
 BASE = "master"
 
@@ -228,8 +210,7 @@ def _handoff(ctx: Context, txt: str, ready: bool = False) -> str:
     return handoff(ctx, txt, ready)
 
 
-READ_TOOLS = [glob, search, read_file, read_headers, read_body, COMMANDLINE_TOOL, git_working_tree]
-H_MAIN_TOOLS = [_handoff if t is handoff else t for t in MAIN_TOOLS]
+HORIZON_MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + [_handoff, load_skill]
 
 
 def run(ctx, prompt):
@@ -396,23 +377,29 @@ def assert_horizon_valid():
         assert HISTORY_DIR in ignored, f"{HISTORY_DIR} must be in .gitignore"
 
 
-def run_horizon(app, tasks_path, main_preset=OPUS, review_preset=OPUS, doc_preset=OPUS):
-    assert_horizon_valid()
-    tui = app.tui
-    specs = [
-        ("main_agent", main_preset, [TASK_SYSTEM_PROMPT.with_tools(H_MAIN_TOOLS), MAIN_PROMPT]),
-        ("review_agent", review_preset, [REVIEW_PROMPT.with_tools(READ_TOOLS + [review_diff])]),
-        ("doc_agent", doc_preset, [DOC_PROMPT.with_tools(READ_TOOLS + [write_file, edit_file])]),
-    ]
-    agents = []
-    for name, preset, msgs in specs:
-        old = tui.get_context(name)
-        if old: tui.remove_context(old)
-        ctx = Context(app, **{**preset, "name": name}, messages=msgs + [ENV_PROMPT, AGENTS_MD], yolo=True)
-        tui.add_context(ctx)
-        agents.append(ctx)
+def default_agents(app, preset=OPUS):
+    """(main, review, doc). Custom review agents must keep `review_diff`; the loop reads its result."""
+    main = Context(app, **{**preset, "name": "main_agent"}, yolo=True, messages=[
+        TASK_SYSTEM_PROMPT.with_tools(HORIZON_MAIN_TOOLS), MAIN_PROMPT, ENV_PROMPT, AGENTS_MD])
+    main.after_tool_calls(context_usage_reminder)
+    review = Context(app, **{**preset, "name": "review_agent"}, yolo=True, messages=[
+        REVIEW_PROMPT.with_tools(READ + SHELL + [review_diff]), ENV_PROMPT, AGENTS_MD])
+    doc = Context(app, **{**preset, "name": "doc_agent"}, yolo=True, messages=[
+        DOC_PROMPT.with_tools(READ + SHELL + WRITE), ENV_PROMPT, AGENTS_MD])
+    return main, review, doc
 
-    agents[0].after_tool_calls(context_usage_reminder)
+
+def run_horizon(app, tasks_path, agents):
+    """Run the task loop in a background thread. agents=(main, review, doc); replaces same-named TUI contexts."""
+    assert_horizon_valid()
+    for ctx in agents:
+        assert ctx.yolo, f"{ctx.name} must be yolo=True; nobody is around to approve tools"
+    tasks_path = os.path.abspath(tasks_path)
+    tui = app.tui
+    for ctx in agents:
+        old = tui.get_context(ctx.name)
+        if old: tui.remove_context(old)
+        tui.add_context(ctx)
 
     def loop():
         try:
@@ -424,14 +411,6 @@ def run_horizon(app, tasks_path, main_preset=OPUS, review_preset=OPUS, doc_prese
 
     HORIZON_LOCK.acquire() # commands run on the TUI thread, so nothing can race the locked() check above
     threading.Thread(target=loop, daemon=True).start()
-
-
-
-@ex6.command
-def horizon(tui, tasks_path: str):
-    'Run overnight task loop over a markdown task file.'
-    if not tasks_path: return
-    run_horizon(tui.app, os.path.abspath(tasks_path))
 
 
 

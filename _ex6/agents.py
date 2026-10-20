@@ -2,7 +2,7 @@
 from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic
 from _ex6.models import M
-from _ex6.tools import read_headers, read_body, glob, search, write_file, patch_file, read_file, read_image, ask_user_question, handoff, escalate, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
+from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
@@ -126,14 +126,14 @@ ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, rea
 
 
 
-MAIN_TOOLS = [
-    read_file, read_image, glob, search, read_headers, read_body,
-    write_file, edit_file,
-    ask_user_question, handoff,
-    COMMANDLINE_TOOL, explore_agent, websearch_agent,
-    git_working_tree,
-    load_skill,
-]
+# Tool groups: compose agents by summing these. Swap/remove via Message.with_tools / without_tools.
+READ = [read_file, read_image, glob, search, read_headers, read_body]
+WRITE = [write_file, edit_file]
+SHELL = [COMMANDLINE_TOOL, git_working_tree]
+SUBAGENTS = [explore_agent, websearch_agent]
+ASK = [ask_user_question]
+
+MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + ASK + [handoff, load_skill]
 
 
 

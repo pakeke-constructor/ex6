@@ -36,7 +36,7 @@ Core:
 - `App`: plugin registry (commands, overrides, handlers, context hooks), theme, budget. `app.call(name, ...)` dispatches overridables/handleables.
 - `TUI`: holds contexts, `current`, mode (selection/work/help/scroll), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
 - `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, per-context `invoke_llm`. Plugins can store info in `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
-- `Message`: represents a message (system, user, assistant, tool). Content can be str, ToolResult, or callable(ctx) for dynamic/lazy content (snapshotted for caching).
+- `Message`: represents a message (system, user, assistant, tool). Content can be str, ToolResult, or callable(ctx) for dynamic/lazy content (snapshotted for caching). System msgs carry tools: `with_tools` (same name replaces in place), `without_tools(name_or_fn)`.
 - `DailyBudget`: daily spend tracking + limit (`app.budget`).
 - `Theme`: color palette dataclass (`app.theme`).
 
@@ -99,8 +99,8 @@ Tools / agents:
 - _ex6/web_tools.py - websearch_agent tool (OpenRouter `:online` subagent)
 - _ex6/skills.py - load_skill tool; progressive disclosure of `_ex6/_skills/*.md` (yaml frontmatter)
 - _ex6/tasks.py - plan_write/plan_read/plan_add_log/plan_done/plan_list tools, backed by `.plans/*.md`
-- _ex6/agents.py - basic agent definitions (system prompts, model presets), as an example. Projects usually define their own agents. Also starts inline watcher.
-- _ex6/agents_long_horizon.py - /horizon: overnight loop over a markdown task file
+- _ex6/agents.py - basic agent definitions (system prompts, model presets, tool groups READ/WRITE/SHELL/SUBAGENTS/ASK), as an example. Projects usually define their own agents. Also starts inline watcher.
+- _ex6/agents_long_horizon.py - overnight loop over a markdown task file. No command; projects call `run_horizon(app, path, agents)` from their own command, agents built via `default_agents` or by hand (must be yolo=True; see `_plugin_examples/_example_horizon.py`)
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
@@ -120,7 +120,7 @@ UI / commands:
 
 Not loaded (underscore-prefixed):
 - _ex6/_test.py - old test agent setup
-- _ex6/_plugin_examples/ - example plugins (commands, output_renderer, loading_cube)
+- _ex6/_plugin_examples/ - example plugins (commands, output_renderer, loading_cube, horizon)
 </core-plugins>
 
 

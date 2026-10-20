@@ -578,8 +578,19 @@ class Message:
         assert self.role == "system"
         for fn in tools:
             _validate_tool_sig(fn.__name__, fn)
+        by_name = {fn.__name__: fn for fn in self.tools}
+        by_name.update({fn.__name__: fn for fn in tools}) # same name replaces in place (keeps schema order)
         clone = copy.copy(self)
-        clone.tools = self.tools + tools
+        clone.tools = list(by_name.values())
+        return clone
+
+    def without_tools(self, *tools: Union[str, Callable]):
+        assert self.role == "system"
+        names = {t if isinstance(t, str) else t.__name__ for t in tools}
+        missing = names - {fn.__name__ for fn in self.tools}
+        assert not missing, f"tools not present: {missing}"
+        clone = copy.copy(self)
+        clone.tools = [fn for fn in self.tools if fn.__name__ not in names]
         return clone
 
     def get_msg(self, ctx: 'Context'):
