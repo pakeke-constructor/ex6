@@ -1,3 +1,6 @@
+# Dependencies: PyYAML
+# Install: python -m pip install PyYAML
+
 """
 skills: Progressive disclosure. LLMs can list/load skill files.
 Skill files live in _ex6/skills/*.md.

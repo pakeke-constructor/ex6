@@ -1,3 +1,7 @@
+# Dependencies: openai
+# Install: python -m pip install openai
+# Requires OPENROUTER_API_KEY for OpenRouter requests.
+
 import json
 import hashlib
 import ex6

@@ -1,3 +1,12 @@
+# Dependencies: tree-sitter, GitPython, Pillow, Pygments; openai via provider.py.
+# Install: python -m pip install tree-sitter GitPython Pillow Pygments openai
+# read_body/read_headers also need grammars for the languages you use, e.g.:
+# Install: python -m pip install tree-sitter-python tree-sitter-javascript tree-sitter-typescript
+# Other supported grammars (pip names): tree-sitter-go, tree-sitter-solidity,
+# tree-sitter-rust, tree-sitter-c, tree-sitter-cpp, tree-sitter-java,
+# tree-sitter-ruby, tree-sitter-c-sharp, tree-sitter-lua, tree-sitter-kotlin.
+# External: Git; PowerShell on Windows or Bash elsewhere for shell tools.
+
 
 
 '''

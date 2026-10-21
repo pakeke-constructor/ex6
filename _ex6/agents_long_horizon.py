@@ -1,3 +1,8 @@
+# Dependencies: GitPython, plus the imported plugins below.
+# Install: python -m pip install GitPython
+# Also install dependencies documented in agents.py, tools.py, skills.py, and commands.py.
+# External: Git.
+
 
 
 

@@ -1,3 +1,6 @@
+# Dependencies: pyperclip
+# Install: python -m pip install pyperclip
+
 
 from typing import Optional
 import subprocess

@@ -1,3 +1,7 @@
+# Dependencies: openai (via provider.py's shared logging helper).
+# Install: python -m pip install openai
+# External: authenticated Claude Code CLI (`claude`) on PATH; no anthropic SDK needed.
+
 """
 Claude subscription backend: drives a long-lived `claude -p` process.
 ex6 tools are exposed as an SDK MCP server (control messages over claude's own

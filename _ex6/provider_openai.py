@@ -1,3 +1,7 @@
+# Dependencies: openai, httpx
+# Install: python -m pip install openai httpx
+# Requires ChatGPT login credentials in ~/.codex/auth.json (via Codex CLI).
+
 
 import json
 import ex6

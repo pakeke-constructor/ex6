@@ -1,4 +1,10 @@
-﻿
+﻿# Dependencies: watchfiles (via inline.py), plus the imported plugins below.
+# Install: python -m pip install watchfiles
+# Also install dependencies documented in tools.py, skills.py, provider.py,
+# provider_openai.py, and provider_anthropic.py (including CLI prerequisites).
+# External: Git for the inline watcher.
+
+
 from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic
 from _ex6.models import M

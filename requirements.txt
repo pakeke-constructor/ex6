@@ -1,0 +1,4 @@
+# Base ex6 only. Plugin dependencies are documented at the top of each plugin.
+blessed
+Pillow
+copykitten
