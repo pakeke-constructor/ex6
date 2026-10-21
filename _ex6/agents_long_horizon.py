@@ -350,18 +350,63 @@ def finalize_task(repo, branch, tasks_path, t, agents):
         ctx.purge_cache() # reload AGENTS.md etc
     refresh_skill_doc()
 
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+# ================================================================
+#  pipelines:
+#  These are high level "flows" for what actually happens.
+#  It's super easy to write your own pipelines
+# ================================================================
+#
+#
+#
 
 def default_pipeline(repo, agents, t, preamble):
     """Per-task work. May edit/stage/commit on the task branch; see check_git_state."""
     main = agents["main"]
     review_agent = agents["review"]
     doc = agents["doc"]
+
     summary = run(main, f"{preamble}\n{t}")
     feedback = review(repo, review_agent, t, summary)
     if feedback:
         fix_review(main, feedback)
     update_docs(repo, doc, t)
 
+
+def barebones_pipeline(repo, agents, t, preamble):
+    """Same as default, but no review."""
+    main = agents["main"]
+    doc = agents["doc"]
+
+    run(main, f"{preamble}\n{t}")
+    update_docs(repo, doc, t)
+
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
 
 def horizon_loop(tasks_path, agents, pipeline):
     repo = git.Repo()
@@ -407,7 +452,12 @@ def default_agents(app, preset=OPUS):
         REVIEW_PROMPT.with_tools(READ + SHELL + [review_diff]), ENV_PROMPT, AGENTS_MD])
     doc = Context(app, **{**preset, "name": "doc_agent"}, yolo=True, messages=[
         DOC_PROMPT.with_tools(READ + SHELL + WRITE), ENV_PROMPT, AGENTS_MD])
-    return {"main": main, "review": review, "doc": doc}
+    return {
+        # return new dict so caller can mutate.
+        "main": main,
+        "review": review,
+        "doc": doc
+    }
 
 
 def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
