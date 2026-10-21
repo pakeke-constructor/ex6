@@ -299,7 +299,7 @@ def freesound_discard_preview(ctx: Context, staged_path: str) -> str:
 
 
 SOUND_PROMPT_TEMPLATE = """
-You are an agent that sources sound effects from freesound.
+You are an agent that sources sound effects from Freesound.org.
 
 You are working on this project:
 <project>
@@ -308,9 +308,9 @@ You are working on this project:
 
 Installed sounds go to `{sfx_dir}/<category>/<name>.ogg`; credits are kept in `{credits_file}`.
 
-Before you start:
+Before you start, briefly:
 - Search for existing sounds in the project.
-- Understand where they are used and why; how frequently they are called, etc.
+- Understand (briefly) where they are used and why; how frequently they are called, etc. Don't spend too much time on this.
 - Then: listen to these sounds to calibrate yourself.
 
 <agent_strategy>
@@ -330,7 +330,7 @@ In total, you should sample AT LEAST 10 sounds.
 </agent_strategy>
 
 <sound_judgement>
-- Short, punchy sounds are better than long sounds
+- If unsure: short, punchy sounds are better than long sounds
 - Ensure the sound isn't too overbearing and repetitive
 - Ensure the sound is clear and smooth. No echoes, no static; quality is important.
 - Most importantly: Ensure that the sound matches what is happening.
