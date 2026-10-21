@@ -1200,7 +1200,12 @@ def ask_user(ctx: ex6.Context, question: str) -> str:
 
 
 def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] = None) -> str:
-    """Ask user a question with optional selectable answers. Returns: Q: <question>\nA: <answer>"""
+    """
+    Ask user a question with optional selectable answers.
+    Returns: Q: <question>\nA: <answer>
+    """
+    if ctx.app.long_horizon:
+        raise RuntimeError("No human available (long-horizon run). Make your best judgement and state your assumption.")
     options = [str(o) for o in (opt or [])]
     selected = [0]
     typed_mode = [len(options) == 0]

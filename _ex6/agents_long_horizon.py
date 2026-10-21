@@ -485,6 +485,7 @@ def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
         finally:
             HORIZON_LOCK.release()
 
+    app.long_horizon = True # never reset: once a horizon run starts, assume nobody is watching
     HORIZON_LOCK.acquire() # commands run on the TUI thread, so nothing can race the locked() check above
     threading.Thread(target=loop, daemon=True).start()
 

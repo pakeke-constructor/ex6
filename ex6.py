@@ -386,6 +386,7 @@ class App:
         self.stdout = sys.stdout
         self.stderr = sys.stderr
         self.tui: Optional[TUI] = None
+        self.long_horizon = False # True when no human is watching; (tools must not block for user input)
         self._registered_modules = set()
         self._setup_modules = set()
         self._register_module(sys.modules[__name__])
@@ -1284,6 +1285,7 @@ class Context:
         cpy = copy.copy(self)
         cpy._msg_lock = threading.RLock()
         cpy._clear_pending = False
+        cpy._pending_inputs = []
         cpy._context_hooks = {kind: list(fns) for kind, fns in self._context_hooks.items()}
         cpy._messages = messages
         cpy._read_hashes = dict(self._read_hashes)
