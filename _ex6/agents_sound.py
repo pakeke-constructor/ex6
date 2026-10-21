@@ -31,6 +31,7 @@ LICENSES = {
         ("CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"),
 }
 INSTALL_LOCK = threading.Lock()
+USER_AGENT = "ex6-sound-agent/1.0"
 
 
 def _api_key(ctx: Context) -> str:
@@ -47,7 +48,7 @@ def _request(ctx: Context, endpoint: str, params: Optional[dict] = None) -> dict
         url += "?" + urllib.parse.urlencode(params)
     request = urllib.request.Request(url, headers={
         "Authorization": f"Token {_api_key(ctx)}",
-        "User-Agent": "skullx11-ex6-sound-agent/1.0",
+        "User-Agent": USER_AGENT,
     })
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -163,7 +164,7 @@ def _staged(ctx: Context, path: str) -> Path:
 
 
 def _download(url: str, destination: Path) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": "skullx11-ex6-sound-agent/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     temporary = destination.with_suffix(".ogg.part")
     digest, size = hashlib.sha256(), 0
     try:
@@ -250,15 +251,17 @@ def _atomic_write(path: Path, content: str) -> None:
 
 def freesound_install(ctx: Context, sound_id: int, staged_path: str, category: str,
                       name: str, overwrite: bool = False) -> str:
-    """Install a verified staged preview in assets/sfx and deduplicate its CREDITS.txt entry."""
+    """Install a verified staged preview as <sfx_dir>/<category>/<name>.ogg and deduplicate its credits entry."""
     audio = _staged(ctx, staged_path)
     if not audio.is_file():
         raise ValueError(f"Staged preview does not exist: {staged_path}")
     manifest, metadata = _manifest(audio), _get_sound(ctx, sound_id)
     if manifest.get("sound_id") != sound_id or manifest.get("preview_url") != metadata["preview_url"]:
         raise ValueError("sound_id or current Freesound metadata does not match staged preview.")
-    destination = Path(ctx.resolve(f"assets/sfx/{_segment(category, 'category')}/{_segment(name, 'name')}.ogg"))
-    asset_path, credits_path = _relative(ctx, destination), Path(ctx.resolve("CREDITS.txt"))
+    sfx_dir = ctx.data.get("sound:sfx_dir", "assets/sfx")
+    destination = Path(ctx.resolve(f"{sfx_dir}/{_segment(category, 'category')}/{_segment(name, 'name')}.ogg"))
+    asset_path = _relative(ctx, destination)
+    credits_path = Path(ctx.resolve(ctx.data.get("sound:credits_file", "CREDITS.txt")))
     with INSTALL_LOCK:
         if destination.exists() and not overwrite:
             raise ValueError(f"Asset already exists: {asset_path}")
@@ -266,7 +269,7 @@ def freesound_install(ctx: Context, sound_id: int, staged_path: str, category: s
         updated = _upsert_credit(credits, metadata, asset_path)
         args = {"sound_id": sound_id, "staged_path": staged_path, "category": category,
                 "name": name, "overwrite": overwrite}
-        denial = _approve(ctx, "freesound_install", args, f"Install {asset_path} and update CREDITS.txt")
+        denial = _approve(ctx, "freesound_install", args, f"Install {asset_path} and update {_relative(ctx, credits_path)}")
         if denial:
             raise ValueError(f"User denied sound install: {denial}")
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -295,8 +298,15 @@ def freesound_discard_preview(ctx: Context, staged_path: str) -> str:
     return f"Deleted rejected Freesound #{metadata['sound_id']} preview: {staged_path}"
 
 
-SOUND_PROMPT = Message(role="system", overview="sound-agent", content="""
-You source sound effects for skullx11, a demon/skull pixel-art hack-and-slash.
+SOUND_PROMPT_TEMPLATE = """
+You are an agent that sources sound effects from freesound.
+
+You are working on this project:
+<project>
+{project}
+</project>
+
+Installed sounds go to `{sfx_dir}/<category>/<name>.ogg`; credits are kept in `{credits_file}`.
 
 Before you start:
 - Search for existing sounds in the project.
@@ -327,15 +337,33 @@ In total, you should sample AT LEAST 10 sounds.
 </sound_judgement>
 
 After you have decided, report what the winning sounds were.
-If there were multiple good ones, list all of them, rank all of them, and explain what they "feel like";
-the 
-""").with_tools([
+If there were multiple good ones, list all of them, rank all of them, and explain what they "feel like".
+"""
+
+
+def _sound_prompt(ctx: Context) -> str:
+    return SOUND_PROMPT_TEMPLATE.format(
+        project=ctx.data.get("sound:project", "(not described; inspect the codebase)"),
+        sfx_dir=ctx.data.get("sound:sfx_dir", "assets/sfx"),
+        credits_file=ctx.data.get("sound:credits_file", "CREDITS.txt"),
+    )
+
+
+SOUND_TOOLS = [
     freesound_search, freesound_download_preview, read_audio, freesound_install,
-    freesound_discard_preview, glob, read_file, ask_user_question, git_working_tree
-])
+    freesound_discard_preview, glob, read_file, ask_user_question, git_working_tree,
+]
+SOUND_PROMPT = Message(role="system", overview="sound-agent", content=_sound_prompt).with_tools(SOUND_TOOLS)
 
 
-def setup(app: ex6.App):
-    assert app.tui
-    app.tui.add_context(Context(app, name="sound_agent", model=M.GEMINI_LATEST.id,
-                                reasoning="high", messages=[SOUND_PROMPT, ENV_PROMPT]))
+def make_sound_agent(app: ex6.App, project: str, sfx_dir: str = "assets/sfx",
+                     credits_file: str = "CREDITS.txt", **context_kwargs) -> Context:
+    """Build a Freesound sourcing agent. Needs FREESOUND_API_KEY in project .env and an audio-capable model.
+    context_kwargs override Context fields (name, model, reasoning, invoke_llm, messages, ...)."""
+    kwargs = dict(name="sound_agent", model=M.GEMINI_LATEST.id, reasoning="high",
+                  messages=[SOUND_PROMPT, ENV_PROMPT])
+    ctx = Context(app, **{**kwargs, **context_kwargs})
+    ctx.data["sound:project"] = project
+    ctx.data["sound:sfx_dir"] = sfx_dir
+    ctx.data["sound:credits_file"] = credits_file
+    return ctx
