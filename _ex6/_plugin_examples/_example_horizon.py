@@ -23,5 +23,6 @@ def horizon_custom(tui, tasks_path: str):
         AGENTS_MD,
     ])
     main.after_tool_calls(context_usage_reminder)
-    _, review, doc = h.default_agents(tui.app)
-    h.run_horizon(tui.app, tasks_path, (main, review, doc))
+    agents = h.default_agents(tui.app)
+    agents["main"] = main
+    h.run_horizon(tui.app, tasks_path, agents)

@@ -251,7 +251,17 @@ def make_new_git_branch(repo):
     branch = f"horizon/{time.strftime('%Y%m%d_%H%M%S')}"
     repo.git.checkout(BASE)
     repo.git.checkout("-b", branch)
-    return branch
+    return branch, repo.head.commit.hexsha
+
+
+def check_git_state(repo, branch, base_sha):
+    """Pipelines must leave HEAD on the task branch and not touch BASE; the loop owns merging."""
+    if repo.head.is_detached or repo.active_branch.name != branch:
+        raise RuntimeError(f"HEAD moved off {branch}")
+    if repo.commit(BASE).hexsha != base_sha:
+        raise RuntimeError(f"{BASE} moved during the task")
+    if not repo.is_ancestor(base_sha, "HEAD"):
+        raise RuntimeError(f"{branch} no longer descends from {BASE}")
 
 
 def review(repo, review_agent, t, summary):
@@ -341,9 +351,20 @@ def finalize_task(repo, branch, tasks_path, t, agents):
     refresh_skill_doc()
 
 
-def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
+def default_pipeline(repo, agents, t, preamble):
+    """Per-task work. May edit/stage/commit on the task branch; see check_git_state."""
+    main = agents["main"]
+    review_agent = agents["review"]
+    doc = agents["doc"]
+    summary = run(main, f"{preamble}\n{t}")
+    feedback = review(repo, review_agent, t, summary)
+    if feedback:
+        fix_review(main, feedback)
+    update_docs(repo, doc, t)
+
+
+def horizon_loop(tasks_path, agents, pipeline):
     repo = git.Repo()
-    agents = [main_agent, review_agent, doc_agent]
     failures = 0
     shutil.rmtree(PENDING_DIR, ignore_errors=True) # stale dumps from an aborted run / stray handoffs; archive() empties it after every task
     while failures < 3:
@@ -351,18 +372,17 @@ def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):
         if not tasks: return
         t = clean_task(tasks[0])
 
-        branch = make_new_git_branch(repo)
+        branch, base_sha = make_new_git_branch(repo)
         try:
-            summary = run(main_agent, f"{preamble}\n{t}")
-            feedback = review(repo, review_agent, t, summary)
-            if feedback:
-                fix_review(main_agent, feedback)
-            update_docs(repo, doc_agent, t)
-            finalize_task(repo, branch, tasks_path, t, agents)
-            failures = 0
+            pipeline(repo, agents, t, preamble)
+            check_git_state(repo, branch, base_sha)
         except Exception:
-            fail_task(repo, t, agents, traceback.format_exc())
+            check_git_state(repo, branch, base_sha) # refs moved: fatal, don't commit the failure anywhere
+            fail_task(repo, t, agents.values(), traceback.format_exc())
             failures += 1
+            continue
+        finalize_task(repo, branch, tasks_path, t, agents.values()) # errors after merge are fatal, never retried
+        failures = 0
     archive(t, "failed")
     raise RuntimeError("3 failures in a row; stopping")
 
@@ -379,7 +399,7 @@ def assert_horizon_valid():
 
 
 def default_agents(app, preset=OPUS):
-    """(main, review, doc). Custom review agents must keep `review_diff`; the loop reads its result."""
+    """{main, review, doc} for default_pipeline. Custom review agents must keep `review_diff`; review() reads its result."""
     main = Context(app, **{**preset, "name": "main_agent"}, yolo=True, messages=[
         TASK_SYSTEM_PROMPT.with_tools(HORIZON_MAIN_TOOLS), MAIN_PROMPT, ENV_PROMPT, AGENTS_MD])
     main.after_tool_calls(context_usage_reminder)
@@ -387,24 +407,24 @@ def default_agents(app, preset=OPUS):
         REVIEW_PROMPT.with_tools(READ + SHELL + [review_diff]), ENV_PROMPT, AGENTS_MD])
     doc = Context(app, **{**preset, "name": "doc_agent"}, yolo=True, messages=[
         DOC_PROMPT.with_tools(READ + SHELL + WRITE), ENV_PROMPT, AGENTS_MD])
-    return main, review, doc
+    return {"main": main, "review": review, "doc": doc}
 
 
-def run_horizon(app, tasks_path, agents):
-    """Run the task loop in a background thread. agents=(main, review, doc); replaces same-named TUI contexts."""
+def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
+    """Run the task loop in a background thread. agents: dict of name -> Context; pipeline(repo, agents, t, preamble) does each task. Replaces same-named TUI contexts."""
     assert_horizon_valid()
-    for ctx in agents:
+    for ctx in agents.values():
         assert ctx.yolo, f"{ctx.name} must be yolo=True; nobody is around to approve tools"
     tasks_path = os.path.abspath(tasks_path)
     tui = app.tui
-    for ctx in agents:
+    for ctx in agents.values():
         old = tui.get_context(ctx.name)
         if old: tui.remove_context(old)
         tui.add_context(ctx)
 
     def loop():
         try:
-            horizon_loop(tasks_path, *agents)
+            horizon_loop(tasks_path, agents, pipeline)
         except Exception as e:
             app.debug_print(f"horizon stopped: {e}")
         finally:
