@@ -399,7 +399,8 @@ class App:
 
     def command(self, fn):
         params = list(inspect.signature(fn).parameters.values())[1:]
-        spec = [(p.name, p.annotation if p.annotation != inspect.Parameter.empty else str) for p in params]
+        empty = inspect.Parameter.empty
+        spec = [(p.name, str if p.annotation is empty else p.annotation, None if p.default is empty else p.default) for p in params]
         self.commands[fn.__name__] = (fn, spec)
         return fn
 
@@ -483,7 +484,7 @@ class App:
         if name not in self.commands: return True
         fn, spec = self.commands[name]
         args = ([rest.strip()] if sep else []) if len(spec) == 1 else (rest.split() if sep else [])
-        parsed = [_coerce_arg(args[i], typ) if i < len(args) else None for i, (_, typ) in enumerate(spec)]
+        parsed = [_coerce_arg(args[i], typ) if i < len(args) else default for i, (_, typ, default) in enumerate(spec)]
         return fn(tui, *parsed)
 
     def _register_module(self, module):
@@ -2189,7 +2190,7 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
         if i >= h:
             break
         fn, spec = tui.app.commands[name]
-        args = " ".join(f"<{a}>" for a, _ in spec)
+        args = " ".join(f"<{a}>" for a, _, _ in spec)
         doc = (fn.__doc__ or "").strip()
         cx = x
         for s, col in (("  /", th.muted), (name, th.accent_alt),
