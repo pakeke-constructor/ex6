@@ -2,7 +2,7 @@
 
 
 from _ex6.tools import handoff, AGENTS_MD, ENV_PROMPT
-from _ex6.skills import load_skill
+from _ex6.skills import load_skill, refresh_skill_doc
 from _ex6.agents import OPUS, READ, WRITE, SHELL, SUBAGENTS, context_usage_reminder
 from _ex6.commands import format_context
 import ex6
@@ -338,6 +338,7 @@ def finalize_task(repo, branch, tasks_path, t, agents):
     for ctx in agents:
         ctx.clear()
         ctx.purge_cache() # reload AGENTS.md etc
+    refresh_skill_doc()
 
 
 def horizon_loop(tasks_path, main_agent, review_agent, doc_agent):

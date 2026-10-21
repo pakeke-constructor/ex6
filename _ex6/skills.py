@@ -65,15 +65,17 @@ def load_skill(ctx: ex6.Context, skill_id: str = "") -> str:
 
 
 
-SKILL_DOC = "Load a skill's content into the conversation.\n"
-_all_skills = _list_skills()
-if not _all_skills:
-    SKILL_DOC += "No skills exist."
-else:
-    SKILL_DOC += "Available skills:\n"
-    for _sid, _desc in _all_skills:
-        SKILL_DOC += f"  {_sid}: {_desc}\n"
+def refresh_skill_doc():
+    doc = "Load a skill's content into the conversation. Omit skill_id to list current skills.\n"
+    skills = _list_skills()
+    if not skills:
+        doc += "No skills exist."
+    else:
+        doc += "Available skills:\n"
+        for sid, desc in skills:
+            doc += f"  {sid}: {desc}\n"
+    load_skill.__doc__ = doc
 
 
-load_skill.__doc__ = SKILL_DOC
+refresh_skill_doc()
 
