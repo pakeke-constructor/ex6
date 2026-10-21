@@ -96,9 +96,12 @@ def _is_gitignored(ctx, path):
             return True
     return False
 
-def _check_gitignore(ctx, path):
-    if _is_gitignored(ctx, path):
-        raise ValueError(f"Refused: '{path}' is gitignored.")
+_SECRET_PATTERNS = [".env", ".env.*", "*.pem", "*.key", "id_rsa*", "id_ed25519*"]
+
+def _check_secret(path):
+    name = os.path.basename(path)
+    if any(fnmatch.fnmatch(name, pat) for pat in _SECRET_PATTERNS):
+        raise ValueError(f"Refused: '{path}' may contain secrets.")
 
 def _check_read(ctx, path):
     if not ctx.has_read_file(path):
@@ -908,7 +911,7 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     - lines=(start,end) to read a subset (1-indexed, inclusive). (Forces line_numbers=True)
     """
-    _check_gitignore(ctx, path)
+    _check_secret(path)
     p = ctx.resolve(path)
     with open(p, "rb") as f:
         data = f.read()
@@ -943,7 +946,7 @@ def read_headers(ctx: ex6.Context, file: str, line_numbers: bool = True) -> str:
     You should prefer using this tool first before reading an entire file.
     read_headers is more context-efficient, so unless you are very sure you need the entire file, use this.
     """
-    _check_gitignore(ctx, file)
+    _check_secret(file)
     p = ctx.resolve(file)
     if os.path.splitext(p)[1].lower() == '.gd':
         with open(p, 'rb') as f:
@@ -1045,6 +1048,7 @@ def read_body(ctx: ex6.Context, file: str, name: str, line_numbers: bool = True)
     - Prefer line_numbers=True if you want to edit the function, or refererence line-numbers to the user.
     - Use this tool when you only need bits of information, like details about a particular function
     """
+    _check_secret(file)
     p = ctx.resolve(file)
     if os.path.splitext(p)[1].lower() == '.gd':
         return _read_body_godot(ctx, file, name, line_numbers)
