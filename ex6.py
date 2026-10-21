@@ -1628,8 +1628,7 @@ class Region(tuple):
 class InputPass:
     KEY_ALIASES = {
         '\x17': ('KEY_CTRL_BACKSPACE',),
-        '\x08': ('KEY_CTRL_BACKSPACE',),
-        '\x7f': ('KEY_CTRL_BACKSPACE',),
+        '\x7f' if os.name == 'nt' else '\x08': ('KEY_CTRL_BACKSPACE',),
         '\x1bd': ('KEY_CTRL_DELETE',),
         '\x18': ('KEY_CTRL_X',),
         '\x03': ('KEY_CTRL_C',),
@@ -1641,9 +1640,10 @@ class InputPass:
 
     def _candidates(self, k):
         s = str(k)
-        out = {k.name, s}
-        out.update(self.KEY_ALIASES.get(s, ()))
-        return out
+        aliases = self.KEY_ALIASES.get(s)
+        if aliases:
+            return {s, *aliases}
+        return {k.name, s}
 
     def consume(self, *names: str) -> bool:
         wanted = set(names)
