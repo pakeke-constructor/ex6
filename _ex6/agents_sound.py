@@ -342,11 +342,10 @@ If there were multiple good ones, list all of them, rank all of them, and explai
 
 
 def _sound_prompt(ctx: Context) -> str:
-    return SOUND_PROMPT_TEMPLATE.format(
-        project=ctx.data.get("sound:project", "(not described; inspect the codebase)"),
-        sfx_dir=ctx.data.get("sound:sfx_dir", "assets/sfx"),
-        credits_file=ctx.data.get("sound:credits_file", "CREDITS.txt"),
-    )
+    return (SOUND_PROMPT_TEMPLATE
+            .replace("{sfx_dir}", ctx.data.get("sound:sfx_dir", "assets/sfx"))
+            .replace("{credits_file}", ctx.data.get("sound:credits_file", "CREDITS.txt"))
+            .replace("{project}", ctx.data.get("sound:project", "(not described; inspect the codebase)")))
 
 
 SOUND_TOOLS = [
