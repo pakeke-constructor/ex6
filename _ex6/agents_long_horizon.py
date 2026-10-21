@@ -303,7 +303,7 @@ Rewrite or remove anything that does not fit. Preserve useful detail where the s
 def clean_task(t):
     """Drop a bare `##` heading so untitled tasks are just their description."""
     head, _, rest = t.partition("\n")
-    return rest.strip() + "\n" if head.strip() == "##" else t
+    return rest.strip() if head.strip() == "##" else t.strip()
 
 
 def task_title(t):
@@ -382,7 +382,7 @@ def default_pipeline(repo, agents, t, preamble):
     review_agent = agents["review"]
     doc = agents["doc"]
 
-    summary = run(main, f"{preamble}\n{t}")
+    summary = run(main, f"{preamble.strip()}\n\n{t}".strip())
     feedback = review(repo, review_agent, t, summary)
     if feedback:
         fix_review(main, feedback)
@@ -394,7 +394,7 @@ def barebones_pipeline(repo, agents, t, preamble):
     main = agents["main"]
     doc = agents["doc"]
 
-    run(main, f"{preamble}\n{t}")
+    run(main, f"{preamble.strip()}\n\n{t}".strip())
     update_docs(repo, doc, t)
 
 #
