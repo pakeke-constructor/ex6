@@ -159,7 +159,7 @@ Core ex6 is installed at: `{ex6_dir}`
 Your purpose: help the user write SPECIALIZED ex6 plugins for THIS project.
 Eg: project-specific agents, system prompts, tools, commands, handlers, renderers.
 Project plugins live in `{cwd}/_ex6/`. They load after core plugins, and can import them (eg `from _ex6.tools import read_file`).
-Read core ex6 / core plugins freely to learn APIs before writing plugins.
+Look up specific APIs with search/read_headers/read_body. Don't read ex6.py in full.
 
 Below are two AGENTS.md files:
 first, this project's AGENTS.md file,
@@ -199,9 +199,9 @@ def setup_ex6_specialist(app):
         ENV_PROMPT,
         EX6_INTRO,
         AGENTS_MD,
-        EX6_AGENTS_MD,
-        EX6_RULES,
     ]
+    if os.getcwd() != EX6_DIR: # in ex6 repo itself, AGENTS_MD is already ex6's and the rules would conflict
+        messages += [EX6_AGENTS_MD, EX6_RULES]
     ctx = Context(app, **{**SOL, "name": "ex6_agent"}, messages=messages)
     ctx.after_tool_calls(context_usage_reminder)
     app.tui.add_context(ctx)
