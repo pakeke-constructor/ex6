@@ -282,7 +282,7 @@ def review(repo, review_agent, t, summary):
 
 
 def fix_review(main_agent, feedback):
-    run(main_agent, f"Reviewer feedback:\n\n{feedback}\n\nAddress this feedback only, then stop.")
+    run(main_agent, f"Reviewer feedback:\n<feedback>{feedback}</feedback>\nAddress this feedback only, then stop.")
 
 
 def update_docs(repo, doc_agent, t):
