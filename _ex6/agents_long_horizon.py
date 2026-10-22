@@ -193,6 +193,8 @@ It's very important to craft a good AGENTS.md, so here is a procedure you should
 (If changes were very small, or were a bugfix that doesn't require a change to AGENTS.md, you may ignore this procedure.)
 </agent_procedure>
 
+And, final reminder: AGENTS.md is supposed to be a *high level index*, NOT a complete map of the codebase.
+Don't be overly specific, and don't be too narrow minded. It's okay if you leave stuff unspecified.
 """)
 
 
