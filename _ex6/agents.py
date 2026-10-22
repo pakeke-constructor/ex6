@@ -202,7 +202,7 @@ def setup_ex6_specialist(app):
     ]
     if os.getcwd() != EX6_DIR: # in ex6 repo itself, AGENTS_MD is already ex6's and the rules would conflict
         messages += [EX6_AGENTS_MD, EX6_RULES]
-    ctx = Context(app, **{**SOL, "name": "ex6_agent"}, messages=messages)
+    ctx = Context(app, **{**SOL, "name": "ex6_agent", "reasoning": "medium"}, messages=messages)
     ctx.after_tool_calls(context_usage_reminder)
     app.tui.add_context(ctx)
 
