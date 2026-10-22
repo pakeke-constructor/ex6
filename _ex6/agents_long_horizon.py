@@ -455,7 +455,8 @@ def default_agents(app, preset=OPUS):
     review = Context(app, **{**preset, "name": "review_agent"}, yolo=True, messages=[
         REVIEW_PROMPT.with_tools(READ + SHELL + [review_diff]), ENV_PROMPT, AGENTS_MD])
     doc = Context(app, **{**preset, "name": "doc_agent"}, yolo=True, messages=[
-        DOC_PROMPT.with_tools(READ + SHELL + WRITE), ENV_PROMPT, AGENTS_MD])
+        DOC_PROMPT.with_tools(READ + SHELL + WRITE), ENV_PROMPT
+    ])
     return {
         # return new dict so caller can mutate.
         "main": main,
