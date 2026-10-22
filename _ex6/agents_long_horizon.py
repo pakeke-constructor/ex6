@@ -186,11 +186,11 @@ Keep it short. If nothing to add, change nothing.
 It's very important to craft a good AGENTS.md, so here is a procedure you should follow:
 <agent_procedure>
 - Firstly, read AGENTS.md
-- Secondly, analyze the git diff, and voice out loud the kinds of things that might be good to put in AGENTS.md
-- Thirdly; weigh up whether these things SHOULD go in AGENTS.md; Remember, we want to keep AGENTS.md focused, like a directory/index, not a source of truth for everything.
-- Finally; if you have changes, write these changes into AGENTS.md.
+- Secondly, analyze the git diff, and voice out loud all the candidate changes, and their details.
+- Thirdly, explicitly list what should be kept, and explicitly list what should be culled. It's very important to keep AGENTS.md minimal and simple; don't overreach. It's a directory/index, not a source of truth for everything.
+- Finally; if anything survived the cull, write it into AGENTS.md.
 
-(If your changes were very small, or were a bugfix that doesn't require a change to AGENTS.md, you may ignore this procedure.)
+(If changes were very small, or were a bugfix that doesn't require a change to AGENTS.md, you may ignore this procedure.)
 </agent_procedure>
 
 """)
