@@ -290,13 +290,12 @@ def update_docs(repo, doc_agent, t):
     agents_md_before = read_text("AGENTS.md")
     run(doc_agent, f"Task that was just completed:\n\n<task>{t}</task>\n\nYour job: Update the AGENTS.md if neccessary.")
     if read_text("AGENTS.md") != agents_md_before:
+        doc_agent.clear() # review with fresh eyes, not as the author
         run(doc_agent, """\
-Reread the entire AGENTS.md.
+Another agent just edited AGENTS.md. Read the full file, then the changes: `git diff master -- AGENTS.md`.
 
-Do your additions match the surrounding document's style, density, and level of abstraction?
-Are they durable navigation/gotcha information, or merely implementation details from the task?
-
-Rewrite or remove anything that does not fit. Preserve useful detail where the surrounding document is detailed. If the changes already fit, do nothing.
+Does this look high quality to you? Which parts look like they were written by an LLM?
+Fix the added/changed lines: rewrite or delete them. Don't touch the rest. If they're already good, do nothing.
 """)
 
 
