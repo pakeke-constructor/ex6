@@ -975,6 +975,7 @@ class Context:
     invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
 
     messages: InitVar[Optional[list[Message]]] = None
+    tools: list[Callable] = field(default_factory=list)
     schema_id: Optional[str] = None
     max_tokens: int = 200000
     llm_is_running: bool = False
@@ -1065,6 +1066,9 @@ class Context:
         return self.pending_message is not None
 
     def __post_init__(self, messages):
+        self.tools = list(self.tools)
+        for fn in self.tools:
+            _validate_tool_sig(fn.__name__, fn)
         for m in messages or ():
             # Copy defensively: messages are often shared module-level constants.
             m = copy.copy(m)
@@ -1124,11 +1128,30 @@ class Context:
     def get_read_files(self):
         return list(self._read_hashes.keys())
 
+    def with_tools(self, tools: list[Callable]) -> 'Context':
+        for fn in tools:
+            _validate_tool_sig(fn.__name__, fn)
+        by_name = {fn.__name__: fn for fn in self.tools}
+        by_name.update({fn.__name__: fn for fn in tools})
+        clone = self.fork()
+        clone.tools = list(by_name.values())
+        return clone
+
+    def without_tools(self, tools: list[Union[str, Callable]]) -> 'Context':
+        names = {t if isinstance(t, str) else t.__name__ for t in tools}
+        missing = names - {fn.__name__ for fn in self.tools}
+        assert not missing, f"tools not present: {missing}"
+        clone = self.fork()
+        clone.tools = [fn for fn in self.tools if fn.__name__ not in names]
+        return clone
+
     def get_tools(self) -> dict[str, Callable]:
         tools = {}
         for m in self.get_messages():
             for fn in m.tools:
                 tools[fn.__name__] = fn
+        # Context tools override message tools with the same name, preserving order.
+        tools.update({fn.__name__: fn for fn in self.tools})
         return tools
 
     def get_tool_schemas(self) -> list[dict]:
@@ -1284,6 +1307,7 @@ class Context:
 
     def _clone(self, new_name: str, messages: list[Message]) -> 'Context':
         cpy = copy.copy(self)
+        cpy.tools = list(self.tools)
         cpy._msg_lock = threading.RLock()
         cpy._clear_pending = False
         cpy._pending_inputs = []
