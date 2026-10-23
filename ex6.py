@@ -401,7 +401,7 @@ class App:
         params = list(inspect.signature(fn).parameters.values())[1:]
         empty = inspect.Parameter.empty
         spec = [(p.name, str if p.annotation is empty else p.annotation, None if p.default is empty else p.default) for p in params]
-        self.commands[fn.__name__] = (fn, spec)
+        self.commands[fn.__name__.lower()] = (fn, spec)
         return fn
 
     def add_context_hook(self, kind, fn):
@@ -481,6 +481,7 @@ class App:
         body = text[1:].strip()
         if not body: return False
         name, sep, rest = body.partition(" ")
+        name = name.lower()
         if name not in self.commands: return True
         fn, spec = self.commands[name]
         args = ([rest.strip()] if sep else []) if len(spec) == 1 else (rest.split() if sep else [])
@@ -2201,7 +2202,7 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
         tui.app.call("render_work_mode_footer", tui, buf, r, ctx)
         return
 
-    query = text[1:].split(" ")[0]
+    query = text[1:].split(" ")[0].lower()
     names = sorted(tui.app.commands)
     prefix = [n for n in names if n.startswith(query)]
     fuzzy = difflib.get_close_matches(query, [n for n in names if n not in prefix], n=3)
