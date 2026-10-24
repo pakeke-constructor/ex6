@@ -5,7 +5,7 @@
 # Other supported grammars (pip names): tree-sitter-go, tree-sitter-solidity,
 # tree-sitter-rust, tree-sitter-c, tree-sitter-cpp, tree-sitter-java,
 # tree-sitter-ruby, tree-sitter-c-sharp, tree-sitter-lua, tree-sitter-kotlin.
-# External: Git; PowerShell on Windows or Bash elsewhere for shell tools.
+# External: Git; Git Bash on Windows or Bash elsewhere for shell tools.
 
 
 
@@ -42,7 +42,6 @@ import git
 import inspect
 import functools
 import io
-import locale
 import tempfile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
@@ -1605,46 +1604,37 @@ def _condense_output(out: str) -> str:
     return footer + text
 
 
-def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str:
-    """Run a bash/shell command and return its output (stdout + stderr combined). Unix only.
+def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
+    """Run a Bash command (Git Bash on Windows), returning stdout + stderr.
+    Use Bash syntax, not PowerShell. Windows paths: /c/path or C:/path.
     Use for: running tests, checking git status, installing packages, etc.
     timeout: max seconds to wait (default 30).
     condense: collapse repeated lines, truncate long output. False = full raw output."""
     if _IS_WINDOWS:
-        raise RuntimeError("bash is Unix-only")
-    bp = shutil.which("bash")
-    if not bp:
-        return "ERROR: bash not found"
+        git_exe = shutil.which("git")
+        exe = os.path.join(os.path.dirname(os.path.dirname(git_exe)), "bin", "bash.exe") if git_exe else None
+        if not exe or not os.path.isfile(exe):
+            return "ERROR: Git Bash not found beside git.exe; install Git for Windows and put its cmd directory on PATH"
+    else:
+        exe = shutil.which("bash")
+        if not exe:
+            return "ERROR: bash not found"
     denial = _approve_command(ctx, "bash", {"command": command, "timeout": timeout, "condense": condense})
     if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
-    try:
-        result = subprocess.run([bp, "-c", command], capture_output=True, timeout=timeout, cwd=ctx.cwd)
-        out = (result.stdout + result.stderr).decode(locale.getpreferredencoding(False), errors='replace')
-        if condense:
-            out = _condense_output(out)
-        if result.returncode != 0:
-            out = f"[exit code {result.returncode}]\n" + out
-        return out.strip() or "(no output)"
-    except subprocess.TimeoutExpired:
-        return f"ERROR: command timed out after {timeout}s"
-
-
-
-def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
-    """Run a PowerShell command and return its output (stdout + stderr combined). Windows only.
-    Use for: running tests, checking git status, installing packages, etc.
-    timeout: max seconds to wait (default 30).
-    condense: collapse repeated lines, truncate long output. False = full raw output."""
     if not _IS_WINDOWS:
-        raise RuntimeError("powershell is Windows-only")
-    exe = shutil.which("pwsh") or shutil.which("powershell")
-    if not exe:
-        return "ERROR: powershell not found"
-    denial = _approve_command(ctx, "powershell", {"command": command, "timeout": timeout, "condense": condense})
-    if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
+        try:
+            result = subprocess.run([exe, "-c", command], capture_output=True, timeout=timeout, cwd=ctx.cwd)
+            out = (result.stdout + result.stderr).decode("utf-8", errors='replace')
+            if condense:
+                out = _condense_output(out)
+            if result.returncode != 0:
+                out = f"[exit code {result.returncode}]\n" + out
+            return out.strip() or "(no output)"
+        except subprocess.TimeoutExpired:
+            return f"ERROR: command timed out after {timeout}s"
     stdout, stderr = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     try:
-        proc = subprocess.Popen([exe, "-NoProfile", "-NonInteractive", "-Command", command],
+        proc = subprocess.Popen([exe, "-c", command],
                                 stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
                                 cwd=ctx.cwd, creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception:
@@ -1679,7 +1669,7 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool
         try:
             stdout.seek(0)
             stderr.seek(0)
-            out = (stdout.read() + stderr.read()).decode(locale.getpreferredencoding(False))
+            out = (stdout.read() + stderr.read()).decode("utf-8", errors="replace")
         finally:
             stdout.close()
             stderr.close()
@@ -1694,7 +1684,7 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool
     return ex6.Operation(cancel=cancel, poll=poll)
 
 
-COMMANDLINE_TOOL = powershell if _IS_WINDOWS else bash
+COMMANDLINE_TOOL = bash
 
 
 
