@@ -115,6 +115,9 @@ def _build_metadata(ctx: ex6.Context) -> str:
 
 @handler
 def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
+    if ctx.app.long_horizon:
+        return text
+
     matches = list(_SIGIL_RE.finditer(text))
     if not matches:
         return text
