@@ -42,6 +42,7 @@ import git
 import inspect
 import functools
 import io
+import locale
 import tempfile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
@@ -1606,7 +1607,6 @@ def _condense_output(out: str) -> str:
 
 def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
     """Run a Bash command (Git Bash on Windows), returning stdout + stderr.
-    Use Bash syntax, not PowerShell. Windows paths: /c/path or C:/path.
     Use for: running tests, checking git status, installing packages, etc.
     timeout: max seconds to wait (default 30).
     condense: collapse repeated lines, truncate long output. False = full raw output."""
@@ -1632,9 +1632,29 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = Tru
             return out.strip() or "(no output)"
         except subprocess.TimeoutExpired:
             return f"ERROR: command timed out after {timeout}s"
+    return _windows_shell(ctx, [exe, "-c", command], timeout, condense, "utf-8")
+
+
+def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
+    """Run a PowerShell command and return its output (stdout + stderr combined). Windows only.
+    Use for: running tests, checking git status, installing packages, etc.
+    timeout: max seconds to wait (default 30).
+    condense: collapse repeated lines, truncate long output. False = full raw output."""
+    if not _IS_WINDOWS:
+        raise RuntimeError("powershell is Windows-only")
+    exe = shutil.which("pwsh") or shutil.which("powershell")
+    if not exe:
+        return "ERROR: powershell not found"
+    denial = _approve_command(ctx, "powershell", {"command": command, "timeout": timeout, "condense": condense})
+    if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
+    return _windows_shell(ctx, [exe, "-NoProfile", "-NonInteractive", "-Command", command],
+                          timeout, condense, locale.getpreferredencoding(False))
+
+
+def _windows_shell(ctx, args, timeout, condense, encoding):
     stdout, stderr = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     try:
-        proc = subprocess.Popen([exe, "-c", command],
+        proc = subprocess.Popen(args,
                                 stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
                                 cwd=ctx.cwd, creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception:
@@ -1669,7 +1689,7 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = Tru
         try:
             stdout.seek(0)
             stderr.seek(0)
-            out = (stdout.read() + stderr.read()).decode("utf-8", errors="replace")
+            out = (stdout.read() + stderr.read()).decode(encoding, errors="replace")
         finally:
             stdout.close()
             stderr.close()
