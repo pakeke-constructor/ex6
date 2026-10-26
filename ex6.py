@@ -2128,7 +2128,6 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         input_box(buf, inpt, input_r, txt_color=th.accent)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
-        y = input_r[1]
         if ctx.pending_message and ctx.llm_output_type:
             toks = f"~{get_token_estimate(ctx.pending_message.content + ctx.llm_cot)}"
             if ctx.llm_result:
@@ -2140,6 +2139,7 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
             stats = f" ({elapsed}) "
         total_w = 4 + len(label) + len(stats)
         x = input_r[0] + input_r[2] - total_w
+        y = input_r[1] - 1 if input_box.text else input_r[1]  # onto divider while typing
         buf.puts(x, y, spin, txt_color=th.invoking); x += 4
         buf.puts(x, y, label, txt_color=th.accent); x += len(label)
         buf.puts(x, y, stats, txt_color=th.muted)
