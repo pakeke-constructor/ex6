@@ -416,7 +416,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     - Use this tool when you need surgical edits, ESPECIALLY edits to 1-2 lines.
     - ALWAYS Prefer write_file if the entire file needs to be rewritten, or if the file is small (less than 50 lines)
     """
-    _check_read(ctx, file)
+    _check_secret(file)
     p = ctx.resolve(file)
 
     with _get_file_lock(ctx, p):
@@ -438,6 +438,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             if content.count(search) > 1:
                 raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
             return do_edit(search)
+        _check_read(ctx, file)  # exact match proves knowledge; non-exact requires a prior read
         search_lines = search.splitlines()
         content_lines = content.splitlines()
         n = len(search_lines)
