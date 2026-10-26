@@ -249,9 +249,9 @@ def _atomic_write(path: Path, content: str) -> None:
             os.unlink(temporary)
 
 
-def freesound_install(ctx: Context, sound_id: int, staged_path: str, category: str,
-                      name: str, overwrite: bool = False) -> str:
-    """Install a verified staged preview as <sfx_dir>/<category>/<name>.ogg and deduplicate its credits entry."""
+def freesound_install(ctx: Context, sound_id: int, staged_path: str, name: str,
+                      overwrite: bool = False) -> str:
+    """Install a verified staged preview as <sfx_dir>/<name>.ogg and deduplicate its credits entry."""
     audio = _staged(ctx, staged_path)
     if not audio.is_file():
         raise ValueError(f"Staged preview does not exist: {staged_path}")
@@ -259,7 +259,7 @@ def freesound_install(ctx: Context, sound_id: int, staged_path: str, category: s
     if manifest.get("sound_id") != sound_id or manifest.get("preview_url") != metadata["preview_url"]:
         raise ValueError("sound_id or current Freesound metadata does not match staged preview.")
     sfx_dir = ctx.data.get("sound:sfx_dir", "assets/sfx")
-    destination = Path(ctx.resolve(f"{sfx_dir}/{_segment(category, 'category')}/{_segment(name, 'name')}.ogg"))
+    destination = Path(ctx.resolve(f"{sfx_dir}/{_segment(name, 'name')}.ogg"))
     asset_path = _relative(ctx, destination)
     credits_path = Path(ctx.resolve(ctx.data.get("sound:credits_file", "CREDITS.txt")))
     with INSTALL_LOCK:
@@ -267,7 +267,7 @@ def freesound_install(ctx: Context, sound_id: int, staged_path: str, category: s
             raise ValueError(f"Asset already exists: {asset_path}")
         credits = credits_path.read_text(encoding="utf-8") if credits_path.exists() else ""
         updated = _upsert_credit(credits, metadata, asset_path)
-        args = {"sound_id": sound_id, "staged_path": staged_path, "category": category,
+        args = {"sound_id": sound_id, "staged_path": staged_path,
                 "name": name, "overwrite": overwrite}
         denial = _approve(ctx, "freesound_install", args, f"Install {asset_path} and update {_relative(ctx, credits_path)}")
         if denial:
@@ -306,7 +306,7 @@ You are working on this project:
 {project}
 </project>
 
-Installed sounds go to `{sfx_dir}/<category>/<name>.ogg`; credits are kept in `{credits_file}`.
+Installed sounds go to `{sfx_dir}/<name>.ogg`; credits are kept in `{credits_file}`.
 
 Before you start, briefly:
 - Search for existing sounds in the project.
@@ -315,7 +315,7 @@ Before you start, briefly:
 
 <agent_strategy>
 Firstly:
-- clarify desired feel, context, and target category/name.
+- clarify desired feel, context, and target name.
 - Work out what keywords are best to search for; (e.g. smash, crack, sword swing, slash, click, buzz, warning, success, ding, etc etc).
 - Then, Search several keywords; (only CC0 1.0 and CC BY 4.0 are allowed.)
 - (Sorting by most-downloads is generally quite a good idea.)
