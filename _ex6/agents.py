@@ -14,10 +14,11 @@ from _ex6.web_tools import websearch_agent
 from _ex6.provider import cache_manually
 import ex6
 from ex6 import Context, Message
+
 import time
 import math
 import os
-from typing import Any
+from typing import Any, Optional
 
 
 def context_usage_reminder(ctx: Context):
@@ -210,16 +211,19 @@ def setup_ex6_specialist(app):
 
 
 
-def auto_setup(app):
+def auto_setup(app: ex6.App, extra_tools:Optional[list]=None):
+    extra_tools = extra_tools or []
     messages = [
-        MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
+        MAIN_SYSTEM_PROMPT
+            .with_tools(MAIN_TOOLS)
+            .with_tools(extra_tools),
         ENV_PROMPT,
         AGENTS_MD,
     ]
     custom_setup(app, messages=messages)
 
 
-def custom_setup(app: ex6.App, messages):
+def custom_setup(app: ex6.App, messages: list):
     messages = messages or [
         MAIN_SYSTEM_PROMPT.with_tools(MAIN_TOOLS),
         ENV_PROMPT,
