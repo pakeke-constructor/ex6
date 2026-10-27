@@ -37,8 +37,24 @@ Core:
 
 - `TUI`: holds contexts, `current`, mode (selection/work/help/scroll), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
 
-- `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, `get_invoker()` (explicit `invoke_llm` field, else the invoke_llm handler chain picks by model). Plugins can store info in `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
+- `Context`: a single LLM conversation, plus the agent running it. See below.
 <Context>
+A Context represents an agent, alongside a conversation with an LLM.
+Contains messages, its model, and the tools it can use. Every agent you see in selection-mode is a Context.
+
+Building one: `Context(app, "name", model=..., reasoning=..., messages=[...], tools=[...])`. An agent is mostly "a system prompt plus some tools".
+
+Running it: `ctx.invoke("some prompt")` adds the user message and starts the LLM in a background thread. It keeps looping (LLM replies, tools run, LLM replies again) until the model stops calling tools. `ctx.stop_early = True` asks it to stop.
+
+Which backend runs the request?
+The `ctx.get_invoker()` polls a handler to choose between models. With the default plugins in _ex6, anthropic models use claude-code backend, openai models use codex-backend, and both of these fallback to openrouter. (To force a backend, pass `invoke_llm=some_fn` when building the Context.)
+
+Messages: read them with `get_messages()`. Also see `append_message()`, `edit_messages(fn)`, and `truncate(i)` to cut history back to message i.
+
+Copies and resets: `fork()` gives you an independent copy to branch off from (handy for subagents). `clear()` wipes the conversation but keeps the system prompt.
+
+If you need to store immutable values on the context, you can use `ctx.data["plugin:key"]` (strings, numbers, bools only). They survive forks.
+If you need to store more complex data (like lists, dicts, objects), you must use `ctx.data_volatile`, which is wiped on fork and clear. This keeps forking/clearing robust.
 </Context>
 
 - `Message`: represents a message (system, user, assistant, tool). Content can be str, ToolResult, or callable(ctx) for dynamic/lazy content (snapshotted for caching). System msgs carry tools: `with_tools` (same name replaces in place), `without_tools(name_or_fn)`.

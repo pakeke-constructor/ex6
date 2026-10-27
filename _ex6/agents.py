@@ -134,7 +134,7 @@ ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, rea
 READ = [read_file, read_image, glob, search, read_headers, read_body]
 WRITE = [write_file, edit_file]
 SHELL = [COMMANDLINE_TOOL, git_working_tree]
-SUBAGENTS = [explore_agent, websearch_agent]
+SUBAGENTS = [explore_agent]
 ASK = [ask_user_question]
 
 MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + ASK + [handoff, load_skill]
