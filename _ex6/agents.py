@@ -9,15 +9,11 @@ from _ex6.provider_openai import invoke_llm as invoke_llm_openai
 from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic
 from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
-from _ex6.tool_vscode import check_vscode_diagnostics
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
-from _ex6.provider import cache_manually
 import ex6
 from ex6 import Context, Message
 
-import time
-import math
 import os
 from typing import Any, Optional
 
@@ -135,7 +131,7 @@ ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, rea
 
 
 # Tool groups: compose agents by summing these. Swap/remove via Message.with_tools / without_tools.
-READ = [read_file, read_image, glob, search, read_headers, read_body, check_vscode_diagnostics]
+READ = [read_file, read_image, glob, search, read_headers, read_body]
 WRITE = [write_file, edit_file]
 SHELL = [COMMANDLINE_TOOL, git_working_tree]
 SUBAGENTS = [explore_agent, websearch_agent]
