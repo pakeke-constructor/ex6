@@ -40,9 +40,11 @@ Core:
 - `Context`: a single LLM conversation, plus the agent running it. See below.
 <Context>
 A Context represents an agent, alongside a conversation with an LLM.
-Contains messages, its model, and the tools it can use. Every agent you see in selection-mode is a Context.
+It is the most important primitive in ex6.
+A copntext contains messages, its model, and the tools it can use.
+Every agent you see in selection-mode is a Context.
 
-Building one: `Context(app, "name", model=..., reasoning=..., messages=[...], tools=[...])`. An agent is mostly "a system prompt plus some tools".
+Instantiation: `Context(app, "name", model="openai/model", reasoning="low", messages=[...], tools=[...])`. An agent is mostly "a system prompt plus some tools".
 
 Running it: `ctx.invoke("some prompt")` adds the user message and starts the LLM in a background thread. It keeps looping (LLM replies, tools run, LLM replies again) until the model stops calling tools. `ctx.stop_early = True` asks it to stop.
 
