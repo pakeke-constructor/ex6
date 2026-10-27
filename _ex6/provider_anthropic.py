@@ -141,6 +141,19 @@ def _mcp_tools(ctx):
     return tools
 
 
+# Native tools: add to a context's tools explicitly. Names are claude's built-in tool names.
+WEB_SEARCH = ex6.NativeTool("WebSearch")
+WEB_FETCH = ex6.NativeTool("WebFetch")
+
+
+def _native_tools(ctx):
+    names = ctx.get_native_tools()
+    unknown = [n for n in names if n not in (WEB_SEARCH.__name__, WEB_FETCH.__name__)]
+    if unknown:
+        raise ValueError(f"claude provider doesn't support native tools: {unknown}")
+    return names
+
+
 def _system_prompt(ctx):
     parts = []
     for message in ctx.get_messages():
@@ -209,6 +222,8 @@ class _ClaudeProcess:
         self.ctx = ctx
         self.system = _system_prompt(ctx)
         self.tools = _mcp_tools(ctx)
+        self.native_tools = _native_tools(ctx)
+        self.native_calls = {}  # tool_use_id -> record, until claude echoes its result (may be a later pump)
         self.seen = ()  # ex6 messages claude has been given
         # ("claude", event) | ("call", tool_use_id, request_id, rpc_id) | ("exit", code)
         self.events = queue.Queue()
@@ -234,7 +249,8 @@ class _ClaudeProcess:
             "--verbose",
             "--setting-sources=",
             "--disable-slash-commands",
-            "--tools=",
+            "--tools=" + ",".join(self.native_tools),
+            "--allowedTools=" + ",".join(self.native_tools),
             "--strict-mcp-config",
             "--mcp-config", str(mcp_path),
             "--system-prompt-file", str(prompt_path),
@@ -347,6 +363,8 @@ class _ClaudeProcess:
             return None
         if self.system != _system_prompt(self.ctx) or self.tools != _mcp_tools(self.ctx):
             return None
+        if self.native_tools != _native_tools(self.ctx):
+            return None
         seen = self.seen
         if len(messages) <= len(seen) or any(a is not b for a, b in zip(seen, messages)):
             return None
@@ -370,11 +388,11 @@ class _ClaudeProcess:
         self._send_mcp(request_id, {"jsonrpc": "2.0", "id": rpc_id, "result": _tool_result_payload(result)})
         return _digest(False, result.text)
 
-    def _result(self, usage, output_tokens, calls, finish_reason):
+    def _result(self, usage, output_tokens, calls, native_calls, finish_reason):
         cache_read = usage.get("cache_read_input_tokens", 0)
         cache_write = usage.get("cache_creation_input_tokens", 0)
         input_tokens = usage.get("input_tokens", 0) + cache_read + cache_write
-        result = ex6.LLMResult(input_tokens, output_tokens, calls, finish_reason, cost=0)
+        result = ex6.LLMResult(input_tokens, output_tokens, calls, finish_reason, cost=0, native_calls=native_calls)
         _log_invoke(self.ctx, [], result, cache_read, cache_write)
         return result
 
@@ -384,6 +402,7 @@ class _ClaudeProcess:
         sent = {}  # tool_use_id -> digest of the result delivered to claude
         echoed = set()  # tool_use_ids claude confirmed with a matching tool_result
         calls = []
+        native_calls = []
         usage = {}
         output_tokens = 0
         stash, self.waiting = self.waiting, {}
@@ -429,13 +448,20 @@ class _ClaudeProcess:
                 elif inner["type"] == "message_stop" and calls:
                     # claude emits one assistant event per block; message_stop follows all of them.
                     self._check_echoed(results, echoed)
-                    yield self._result(usage, output_tokens, calls, "tool_calls")
+                    yield self._result(usage, output_tokens, calls, native_calls, "tool_calls")
                     return
 
             elif event.get("type") == "assistant":
                 for block in event["message"]["content"]:
                     if block["type"] == "tool_use":
-                        calls.append({"id": block["id"], "name": block["name"], "args": block["input"]})
+                        if block["name"] in self.native_tools:
+                            record = {"id": block["id"], "name": block["name"], "args": block["input"], "result": None}
+                            self.native_calls[block["id"]] = record
+                            native_calls.append(record)
+                            self.ctx.app.debug_print(f"[claude] native tool_use: {json.dumps(block)}")
+                            yield ex6.ResponseChunk("cot", f"\n[{block['name']}] {json.dumps(block['input'])}\n")
+                        else:
+                            calls.append({"id": block["id"], "name": block["name"], "args": block["input"]})
 
             elif event.get("type") == "user":
                 # claude echoes every tool result it accepted; it must be exactly what ex6 sent.
@@ -443,6 +469,12 @@ class _ClaudeProcess:
                     if block["type"] != "tool_result":
                         continue
                     tool_use_id = block["tool_use_id"]
+                    if tool_use_id in self.native_calls:
+                        content = block.get("content")
+                        text = content if isinstance(content, str) else json.dumps(content)
+                        self.native_calls.pop(tool_use_id)["result"] = ("ERROR: " if block.get("is_error") else "") + text
+                        self.ctx.app.debug_print(f"[claude] native tool_result {tool_use_id}: {text[:500]}")
+                        continue
                     if tool_use_id not in sent:
                         raise RuntimeError(f"Claude resolved tool call {tool_use_id} itself: "
                                            f"{str(block.get('content'))[:200]}")
@@ -454,7 +486,7 @@ class _ClaudeProcess:
                 if event.get("is_error"):
                     raise RuntimeError(event.get("result") or "Claude invocation failed")
                 self._check_echoed(results, echoed)
-                yield self._result(usage, output_tokens, [], event.get("stop_reason") or "stop")
+                yield self._result(usage, output_tokens, [], native_calls, event.get("stop_reason") or "stop")
                 return
 
     def _check_echoed(self, results, echoed):

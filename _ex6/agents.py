@@ -5,8 +5,8 @@
 # External: Git for the inline watcher.
 
 
-from _ex6.provider_openai import invoke_llm as invoke_llm_openai
-from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic
+from _ex6.provider_openai import invoke_llm as invoke_llm_openai, WEB_SEARCH as OAI_WEB_SEARCH
+from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic, WEB_SEARCH as ANTH_WEB_SEARCH, WEB_FETCH as ANTH_WEB_FETCH
 from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
@@ -120,6 +120,7 @@ PLANNER_MODEL = M.OPUS_46.id
 # Partial contexts: Context(app, **OPUS)
 SONNET: dict[str, Any] = dict(name="anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
 OPUS: dict[str, Any]   = dict(name="anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
+
 LUNA: dict[str, Any]   = dict(name="oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
 TERRA: dict[str, Any]  = dict(name="oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
 # right now, GPT_56_SOL is stronger that GPT-6.
@@ -138,6 +139,21 @@ SUBAGENTS = [explore_agent, websearch_agent]
 ASK = [ask_user_question]
 
 MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + ASK + [handoff, load_skill]
+
+# Provider-hosted web tools, keyed by provider. Opt in per context via add_native_webtools.
+NATIVE_WEBTOOLS = {
+    invoke_llm_anthropic: [ANTH_WEB_SEARCH, ANTH_WEB_FETCH],
+    invoke_llm_openai: [OAI_WEB_SEARCH],
+}
+
+
+def add_native_webtools(ctx: Context) -> Context:
+    """Add ctx's provider's native web tools, if it has any. Native tools bypass approve_tool."""
+    tools = NATIVE_WEBTOOLS.get(ctx.invoke_llm, [])
+    if not tools:
+        ctx.app.debug_print(f"[agents] {ctx.name}: provider has no native web tools")
+    ctx.tools += tools
+    return ctx
 
 
 
@@ -201,6 +217,7 @@ def setup_ex6_specialist(app):
     if os.getcwd() != EX6_DIR: # in ex6 repo itself, AGENTS_MD is already ex6's and the rules would conflict
         messages += [EX6_AGENTS_MD, EX6_RULES]
     ctx = Context(app, **{**SOL, "name": "ex6_agent", "reasoning": "medium"}, messages=messages)
+    add_native_webtools(ctx)
     ctx.after_tool_calls(context_usage_reminder)
     app.tui.add_context(ctx)
 
@@ -234,6 +251,7 @@ def custom_setup(app: ex6.App, messages: list):
 
     for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
         ctx = Context(app, **preset, messages=messages)
+        add_native_webtools(ctx)
         ctx.after_tool_calls(context_usage_reminder)
         tui.add_context(ctx)
     tui.current = tui.get_context(SOL["name"])

@@ -127,6 +127,12 @@ def invoke_llm(ctx: ex6.Context):
         yield result
         return
 
+    if ctx.get_native_tools():
+        result = ex6.LLMResult(error=f"openrouter provider supports no native tools: {ctx.get_native_tools()}")
+        _log_invoke(ctx, messages, result)
+        yield result
+        return
+
     tools = ctx.get_tool_schemas() or None
 
     # Anthropic prompt caching
@@ -299,6 +305,8 @@ def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):
         f"cache_write_tokens: {cache_write_tokens}",
         f"cost: ${result.cost:.4f}" if result.cost else "cost: N/A",
         f"finish_reason: {result.finish_reason}",
+        f"native_tools: {ctx.get_native_tools()}",
+        f"native_calls: {json.dumps(result.native_calls)}",
         f"error: {result.error}" if result.error else "error: None",
         "============",
         "",

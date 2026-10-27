@@ -1886,7 +1886,7 @@ def add_tool_repetition_guard(ctx: ex6.Context, guard: Optional[list] = None):
             continue
         new_tools = []
         for fn in m.tools:
-            should_wrap = names is None or fn.__name__ in names
+            should_wrap = not isinstance(fn, ex6.NativeTool) and (names is None or fn.__name__ in names)
             if should_wrap and not getattr(fn, "_ex6_repeat_guard_wrapped", False):
                 fn = guard_repeat_calls(fn)
             new_tools.append(fn)

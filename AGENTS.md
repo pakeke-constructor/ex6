@@ -42,7 +42,8 @@ Core:
 
 LLM / tools:
 - `ResponseChunk`: streamed chunk from invoke_llm ("text" or "cot").
-- `LLMResult`: final result of invoke_llm: tokens, tool_calls, finish_reason, error, cost.
+- `LLMResult`: final result of invoke_llm: tokens, tool_calls, native_calls, finish_reason, error, cost.
+- `NativeTool`: provider-hosted tool (eg web search), placed in tool lists like a normal tool. Provider runs it: no schema sent, ex6 never calls it, `approve_tool` is NOT consulted. Providers raise on names they don't support. Each call is recorded as `{id, name, args, result}` in `LLMResult.native_calls` -> `Message.native_calls` (display/debug only, never sent back), rendered as `native:<name>` tool rows, logged by `_log_invoke`. `ctx.get_native_tools()` lists names.
 - `ToolResult`: tool output: text + attachments.
 - `PendingTool`: a tool call awaiting its result.
 - `Operation`: long-running tool work; tool returns cancel/poll fns, core polls until done.
@@ -99,7 +100,7 @@ Tools / agents:
 - _ex6/web_tools.py - websearch_agent tool (OpenRouter `:online` subagent)
 - _ex6/skills.py - load_skill tool; progressive disclosure of `_ex6/_skills/*.md` (yaml frontmatter)
 - _ex6/tasks.py - plan_write/plan_read/plan_add_log/plan_done/plan_list tools, backed by `.plans/*.md`
-- _ex6/agents.py - basic agent definitions (system prompts, model presets, tool groups READ/WRITE/SHELL/SUBAGENTS/ASK), as an example. Projects usually define their own agents. Also starts inline watcher.
+- _ex6/agents.py - basic agent definitions (system prompts, model presets, tool groups READ/WRITE/SHELL/SUBAGENTS/ASK), as an example. `add_native_webtools(ctx)` opts a context into its provider's native web tools (no-op + debug_print if none). Projects usually define their own agents. Also starts inline watcher.
 - _ex6/agents_long_horizon.py - overnight loop over a markdown task file. No command; projects call `run_horizon(app, path, agents, pipeline=default_pipeline)` from their own command, agents (dict name -> Context) built via `default_agents` or by hand (must be yolo=True; see `_plugin_examples/_example_horizon.py`). Custom pipelines compose the step fns (run/review/fix_review/update_docs); the loop owns branching/merging and stops fatally if a pipeline moves HEAD or master (`check_git_state`)
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
@@ -107,8 +108,8 @@ Tools / agents:
 
 Providers / models:
 - _ex6/provider.py - openrouter provider, overrides invoke_llm. Also cache_manually, /usage, invoke logging.
-- _ex6/provider_openai.py - openai provider, via ChatGPT subscription
-- _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process
+- _ex6/provider_openai.py - openai provider, via ChatGPT subscription. Native: `WEB_SEARCH`
+- _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. Native: `WEB_SEARCH`, `WEB_FETCH`
 - _ex6/models.py - model registry `M` (ModelInfo: id, ctx window, pricing)
 - _ex6/global_spend_limit.py - sets app.budget.limit
 

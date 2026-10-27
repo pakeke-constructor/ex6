@@ -561,6 +561,17 @@ def invoke_llm(ctx):
         yield ResponseChunk("text", "token ")
 
 
+class NativeTool:
+    """Provider-hosted tool (eg web search). Goes in tool lists like a normal tool, but the
+    provider runs it: no schema is sent, ex6 never calls it, approve_tool is not consulted.
+    Providers raise on names they don't support. Calls land in Message.native_calls."""
+    def __init__(self, name: str):
+        self.__name__ = name
+
+    def __repr__(self):
+        return f"NativeTool({self.__name__!r})"
+
+
 @dataclass
 class Message:
     role: Literal["system", "user", "assistant", "tool"]
@@ -568,6 +579,7 @@ class Message:
     tools: list[Callable] = field(default_factory=list)
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
+    native_calls: Optional[list] = None  # provider-run NativeTool calls ({id, name, args, result}); display/debug only, never sent back
     overview: Optional[str] = None  # short label for display (e.g. in selection panel)
     attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
@@ -620,6 +632,7 @@ class LLMResult:
     finish_reason: str = "stop"
     error: Optional[str] = None
     cost: Optional[float] = None
+    native_calls: list = field(default_factory=list)  # see Message.native_calls
 
 
 @dataclass
@@ -788,6 +801,8 @@ def _type_to_schema(type_hint):
 
 def _validate_tool_sig(name: str, fn: Callable):
     """Ensure tool has (ctx: Context, ...) signature."""
+    if isinstance(fn, NativeTool):
+        return
     params = list(inspect.signature(fn).parameters.values())
     if not params:
         raise TypeError(f"Tool '{name}' first param must be ctx: Context")
@@ -1156,7 +1171,10 @@ class Context:
         return tools
 
     def get_tool_schemas(self) -> list[dict]:
-        return [tool_to_schema(name, fn) for name, fn in self.get_tools().items()]
+        return [tool_to_schema(name, fn) for name, fn in self.get_tools().items() if not isinstance(fn, NativeTool)]
+
+    def get_native_tools(self) -> list[str]:
+        return [name for name, fn in self.get_tools().items() if isinstance(fn, NativeTool)]
 
     def schedule(self, fn: Callable, *args, **kwargs):
         """
@@ -1200,6 +1218,7 @@ class Context:
             elif isinstance(item, LLMResult):
                 self.llm_result = item
                 message.tool_calls = item.tool_calls
+                message.native_calls = item.native_calls or None
                 if item.input_tokens:
                     message._current_tokens = item.input_tokens + item.output_tokens
 
@@ -1923,7 +1942,7 @@ def render_selection_right(tui, buf, r):
     buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
 
     msgs_end_x = x + w - 2
-    tools = list(ctx.get_tools())
+    tools = [f"{name} (native)" if isinstance(fn, NativeTool) else name for name, fn in ctx.get_tools().items()]
     if tools:
         msgs_end_x = _render_tools_column(buf, r, tools, th)
 
@@ -2067,6 +2086,8 @@ def render_work_mode(tui, buf, inpt, r):
             text += "█"
         lines = text.split('\n')
         tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
+        for nc in msg.native_calls or ():
+            lines.append(_default_tool_row({**nc, "name": "native:" + nc["name"]}, nc["result"]))
         if msg is pending_assistant and pending is not None:
             lines.extend(_default_tool_row(p.call, p.result) for p in pending)
         elif msg.tool_calls:

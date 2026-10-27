@@ -148,7 +148,18 @@ def _to_responses_input(ctx: ex6.Context):
     return "\n\n".join(instructions), items
 
 
+# Native tools: add to a context's tools explicitly. name -> Responses tool, sent verbatim.
+WEB_SEARCH = ex6.NativeTool("web_search")
+NATIVE_TOOLS = {"web_search": {"type": "web_search", "external_web_access": True}}
+
+
 def invoke_llm(ctx: ex6.Context):
+    unknown = [n for n in ctx.get_native_tools() if n not in NATIVE_TOOLS]
+    if unknown:
+        result = ex6.LLMResult(error=f"openai provider doesn't support native tools: {unknown}")
+        _log_invoke(ctx, [], result)
+        yield result
+        return
     access_token, account_id = _codex_auth()
     instructions, input_items = _to_responses_input(ctx)
 
@@ -157,6 +168,7 @@ def invoke_llm(ctx: ex6.Context):
               "description": t["function"]["description"],
               "parameters": t["function"]["parameters"]}
              for t in (ctx.get_tool_schemas() or [])]
+    tools += [NATIVE_TOOLS[n] for n in ctx.get_native_tools()]
 
     body = {"store": False, "include": ["reasoning.encrypted_content"]}
     kw = {}
@@ -195,6 +207,7 @@ def invoke_llm(ctx: ex6.Context):
     input_tokens, output_tokens, cached_tokens = 0, 0, 0
     finish_reason = "stop"
     tool_calls = []
+    native_calls = []
     try:
         for event in stream:
             t = event.type
@@ -209,6 +222,13 @@ def invoke_llm(ctx: ex6.Context):
                 except:
                     args = {}
                 tool_calls.append({"id": it.call_id, "name": it.name, "args": args})
+            elif t == "response.output_item.done" and event.item.type == "web_search_call":
+                item = event.item.model_dump(exclude_none=True)
+                status = item.get("status")
+                native_calls.append({"id": item["id"], "name": "web_search", "args": item.get("action", {}),
+                                     "result": status if status == "completed" else f"ERROR: {status}"})
+                ctx.app.debug_print(f"[codex] native web_search_call: {json.dumps(item)}")
+                yield ex6.ResponseChunk("cot", f"\n[web_search] {json.dumps(item.get('action'))}\n")
             elif t == "response.completed":
                 u = event.response.usage
                 if u:
@@ -230,8 +250,8 @@ def invoke_llm(ctx: ex6.Context):
         finish_reason = "tool_calls"
 
     ctx.app.budget.add_cost(0)  # subscription — no API charge
-    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0)
-    ctx.app.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)}")
+    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0, native_calls=native_calls)
+    ctx.app.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)} native={len(native_calls)}")
     _log_invoke(ctx, input_items, result, cached_tokens)
     yield result
 
