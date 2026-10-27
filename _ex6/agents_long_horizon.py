@@ -441,9 +441,12 @@ def horizon_loop(tasks_path, agents, pipeline):
 HORIZON_LOCK = threading.Lock() # one loop at a time; they'd share _pending, .workspace and git
 
 
-def assert_horizon_valid():
+def assert_horizon_valid(tasks_path):
     if HORIZON_LOCK.locked():
         raise RuntimeError("horizon already running")
+    assert os.path.isfile(tasks_path), f"tasks file not found: {tasks_path}"
+    _, tasks = split_tasks(read_text(tasks_path))
+    assert tasks, f"no `##` tasks in {tasks_path}"
     if os.path.exists(".gitignore"):
         ignored = [l.strip().strip("/") for l in read_text(".gitignore").splitlines()]
         assert HISTORY_DIR in ignored, f"{HISTORY_DIR} must be in .gitignore"
@@ -469,7 +472,7 @@ def default_agents(app, preset=OPUS):
 
 def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
     """Run the task loop in a background thread. agents: dict of name -> Context; pipeline(repo, agents, t, preamble) does each task. Replaces same-named TUI contexts."""
-    assert_horizon_valid()
+    assert_horizon_valid(tasks_path)
     for ctx in agents.values():
         assert ctx.yolo, f"{ctx.name} must be yolo=True; nobody is around to approve tools"
     tasks_path = os.path.abspath(tasks_path)
