@@ -13,13 +13,15 @@ from _ex6.commands import format_context
 import ex6
 from ex6 import Context, Message
 import time
-import math
 import os
 import functools
 import shutil
 import threading
 import traceback
+import subprocess
+import re
 import git
+import pyperclip
 
 
 
@@ -495,5 +497,49 @@ def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
     threading.Thread(target=loop, daemon=True).start()
 
 
+
+
+def _git(*args) -> str:
+    return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8").stdout.strip()
+
+
+
+@ex6.command
+def report(tui):
+    """
+    Horizon report:
+    Github compare-link for the most recent run of horizon commits on master. (Copied to clipboard)
+    """
+    remote = _git("remote", "get-url", "origin")
+    repo = re.sub(r"^(git@github\.com:|https://github\.com/)|\.git$", "", remote)
+    commits = [ln.split(" ", 1) for ln in _git("log", "master", "--format=%H %s").splitlines()]
+    i = 0
+    while i < len(commits) and not commits[i][1].startswith("horizon"):
+        i += 1 # skip non-horizon commits made after the horizon run
+    j = i
+    while j < len(commits) and commits[j][1].startswith("horizon"):
+        j += 1
+
+    if i == len(commits):
+        lines = ["No horizon commits found on master."]
+    else:
+        link = f"https://github.com/{repo}/compare/{commits[j][0][:10]}...{commits[i][0][:10]}"
+        pyperclip.copy(link)
+        tasks = [s for _, s in commits[i:j] if s.startswith("horizon:")]
+        lines = [f"{len(tasks)} horizon tasks ({j - i} commits):"]
+        lines += [" " + s.removeprefix("horizon:").strip() for s in reversed(tasks)]
+        lines += ["", link, "(copied to clipboard. ESC to close)"]
+
+    def draw(buf, inpt, r):
+        x, y, w, h = r
+        th = tui.app.theme
+        panel = ex6.Region(x, y, w, min(len(lines) + 2, h))
+        px, py, pw, ph = panel
+        buf.fill(panel, ' ')
+        buf.rect_line(panel, txt_color=th.accent)
+        for k, line in enumerate(lines[:ph - 2]):
+            buf.puts(px + 2, py + 1 + k, line[:pw - 4], txt_color=th.text)
+
+    tui.ui_panel_stack.append(draw)
 
 
