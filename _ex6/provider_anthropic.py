@@ -84,7 +84,7 @@ def _fmt_reset(secs):
 
 @ex6.handler
 def render_work_mode_footer(tui, buf, r, ctx):
-    if ctx.invoke_llm is not invoke_llm:
+    if ctx.get_invoker() is not invoke_anthropic:
         return False
     x, y, w, h = r
     th = tui.app.theme
@@ -144,6 +144,7 @@ def _mcp_tools(ctx):
 # Native tools: add to a context's tools explicitly. Names are claude's built-in tool names.
 WEB_SEARCH = ex6.NativeTool("WebSearch")
 WEB_FETCH = ex6.NativeTool("WebFetch")
+WEB_TOOLS = [WEB_SEARCH, WEB_FETCH]
 
 
 def _native_tools(ctx):
@@ -228,7 +229,7 @@ class _ClaudeProcess:
         # ("claude", event) | ("call", tool_use_id, request_id, rpc_id) | ("exit", code)
         self.events = queue.Queue()
         self.waiting = {}  # tool_use_id -> (request_id, rpc_id) of a tools/call that arrived before ex6's result
-        self.write_lock = threading.Lock()  # stdin is written by the reader thread and by invoke_llm
+        self.write_lock = threading.Lock()  # stdin is written by the reader thread and by invoke_anthropic
         self.closed = False
 
         self.tmp = tempfile.TemporaryDirectory(prefix="ex6-claude-", ignore_cleanup_errors=True)
@@ -514,7 +515,13 @@ class _ClaudeProcess:
         self.proc.wait(timeout=5)
 
 
+@ex6.handler
 def invoke_llm(ctx: ex6.Context):
+    if ctx.model.startswith("anthropic/") and ":" not in ctx.model:
+        return invoke_anthropic
+
+
+def invoke_anthropic(ctx: ex6.Context):
     messages = ctx.get_messages()
     process = _processes.get(ctx)
     completed = False

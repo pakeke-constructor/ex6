@@ -553,12 +553,10 @@ def run_tui():
         os.execv(sys.executable, args)
 
 
-@_overridable
+@_handleable
 def invoke_llm(ctx):
-    """Override this to use real LLM."""
-    for _ in range(60):
-        time.sleep(0.1)
-        yield ResponseChunk("text", "token ")
+    """Provider handlers return the generator fn that runs ctx, or None to abstain."""
+    raise RuntimeError(f"no provider handles model {ctx.model!r}")
 
 
 class NativeTool:
@@ -988,7 +986,7 @@ class Context:
     name: str
     model: str
     reasoning: Literal["low","medium","high","none"] = "none"  # "low", "medium", "high", or "none"
-    invoke_llm: Optional[Callable] = None  # per-context LLM backend; falls back to global invoke_llm
+    invoke_llm: Optional[Callable] = None  # explicit LLM backend; else the invoke_llm handler chain picks by model
 
     messages: InitVar[Optional[list[Message]]] = None
     tools: list[Callable] = field(default_factory=list)
@@ -1222,9 +1220,13 @@ class Context:
                 if item.input_tokens:
                     message._current_tokens = item.input_tokens + item.output_tokens
 
+    def get_invoker(self) -> Callable:
+        return self.invoke_llm or self.app.call("invoke_llm", self)
+
     def invoke(self, text=None, llm_fn=None, attachments=None):
         app = self.app
-        llm_fn = llm_fn or self.invoke_llm or app.get_implementation("invoke_llm")
+        llm_fn = llm_fn or self.get_invoker()
+        app.debug_print(f"[invoke] {self.name} {self.model} -> {llm_fn.__module__}.{llm_fn.__name__}")
         with self._msg_lock:
             if self.llm_is_running:
                 raise RuntimeError("Context is already running or draining")
@@ -1930,7 +1932,9 @@ def render_selection_right(tui, buf, r):
     ctx = tui.current
     buf.puts(x + 2, y + 1, ctx.name, style='bold')
     model_x = x + 2 + len(ctx.name) + 2
-    buf.puts(model_x, y + 1, ctx.model, style='dim')
+    try: via = ctx.get_invoker().__module__.rsplit(".", 1)[-1]
+    except RuntimeError: via = "no provider"
+    buf.puts(model_x, y + 1, f"{ctx.model}  via {via}", style='dim')
     budget = tui.app.budget
     budget_str = f"${budget.get_cost():.2f}/${budget.get_limit():.2f}"
     budget_color = th.error if budget.is_over() else th.success

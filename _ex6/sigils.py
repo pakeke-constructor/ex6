@@ -151,7 +151,7 @@ def transform_user_prompt(text: str, ctx: ex6.Context) -> str:
         messages.append(ex6.Message(role="system", content=metadata))
     messages.append(ex6.Message(role="user", content=sigil_prompt))
     sub = ex6.Context(ctx.app, "__sigils__", model=SIGIL_MODEL, reasoning="none", messages=messages)
-    for item in ctx.app.get_implementation("invoke_llm")(sub):
+    for item in sub.get_invoker()(sub):
         if ctx.stop_early: break
         if isinstance(item, ex6.ResponseChunk) and item.type == "text":
             streamed[0] += item.content

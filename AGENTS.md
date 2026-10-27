@@ -34,8 +34,13 @@ Plugins give absolute control over everything, from orchestration to tools.
 ex6.py Classes:
 Core:
 - `App`: plugin registry (commands, overrides, handlers, context hooks), theme, budget. `app.call(name, ...)` dispatches overridables/handleables.
+
 - `TUI`: holds contexts, `current`, mode (selection/work/help/scroll), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
-- `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, per-context `invoke_llm`. Plugins can store info in `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
+
+- `Context`: represents a LLM context window (and potentially a running LLM). `invoke()`, `fork()`, `clear()`, `get_invoker()` (explicit `invoke_llm` field, else the invoke_llm handler chain picks by model). Plugins can store info in `data` (StrictDataDict, simple values only) vs `data_volatile` (anything, cleared on fork/clear).
+<Context>
+</Context>
+
 - `Message`: represents a message (system, user, assistant, tool). Content can be str, ToolResult, or callable(ctx) for dynamic/lazy content (snapshotted for caching). System msgs carry tools: `with_tools` (same name replaces in place), `without_tools(name_or_fn)`.
 - `DailyBudget`: daily spend tracking + limit (`app.budget`).
 - `Theme`: color palette dataclass (`app.theme`).
@@ -61,8 +66,8 @@ Rendering / input:
 
 Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
-- `@ex6.override`: replace an overridable fn (invoke_llm, call_tools, make_input, render_* fns).
-- `@ex6.handler(order=0)`: add a handler to a handleable chain (approve_tool, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
+- `@ex6.override`: replace an overridable fn (call_tools, make_input, render_* fns).
+- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
 - `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
 </architecture>
@@ -78,13 +83,13 @@ Loading: core `_ex6/` (next to ex6.py) loads first, then project `_ex6/` (cwd). 
 <overrides-vs-handlers>
 ## Overrides vs handlers:
 ex6 core has default fns that plugins can replace or extend. Two types, Overrides and Handlers:
-- Override: exactly one implementation (e.g. which LLM backend, how the work-mode is drawn). A plugin replaces the default wholesale. Only one override per fn; a second one raises an error, so conflicts can't hide.
-- Handler: many plugins should get a say (e.g. tool approval, prompt rewriting). Handlers stack in `order`. For `app.call`, the first truthy result wins, else the default runs. For `app.pipeline` (`transform_user_prompt`), each handler transforms the value in turn.
+- Override: exactly one implementation (e.g. how the work-mode is drawn). A plugin replaces the default wholesale. Only one override per fn; a second one raises an error, so conflicts can't hide.
+- Handler: many plugins should get a say (e.g. LLM backend per model, tool approval, prompt rewriting). Handlers stack in `order`. For `app.call`, the first truthy result wins, else the default runs. For `app.pipeline` (`transform_user_prompt`), each handler transforms the value in turn.
 
 ```python
-@ex6.override
-def invoke_llm(ctx):           # replaces the default backend
-    yield ex6.ResponseChunk("text", "hi")
+@ex6.handler
+def invoke_llm(ctx):           # returns the backend fn that runs ctx, or None to abstain
+    if ctx.model.startswith("mine/"): return my_backend
 
 @ex6.handler
 def approve_tool(ctx, tool, args):
@@ -100,16 +105,16 @@ Tools / agents:
 - _ex6/web_tools.py - websearch_agent tool (OpenRouter `:online` subagent)
 - _ex6/skills.py - load_skill tool; progressive disclosure of `_ex6/_skills/*.md` (yaml frontmatter)
 - _ex6/tasks.py - plan_write/plan_read/plan_add_log/plan_done/plan_list tools, backed by `.plans/*.md`
-- _ex6/agents.py - basic agent definitions (system prompts, model presets, tool groups READ/WRITE/SHELL/SUBAGENTS/ASK), as an example. `add_native_webtools(ctx)` opts a context into its provider's native web tools (no-op + debug_print if none). Projects usually define their own agents. Also starts inline watcher.
+- _ex6/agents.py - basic agent definitions (system prompts, model presets, tool groups READ/WRITE/SHELL/SUBAGENTS/ASK), as an example. `add_native_webtools(ctx)` opts a context into its invoker's native web tools (`<provider>.WEB_TOOLS`; no-op + debug_print if none). Projects usually define their own agents. Also starts inline watcher.
 - _ex6/agents_long_horizon.py - overnight loop over a markdown task file. No command; projects call `run_horizon(app, path, agents, pipeline=default_pipeline)` from their own command, agents (dict name -> Context) built via `default_agents` or by hand (must be yolo=True; see `_plugin_examples/_example_horizon.py`). Custom pipelines compose the step fns (run/review/fix_review/update_docs); the loop owns branching/merging and stops fatally if a pipeline moves HEAD or master (`check_git_state`)
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
 Providers / models:
-- _ex6/provider.py - openrouter provider, overrides invoke_llm. Also cache_manually, /usage, invoke logging.
-- _ex6/provider_openai.py - openai provider, via ChatGPT subscription. Native: `WEB_SEARCH`
-- _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. Native: `WEB_SEARCH`, `WEB_FETCH`
+- _ex6/provider.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, /usage, invoke logging.
+- _ex6/provider_openai.py - openai provider, via ChatGPT subscription. invoke_llm handler for `openai/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH
+- _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. invoke_llm handler for `anthropic/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH, WEB_FETCH
 - _ex6/models.py - model registry `M` (ModelInfo: id, ctx window, pricing)
 - _ex6/global_spend_limit.py - sets app.budget.limit
 

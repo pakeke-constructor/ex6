@@ -18,7 +18,7 @@ _audio_models = None
 def supports_audio(ctx: ex6.Context) -> bool:
     """True if ctx uses this provider and OpenRouter lists audio input for its model."""
     global _audio_models
-    if ctx.invoke_llm is not None:
+    if ctx.get_invoker() is not invoke_openrouter:
         return False
     if _audio_models is None:
         import urllib.request
@@ -117,8 +117,12 @@ def msg_to_dict(m: ex6.Message, ctx: ex6.Context):
 
 
 
-@ex6.override
+@ex6.handler(order=100)
 def invoke_llm(ctx: ex6.Context):
+    return invoke_openrouter
+
+
+def invoke_openrouter(ctx: ex6.Context):
     messages = [msg_to_dict(m, ctx) for m in ctx.get_messages()]
 
     if ctx.app.budget.is_over():

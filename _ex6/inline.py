@@ -4,7 +4,7 @@ Uses watchfiles for event-driven FS watching, Git for change detection.
 
 Usage from agents.py or similar:
     from _ex6.inline import setup as inline_setup
-    ctx = Context(app, "inline_template", model=..., reasoning=..., messages=[...], invoke_llm=...)
+    ctx = Context(app, "inline_template", model=..., reasoning=..., messages=[...])
     inline_setup(app, ctx)
 """
 

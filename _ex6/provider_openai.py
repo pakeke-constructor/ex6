@@ -151,9 +151,16 @@ def _to_responses_input(ctx: ex6.Context):
 # Native tools: add to a context's tools explicitly. name -> Responses tool, sent verbatim.
 WEB_SEARCH = ex6.NativeTool("web_search")
 NATIVE_TOOLS = {"web_search": {"type": "web_search", "external_web_access": True}}
+WEB_TOOLS = [WEB_SEARCH]
 
 
+@ex6.handler
 def invoke_llm(ctx: ex6.Context):
+    if ctx.model.startswith("openai/") and ":" not in ctx.model:
+        return invoke_openai
+
+
+def invoke_openai(ctx: ex6.Context):
     unknown = [n for n in ctx.get_native_tools() if n not in NATIVE_TOOLS]
     if unknown:
         result = ex6.LLMResult(error=f"openai provider doesn't support native tools: {unknown}")
@@ -290,7 +297,7 @@ def _render_openai_usage(tui, buf, x, y, w, th):
 
 @ex6.handler
 def render_work_mode_footer(tui, buf, r, ctx):
-    if ctx.invoke_llm is not invoke_llm:
+    if ctx.get_invoker() is not invoke_openai:
         return False
     x, y, w, h = r
     th = tui.app.theme

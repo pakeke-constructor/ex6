@@ -147,7 +147,7 @@ def _llm_one_shot(app, model: str, system: str, user: str) -> str:
     ctx.append_message(ex6.Message(role="system", content=system))
     ctx.append_message(ex6.Message(role="user", content=user))
     result_text = []
-    for item in app.get_implementation("invoke_llm")(ctx):
+    for item in ctx.get_invoker()(ctx):
         if isinstance(item, ex6.ResponseChunk) and item.type == "text":
             result_text.append(item.content)
     return "".join(result_text).strip()

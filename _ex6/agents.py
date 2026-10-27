@@ -5,8 +5,7 @@
 # External: Git for the inline watcher.
 
 
-from _ex6.provider_openai import invoke_llm as invoke_llm_openai, WEB_SEARCH as OAI_WEB_SEARCH
-from _ex6.provider_anthropic import invoke_llm as invoke_llm_anthropic, WEB_SEARCH as ANTH_WEB_SEARCH, WEB_FETCH as ANTH_WEB_FETCH
+from _ex6 import provider_openai, provider_anthropic
 from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
@@ -118,14 +117,14 @@ PLANNER_MODEL = M.OPUS_46.id
 
 
 # Partial contexts: Context(app, **OPUS)
-SONNET: dict[str, Any] = dict(name="anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
-OPUS: dict[str, Any]   = dict(name="anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high", invoke_llm=invoke_llm_anthropic)
+SONNET: dict[str, Any] = dict(name="anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high")
+OPUS: dict[str, Any]   = dict(name="anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high")
 
-LUNA: dict[str, Any]   = dict(name="oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
-TERRA: dict[str, Any]  = dict(name="oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
+LUNA: dict[str, Any]   = dict(name="oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high")
+TERRA: dict[str, Any]  = dict(name="oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high")
 # right now, GPT_56_SOL is stronger that GPT-6.
-SOL: dict[str, Any]    = dict(name="oai_SOL", model=M.GPT_56_SOL.id, reasoning="high", invoke_llm=invoke_llm_openai)
-ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high", invoke_llm=invoke_llm_openai)
+SOL: dict[str, Any]    = dict(name="oai_SOL", model=M.GPT_56_SOL.id, reasoning="high")
+ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high")
 
 
 
@@ -140,19 +139,15 @@ ASK = [ask_user_question]
 
 MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + ASK + [handoff, load_skill]
 
-# Provider-hosted web tools, keyed by provider. Opt in per context via add_native_webtools.
-NATIVE_WEBTOOLS = {
-    invoke_llm_anthropic: [ANTH_WEB_SEARCH, ANTH_WEB_FETCH],
-    invoke_llm_openai: [OAI_WEB_SEARCH],
-}
-
-
 def add_native_webtools(ctx: Context) -> Context:
     """Add ctx's provider's native web tools, if it has any. Native tools bypass approve_tool."""
-    tools = NATIVE_WEBTOOLS.get(ctx.invoke_llm, [])
-    if not tools:
-        ctx.app.debug_print(f"[agents] {ctx.name}: provider has no native web tools")
-    ctx.tools += tools
+    inv = ctx.get_invoker()
+    if inv is provider_openai.invoke_openai:
+        ctx.tools += provider_openai.WEB_TOOLS
+    elif inv is provider_anthropic.invoke_anthropic:
+        ctx.tools += provider_anthropic.WEB_TOOLS
+    else:
+        ctx.app.debug_print(f"[agents] {ctx.name}: no native web tools via {inv.__module__}")
     return ctx
 
 
