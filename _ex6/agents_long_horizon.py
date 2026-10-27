@@ -117,8 +117,6 @@ Don't delete anything in `.workspace/`; it is archived after the task so a human
 
 
 
-BASE = "master"
-
 MAIN_PROMPT = Message(role="system", content="""\
 You are running unattended; no human will answer questions.
 Make reasonable decisions and note them in your final message.
@@ -182,7 +180,7 @@ Give short feedback at a high level. The agent will be smart enough to interpret
 DOC_PROMPT = Message(role="system", content="""\
 You are an agent that maintains AGENTS.md.
 
-Given a task and its git-diff (`git diff master`), update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha).
+Given a task and its git-diff against the base branch, update AGENTS.md only if a future agent needs to know something new (new module, convention, gotcha).
 Keep it short. If nothing to add, change nothing.
 
 It's very important to craft a good AGENTS.md, so here is a procedure you should follow:
@@ -254,31 +252,31 @@ def pop_task(path):
 
 
 
-def make_new_git_branch(repo):
+def make_new_git_branch(repo, base_branch):
     if repo.is_dirty(untracked_files=True):
         raise RuntimeError("working tree dirty")
     branch = f"horizon/{time.strftime('%Y%m%d_%H%M%S')}"
-    repo.git.checkout(BASE)
+    repo.git.checkout(base_branch)
     repo.git.checkout("-b", branch)
     return branch, repo.head.commit.hexsha
 
 
-def check_git_state(repo, branch, base_sha):
-    """Pipelines must leave HEAD on the task branch and not touch BASE; the loop owns merging."""
+def check_git_state(repo, branch, base_sha, base_branch):
+    """Pipelines must leave HEAD on the task branch and not touch the base branch; the loop owns merging."""
     if repo.head.is_detached or repo.active_branch.name != branch:
         raise RuntimeError(f"HEAD moved off {branch}")
-    if repo.commit(BASE).hexsha != base_sha:
-        raise RuntimeError(f"{BASE} moved during the task")
+    if repo.commit(base_branch).hexsha != base_sha:
+        raise RuntimeError(f"{base_branch} moved during the task")
     if not repo.is_ancestor(base_sha, "HEAD"):
-        raise RuntimeError(f"{branch} no longer descends from {BASE}")
+        raise RuntimeError(f"{branch} no longer descends from {base_branch}")
 
 
-def review(repo, review_agent, t, summary):
+def review(repo, review_agent, t, summary, base_branch):
     """Returns feedback if changes are needed, else None."""
-    repo.git.add(A=True) # so new files show in `git diff master`
+    repo.git.add(A=True) # so new files show in the diff
     missing = object()
     review_agent.data_volatile[REVIEW_RESULT_KEY] = missing
-    run(review_agent, f"Review the changes (`git diff master`) for this task:\n\n{t}\n\nThe agent's final message:\n\n{summary}")
+    run(review_agent, f"Review the changes (`git diff {base_branch}`) for this task:\n\n{t}\n\nThe agent's final message:\n\n{summary}")
     result = review_agent.data_volatile[REVIEW_RESULT_KEY]
     if result is missing:
         raise RuntimeError("review_agent finished without calling review_diff")
@@ -289,14 +287,14 @@ def fix_review(main_agent, feedback):
     run(main_agent, f"Reviewer feedback:\n<feedback>{feedback}</feedback>\nAddress this feedback only, then stop.")
 
 
-def update_docs(repo, doc_agent, t):
+def update_docs(repo, doc_agent, t, base_branch):
     repo.git.add(A=True)
     agents_md_before = read_text("AGENTS.md")
     run(doc_agent, f"Task that was just completed:\n\n<task>{t}</task>\n\nYour job: Update the AGENTS.md if neccessary.")
     if read_text("AGENTS.md") != agents_md_before:
         doc_agent.clear() # review with fresh eyes, not as the author
-        run(doc_agent, """\
-Another agent just edited AGENTS.md. Read the full file, then the changes: `git diff master -- AGENTS.md`.
+        run(doc_agent, f"""\
+Another agent just edited AGENTS.md. Read the full file, then the changes: `git diff {base_branch} -- AGENTS.md`.
 
 Does this look high quality to you? Which parts look like they were written by an LLM?
 Fix the added/changed lines: rewrite or delete them. Don't touch the rest. If they're already good, do nothing.
@@ -335,14 +333,14 @@ def fail_task(repo, t, agents, error):
         ctx.purge_cache()
 
 
-def finalize_task(repo, branch, tasks_path, t, agents):
+def finalize_task(repo, branch, tasks_path, t, agents, base_branch):
     title = task_title(t)
     repo.git.add(A=True)
     repo.git.commit("--allow-empty", m=f"horizon: {title}")
-    diff = repo.git.diff(BASE, "HEAD")
+    diff = repo.git.diff(base_branch, "HEAD")
     for ctx in agents:
         dump_context(ctx)
-    repo.git.checkout(BASE)
+    repo.git.checkout(base_branch)
     repo.git.merge(branch, "--no-ff", m=f"horizon merge: {title}")
     pop_task(tasks_path)
 
@@ -379,26 +377,26 @@ def finalize_task(repo, branch, tasks_path, t, agents):
 #
 #
 
-def default_pipeline(repo, agents, t, preamble):
+def default_pipeline(repo, agents, t, preamble, base_branch):
     """Per-task work. May edit/stage/commit on the task branch; see check_git_state."""
     main = agents["main"]
     review_agent = agents["review"]
     doc = agents["doc"]
 
     summary = run(main, f"{preamble.strip()}\n\n{t}".strip())
-    feedback = review(repo, review_agent, t, summary)
+    feedback = review(repo, review_agent, t, summary, base_branch)
     if feedback:
         fix_review(main, feedback)
-    update_docs(repo, doc, t)
+    update_docs(repo, doc, t, base_branch)
 
 
-def barebones_pipeline(repo, agents, t, preamble):
+def barebones_pipeline(repo, agents, t, preamble, base_branch):
     """Same as default, but no review."""
     main = agents["main"]
     doc = agents["doc"]
 
     run(main, f"{preamble.strip()}\n\n{t}".strip())
-    update_docs(repo, doc, t)
+    update_docs(repo, doc, t, base_branch)
 
 #
 #
@@ -416,7 +414,7 @@ def barebones_pipeline(repo, agents, t, preamble):
 #
 #
 
-def horizon_loop(tasks_path, agents, pipeline):
+def horizon_loop(tasks_path, agents, pipeline, base_branch):
     repo = git.Repo()
     failures = 0
     shutil.rmtree(PENDING_DIR, ignore_errors=True) # stale dumps from an aborted run / stray handoffs; archive() empties it after every task
@@ -425,16 +423,16 @@ def horizon_loop(tasks_path, agents, pipeline):
         if not tasks: return
         t = clean_task(tasks[0])
 
-        branch, base_sha = make_new_git_branch(repo)
+        branch, base_sha = make_new_git_branch(repo, base_branch)
         try:
-            pipeline(repo, agents, t, preamble)
-            check_git_state(repo, branch, base_sha)
+            pipeline(repo, agents, t, preamble, base_branch)
+            check_git_state(repo, branch, base_sha, base_branch)
         except Exception:
-            check_git_state(repo, branch, base_sha) # refs moved: fatal, don't commit the failure anywhere
+            check_git_state(repo, branch, base_sha, base_branch) # refs moved: fatal, don't commit the failure anywhere
             fail_task(repo, t, agents.values(), traceback.format_exc())
             failures += 1
             continue
-        finalize_task(repo, branch, tasks_path, t, agents.values()) # errors after merge are fatal, never retried
+        finalize_task(repo, branch, tasks_path, t, agents.values(), base_branch) # errors after merge are fatal, never retried
         failures = 0
     archive(t, "failed")
     raise RuntimeError("3 failures in a row; stopping")
@@ -472,8 +470,8 @@ def default_agents(app, preset=OPUS):
     }
 
 
-def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
-    """Run the task loop in a background thread. agents: dict of name -> Context; pipeline(repo, agents, t, preamble) does each task. Replaces same-named TUI contexts."""
+def run_horizon(app, tasks_path, agents, pipeline=default_pipeline, base_branch="master"):
+    """Run the task loop in a background thread. agents: dict of name -> Context; pipeline(repo, agents, t, preamble, base_branch) does each task. Replaces same-named TUI contexts."""
     assert_horizon_valid(tasks_path)
     for ctx in agents.values():
         assert ctx.yolo, f"{ctx.name} must be yolo=True; nobody is around to approve tools"
@@ -486,7 +484,7 @@ def run_horizon(app, tasks_path, agents, pipeline=default_pipeline):
 
     def loop():
         try:
-            horizon_loop(tasks_path, agents, pipeline)
+            horizon_loop(tasks_path, agents, pipeline, base_branch)
         except Exception as e:
             app.debug_print(f"horizon stopped: {e}")
         finally:
