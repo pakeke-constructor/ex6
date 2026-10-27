@@ -86,12 +86,6 @@ def go(tui):
 
 
 @ex6.command
-def restart(tui):
-    'Restart ex6.'
-    tui.restart()
-
-
-@ex6.command
 def crash(tui):
     'Force a crash (debug).'
     raise RuntimeError("Crash!")

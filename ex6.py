@@ -536,21 +536,16 @@ def run_tui():
     threading.excepthook = thread_excepthook
     try:
         _load_plugins(app)
+        if not tui.contexts:
+            if input("You haven't defined any contexts. Initiate auto setup? [y/N] ").strip().lower() not in ("y", "yes"):
+                return
+            bootstrap()
+            _load_plugins(app)
         _run_tui_loop(tui, real_stdout, real_stderr)
     finally:
         sys.stdout, sys.stderr = real_stdout, real_stderr
         threading.excepthook = old_thread_hook
         app.tui = None
-
-    if tui.restart_requested:
-        # os.execv skips atexit and Windows keeps this process alive, so release contexts now.
-        for ctx in list(tui.contexts):
-            tui.remove_context(ctx)
-        args = [sys.executable, *sys.argv]
-        if os.name == "nt":
-            import subprocess
-            raise SystemExit(subprocess.call(args))
-        os.execv(sys.executable, args)
 
 
 @_handleable
@@ -2248,7 +2243,34 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
                        ("  " + doc if doc else "", th.muted)):
             buf.puts(cx, y + i, s, txt_color=col); cx += len(s)
 
+
 _ex6_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+_BOOTSTRAP_PLUGIN = '''\
+import ex6
+from _ex6.agents import auto_setup
+
+
+def setup(app: ex6.App):
+    auto_setup(app)
+'''
+
+def bootstrap():
+    """Create _ex6/my_project.py and pyrightconfig.json in cwd (existing files left alone); gitignore the context dump."""
+    Path("_ex6").mkdir(exist_ok=True)
+    plugin, pyright, gitignore = Path("_ex6/my_project.py"), Path("pyrightconfig.json"), Path(".gitignore")
+    if not plugin.exists():
+        plugin.write_text(_BOOTSTRAP_PLUGIN)
+
+    if not pyright.exists():
+        pyright.write_text(json.dumps({"extraPaths": [_ex6_dir, os.path.join(_ex6_dir, "_ex6")]}, indent=4))
+
+    if gitignore.exists() and ".EX6_CONTEXT_DUMP.txt" not in gitignore.read_text(encoding="utf-8").splitlines():
+        with gitignore.open("a", newline="") as f:
+            f.write("\n.EX6_CONTEXT_DUMP.txt\n")
+
+
 
 def _load_plugins(app):
     import importlib.util
@@ -2323,10 +2345,6 @@ class TUI:
     stdout_sink: Any = None
     show_cot: bool = True
     log_keys: bool = False
-    restart_requested: bool = False
-
-    def restart(self):
-        self.restart_requested = True
 
     def add_context(self, ctx):
         if ctx.app is not self.app:
@@ -2519,7 +2537,7 @@ def _run_tui_loop(tui: TUI, real_stdout, real_stderr):
 
     try:
         with term.cbreak(), term.hidden_cursor(), term.fullscreen(), term.bracketed_paste():
-            while not tui.restart_requested:
+            while True:
                 _tui_loop(tui)
     except Exception:
         import traceback

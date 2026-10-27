@@ -14,77 +14,9 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
-
-horizon plugin:
-Long running agents that run all-night-long.
-```py
-# human; writes all tasks in a file.
-process_all_tasks(task_agent)
-
-while tasks:
-    make_new_git_branch() # from master
-
-    t = tasks.peek()
-    do_task(main_agent, t, can_loop=True)
-    if review(review_agent) # ssot, conciseness, simplicity
-        do_task(main_agent, t, can_loop=False)
-
-    update_docs(doc_agent, t) # updates agents.md
-
-    finalize_task(t, ...)
-
-
-"""
-throughout the task, the agent uses a folder called `workspace/**`.
-
-It uses this folder to put ALL of it's screenshots, outputs, and especially any of it's temp files that it uses to test stuff / smoke-tests.
-
-The agent doesn't need to delete anything from workspace; it should keep everything for auditability.
-This gives the system incredibly good observability.
-
------------------------------
-
-For the `tasks.peek()` and `tasks.pop()` stuff:
-it should NOT use an actual in-memory list.
-instead, it should
-
-"""
-
-
-def finalize_task(t):
-    """
-    - merges the current branch into master.
-    - pops tasks from the json list.
-    - creates a new folder, called `ex6.history/{timestamp}_{commit_id}/**. (Lets call this folder the `audit` folder for brevity.)
-    - moves EVERYTHING from workspace/** into audit/workspace/**
-    - copies a list of agent-context windows into audit. So you get `main_agent.0.txt`, main_agent.1.txt`, etc etc. `review_agent.0.txt`, `doc_agent.0.txt`.
-    - This will allow the human operator to audit EVERY change that happened, and see exactly what went wrong and why.
-    """
-```
-
-
-
-
-
-I want to formalize the approval / permissions system a bit.
-Currently, there is only yolo = True or False.
-Also, each tool call (see tools.py) does stuff it's own way, by opening a panel and stuff.
-I would prefer if there was a simpler way of doing this, like a more "formalized" approval system; but something still simple.
-
-Any ideas?
-My first idea would be exposing approval as a handler, perhaps?
-But then again, should it be OR-gated (if any approve, it's approved?)
-or, should it be OR-gated, as in, if any disapprove, it's disapproved?
-I'm leaning towards the former.
-
-GOAL:
-- allow subagents/special classifiers to auto-approve or deny tools
-- allow to user to fully control approval pipeline
-- allow different approvals to exist per tool
-
-my question for you: Are there any alternative paradigms or ideas that could work here?
-something simple that fits with philosophy.
-
+I wanna make ex6.debug_print way, way better.
+currently its kinda ass.
+There's no 
 
 
 
