@@ -291,7 +291,7 @@ def cm(tui, msg: Optional[str]):
             return
 
         from _ex6.models import M
-        model = M.GEMINI31_FLASH_LITE.id
+        model = M.GPT_LUNA_LATEST.id
 
         hint = f"User hint: {msg}" if msg else ""
         diff_for_llm = diff
