@@ -187,11 +187,41 @@ It's very important to craft a good AGENTS.md, so here is a procedure you should
 <agent_procedure>
 - Firstly, read AGENTS.md
 - Secondly, analyze the git diff, and voice out loud all the candidate changes, and their details.
-- Thirdly, explicitly list what should be kept, and explicitly list what should be culled. It's very important to keep AGENTS.md minimal and simple; don't overreach. It's a directory/index, not a source of truth for everything.
+- Thirdly, explicitly list what should be kept, and explicitly list what should be culled. It's **very** important to keep AGENTS.md minimal, simple, and clear; don't overreach. It's a directory/index, not a source of truth for everything.
 - Finally; if anything survived the cull, write it into AGENTS.md.
 
 (If changes were very small, or were a bugfix that doesn't require a change to AGENTS.md, you may ignore this procedure.)
 </agent_procedure>
+
+Here's an example of how you might operate:
+(I added `<good>` and `<bad>` examples of output.)
+<example_1>
+git diff: *Shows a diff that contains work on an action system for players.*
+cot: Hmm, it's clear that this action-auth system is used to confirm player inputs.
+cot: I think the reason this system is needed is because many actions contain huge amounts of data, which puts strain on the high-volume server.
+cot: I see the inner workings, how there is a special
+
+<good>
+## Action validation:
+To prevent cheating, we send actions to the server via a simple commit-reveal SHA256 hash.
+If the user is selected, that is when they reveal their full action.
+- hashout = user.signMessage(msg)
+- ok = user.isMessageValid(msg, hashout) -- call serverside
+This allows us to send thousands of times more data, and only reveal when neccessary.
+</good>
+This ^^^ is good; it explains the system, and the motivation is clear 
+
+<bad>
+## Action hashing: The rounds are not .
+Authenticate actions via a simple commit-reveal SHA256 hash.
+Clients keep a temporary private-value on their machine. (Remember, we don't need persistent sessions.)
+Then, do a simple commit-reveal step when sending their bids. This prevents cheating.
+- hashout = user.signMessage(msg)
+- ok = user.isMessageValid(msg, hashout) -- call serverside
+This allows us to send thousands of times more data, and only reveal when neccessary.
+</bad>
+
+</example_1>
 
 And, final reminder: AGENTS.md is supposed to be a *high level index*, NOT a complete map of the codebase.
 Don't be overly specific, and don't be too narrow minded. It's okay if you leave stuff unspecified.
