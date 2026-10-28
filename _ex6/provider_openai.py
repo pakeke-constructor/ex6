@@ -232,7 +232,9 @@ def invoke_openai(ctx: ex6.Context):
             elif t == "response.output_item.done" and event.item.type == "web_search_call":
                 item = event.item.model_dump(exclude_none=True)
                 status = item.get("status")
-                native_calls.append({"id": item["id"], "name": "web_search", "args": item.get("action", {}),
+                action = item.get("action", {})
+                args = {k: action[k] for k in ("query", "url", "pattern") if k in action} or action
+                native_calls.append({"id": item["id"], "name": "web_search", "args": args,
                                      "result": status if status == "completed" else f"ERROR: {status}"})
                 ctx.app.debug_print(f"[codex] native web_search_call: {json.dumps(item)}")
                 yield ex6.ResponseChunk("cot", f"\n[web_search] {json.dumps(item.get('action'))}\n")

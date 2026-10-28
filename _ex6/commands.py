@@ -5,6 +5,7 @@
 from typing import Optional
 import subprocess
 import threading
+import json
 import pyperclip
 import time
 import ex6
@@ -124,6 +125,11 @@ def format_context(ctx) -> str:
                 else:
                     lines.append(f"    {k} = {v_str}")
             lines.append(f"  </{name}>")
+        for nc in msg.native_calls or []:
+            lines.append(f"  <native:{nc['name']} args={json.dumps(nc['args'])}>")
+            for line in str(nc['result']).split('\n'):
+                lines.append(f"    {line}")
+            lines.append(f"  </native:{nc['name']}>")
         lines.append("")
     return "\n".join(lines)
 

@@ -2085,8 +2085,7 @@ def render_work_mode(tui, buf, inpt, r):
             text += "█"
         lines = text.split('\n')
         tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
-        for nc in msg.native_calls or ():
-            lines.append(_default_tool_row({**nc, "name": "native:" + nc["name"]}, nc["result"]))
+        lines[:0] = [_default_tool_row({**nc, "name": "native:" + nc["name"]}, nc["result"]) for nc in msg.native_calls or ()]
         if msg is pending_assistant and pending is not None:
             lines.extend(_default_tool_row(p.call, p.result) for p in pending)
         elif msg.tool_calls:
