@@ -635,6 +635,9 @@ class LLMResult:
     error: Optional[str] = None
     cost: Optional[float] = None
     native_calls: list = field(default_factory=list)  # see Message.native_calls
+    cached_tokens: int = 0  # input tokens read from prompt cache (part of input_tokens)
+    cache_write_tokens: int = 0  # input tokens written to prompt cache (part of input_tokens)
+    raw_usage: dict = field(default_factory=dict)  # provider-native usage payload; debug/tests only
 
 
 @dataclass

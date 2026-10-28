@@ -177,7 +177,7 @@ def invoke_openai(ctx: ex6.Context):
              for t in (ctx.get_tool_schemas() or [])]
     tools += [NATIVE_TOOLS[n] for n in ctx.get_native_tools()]
 
-    body = {"store": False, "include": ["reasoning.encrypted_content"]}
+    body = {"store": False, "include": ["reasoning.encrypted_content"], "prompt_cache_key": ctx.name}
     kw = {}
     if ctx.reasoning != "none":
         kw["reasoning"] = {"effort": ctx.reasoning, "summary": "auto"}
@@ -212,6 +212,7 @@ def invoke_openai(ctx: ex6.Context):
         return
 
     input_tokens, output_tokens, cached_tokens = 0, 0, 0
+    raw_usage = {}
     finish_reason = "stop"
     tool_calls = []
     native_calls = []
@@ -226,8 +227,10 @@ def invoke_openai(ctx: ex6.Context):
                 it = event.item
                 try:
                     args = json.loads(it.arguments) if it.arguments else {}
-                except:
-                    args = {}
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(f"malformed tool args for {it.name}: {e}: {it.arguments[:500]!r}")
+                if not isinstance(args, dict):
+                    raise RuntimeError(f"malformed tool args for {it.name}: not an object: {it.arguments[:500]!r}")
                 tool_calls.append({"id": it.call_id, "name": it.name, "args": args})
             elif t == "response.output_item.done" and event.item.type == "web_search_call":
                 item = event.item.model_dump(exclude_none=True)
@@ -241,6 +244,7 @@ def invoke_openai(ctx: ex6.Context):
             elif t == "response.completed":
                 u = event.response.usage
                 if u:
+                    raw_usage = u.model_dump()
                     input_tokens = u.input_tokens or 0
                     output_tokens = u.output_tokens or 0
                     d = getattr(u, "input_tokens_details", None)
@@ -259,7 +263,8 @@ def invoke_openai(ctx: ex6.Context):
         finish_reason = "tool_calls"
 
     ctx.app.budget.add_cost(0)  # subscription — no API charge
-    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0, native_calls=native_calls)
+    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0, native_calls=native_calls,
+                           cached_tokens=cached_tokens, raw_usage=raw_usage)
     ctx.app.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)} native={len(native_calls)}")
     _log_invoke(ctx, input_items, result, cached_tokens)
     yield result

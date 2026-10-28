@@ -198,6 +198,7 @@ def invoke_openrouter(ctx: ex6.Context):
     ctx.app.debug_print("[invoke] stream started")
     input_tokens, output_tokens, cached_tokens, cache_write_tokens = 0, 0, 0, 0
     provider_cost = None  # OpenRouter may return cost directly
+    raw_usage = {}
     finish_reason = "stop"
     tool_calls_acc = {}
     chunk_count = 0
@@ -230,6 +231,7 @@ def invoke_openrouter(ctx: ex6.Context):
                 finish_reason = chunk.choices[0].finish_reason
 
             if hasattr(chunk, 'usage') and chunk.usage:
+                raw_usage = chunk.usage.model_dump()
                 input_tokens = chunk.usage.prompt_tokens or 0
                 output_tokens = chunk.usage.completion_tokens or 0
                 details = getattr(chunk.usage, 'prompt_tokens_details', None)
@@ -246,11 +248,14 @@ def invoke_openrouter(ctx: ex6.Context):
     ctx.app.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
 
     tool_calls = []
+    error = None
     for tc in tool_calls_acc.values():
         try:
             tc["args"] = json.loads(tc["args"]) if tc["args"] else {}
-        except:
-            pass
+        except json.JSONDecodeError as e:
+            error = f"malformed tool args for {tc['name']}: {e}: {tc['args'][:500]!r}"
+        if not error and not isinstance(tc["args"], dict):
+            error = f"malformed tool args for {tc['name']}: not an object: {tc['args']!r}"
         tool_calls.append(tc)
 
     # Use provider-reported cost if available, otherwise estimate
@@ -265,7 +270,10 @@ def invoke_openrouter(ctx: ex6.Context):
                 + cache_write_tokens * info.cache_write + output_tokens * info.output) / 1_000_000
     ctx.app.budget.add_cost(cost)
 
-    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost)
+    if error:
+        tool_calls = []
+    result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost, error=error,
+                           cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens, raw_usage=raw_usage)
     ctx.app.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} cached_tokens={cached_tokens} cache_write_tokens={cache_write_tokens} tools={len(tool_calls)}")
     _log_invoke(ctx, messages, result, cached_tokens, cache_write_tokens)
     yield result

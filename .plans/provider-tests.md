@@ -7,10 +7,10 @@ The anthropic provider drives `claude -p` over undocumented stream-json + SDK-MC
 
 Scope (user): "It does NOT need to be a formal or complete test suite; less lines of code is better. It should just catch super basic stuff, and it should focus on anything that can fail silently."
 
-Target: one file, `test_providers.py`, about 200 lines. Plain script, no pytest.
+Target: one file, `_ex6/providers_test.py`, about 200 lines. Plain script, no pytest.
 
 ## Files
-- `test_providers.py` (new, repo root)
+- `_ex6/providers_test.py` (new; loaded as plugin, no import side effects)
 - `ex6.py`: `LLMResult` (line ~630)
 - `_ex6/provider_anthropic.py`: `_ClaudeProcess._result`, `pump`, `_processes`
 - `_ex6/provider_openai.py`: `invoke_openai` (usage parsing, tool args `except: args = {}`)
@@ -30,7 +30,7 @@ Optional, related: openai `except: args = {}` and openrouter `except: pass` swal
 - Record each turn's `LLMResult` by wrapping the invoker: `Context(..., invoke_llm=record(invoke_anthropic))`. The wrapper uses `yield from`, so `close()` still propagates.
 - Each tool fn records the args it received in a list, so the test can compare them exactly.
 - `check(name, ok, detail)` prints PASS/FAIL/WARN plus the numbers (cache ratio, overhead tokens). Numbers always print so drift stays visible. Exit code is non-zero on any FAIL.
-- CLI: `python test_providers.py [anthropic] [openai] [openrouter]`. Default is anthropic + openai (subscription, $0). openrouter is opt-in because it costs real money.
+- CLI: `python -m _ex6.providers_test [anthropic] [openai] [openrouter]`. Default is anthropic + openai (subscription, $0). openrouter is opt-in because it costs real money.
 - Cheap models: anthropic HAIKU_45, openai GPT_6_LUNA (or whatever is cheapest that works). Model per provider sits in a dict at the top.
 
 ## Checks (per provider)

@@ -393,7 +393,8 @@ class _ClaudeProcess:
         cache_read = usage.get("cache_read_input_tokens", 0)
         cache_write = usage.get("cache_creation_input_tokens", 0)
         input_tokens = usage.get("input_tokens", 0) + cache_read + cache_write
-        result = ex6.LLMResult(input_tokens, output_tokens, calls, finish_reason, cost=0, native_calls=native_calls)
+        result = ex6.LLMResult(input_tokens, output_tokens, calls, finish_reason, cost=0, native_calls=native_calls,
+                               cached_tokens=cache_read, cache_write_tokens=cache_write, raw_usage=usage)
         _log_invoke(self.ctx, [], result, cache_read, cache_write)
         return result
 
@@ -462,6 +463,8 @@ class _ClaudeProcess:
                             self.ctx.app.debug_print(f"[claude] native tool_use: {json.dumps(block)}")
                             yield ex6.ResponseChunk("cot", f"\n[{block['name']}] {json.dumps(block['input'])}\n")
                         else:
+                            if not isinstance(block["input"], dict):
+                                raise RuntimeError(f"malformed tool args for {block['name']}: {block['input']!r}"[:700])
                             calls.append({"id": block["id"], "name": block["name"], "args": block["input"]})
 
             elif event.get("type") == "user":
