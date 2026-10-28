@@ -1392,8 +1392,8 @@ class ScreenBuffer:
             self.bg_colors[y][x] = bg_color
 
     def puts(self, x, y, text, style=None, txt_color=None, bg_color=None):
-        assert '\n' not in text and '\r' not in text, f"puts() got newline in text: {text!r}"
         if not 0 <= y < self.h: return
+        text = text.replace('\r', ' ').replace('\n', ' ')
         for i in range(max(0, -x), min(len(text), self.w - x)):
             xx = x + i
             self.chars[y][xx] = text[i]
@@ -2235,7 +2235,7 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
             break
         fn, spec = tui.app.commands[name]
         args = " ".join(f"<{a}>" for a, _, _ in spec)
-        doc = (fn.__doc__ or "").strip()
+        doc = " ".join((fn.__doc__ or "").split())
         cx = x
         for s, col in (("  /", th.muted), (name, th.accent_alt),
                        (" " + args if args else "", th.warning),

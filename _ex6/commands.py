@@ -411,7 +411,7 @@ def help(tui):
     lines = ["Commands:"]
     for name, (fn, spec) in sorted(tui.app.iter_commands()):
         args = " ".join(f"<{a}>" for a, _, _ in spec)
-        doc = (fn.__doc__ or "").strip()
+        doc = " ".join((fn.__doc__ or "").split())
         line = f"  /{name} {args}".rstrip()
         lines.append(f"{line}  {doc}" if doc else line)
     _text_panel(tui, lines)

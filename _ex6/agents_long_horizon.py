@@ -562,10 +562,7 @@ def _git(*args) -> str:
 
 @ex6.command
 def report(tui):
-    """
-    Horizon report:
-    Github compare-link for the most recent run of horizon commits on master. (Copied to clipboard)
-    """
+    """Horizon report: GitHub compare-link for the most recent run of horizon commits on master (copied to clipboard)"""
     remote = _git("remote", "get-url", "origin")
     repo = re.sub(r"^(git@github\.com:|https://github\.com/)|\.git$", "", remote)
     commits = [ln.split(" ", 1) for ln in _git("log", "master", "--format=%H %s").splitlines()]
