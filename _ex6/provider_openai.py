@@ -9,6 +9,7 @@ import openai
 import os
 import time
 import base64
+import uuid
 from _ex6.provider import _log_invoke
 
 
@@ -177,7 +178,11 @@ def invoke_openai(ctx: ex6.Context):
              for t in (ctx.get_tool_schemas() or [])]
     tools += [NATIVE_TOOLS[n] for n in ctx.get_native_tools()]
 
-    body = {"store": False, "include": ["reasoning.encrypted_content"], "prompt_cache_key": ctx.name}
+    # ChatGPT backend routes cache affinity by the `session-id` header (codex-rs headers.rs), not the body key alone.
+    if "openai:cache_key" not in ctx.data:
+        ctx.data["openai:cache_key"] = str(uuid.uuid4())
+    cache_key = ctx.data["openai:cache_key"]
+    body = {"store": False, "include": ["reasoning.encrypted_content"], "prompt_cache_key": cache_key}
     kw = {}
     if ctx.reasoning != "none":
         kw["reasoning"] = {"effort": ctx.reasoning, "summary": "auto"}
@@ -190,6 +195,7 @@ def invoke_openai(ctx: ex6.Context):
             tools=tools or openai.NOT_GIVEN,
             stream=True,
             extra_body=body,
+            extra_headers={"session-id": cache_key, "thread-id": cache_key},
             timeout=120,
             **kw,
         )
