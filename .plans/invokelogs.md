@@ -40,8 +40,8 @@ Refinement: hash at message granularity. Every message is a reference, so there'
 - Idempotent: `INSERT OR IGNORE` into blobs. Same content always gives the same row.
 - Robust: WAL mode (several ex6 instances write at once). One transaction per invoke, so no half-written records.
 - Simple: ~40 lines, replaces `_log_invoke`. Reuse `_log_safe` for anything that isn't JSON-safe.
-- Log the provider-format payload (openai input_items / openrouter messages / anthropic), ie what was actually sent, not ex6 `Message`s. Goal is to see the real context window.
-- Accepted: dynamic content (eg `<context_usage>` reminder appended to tool results) changes the hash and gets stored again. Small cost, and it's what was actually sent.
+- Log the provider-format payload (openai input_items / openrouter messages / anthropic), ie what was actually sent, not ex6 `Message`s. Goal is to see the real context window. (User confirmed.)
+- Accepted (user: "keep it legitimate and correct"): dynamic content (eg `<context_usage>` reminder appended to tool results) changes the hash and gets stored again. Small cost, and it's what was actually sent.
 - Insights (task 4) are just SQL queries over this DB (cost per ctx, context bloat per tool, error rate per model, etc).
 - toolstats (`.plans/toolstats.md`) stays as JSONL for now. It could move into this DB later.
 
