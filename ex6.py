@@ -186,8 +186,17 @@ class DailyBudget:
             except: pass
 
 
-def get_token_estimate(s: str) -> int:
-    return math.floor(len(s) / 2.5)
+_tiktoken_enc = None
+
+def get_token_estimate(s: str, model: str = "") -> int:
+    global _tiktoken_enc
+    if model.startswith("openai/"):
+        if _tiktoken_enc is None:
+            import tiktoken
+            _tiktoken_enc = tiktoken.get_encoding("o200k_base")
+        return len(_tiktoken_enc.encode(s, disallowed_special=()))
+    # Claude or other: mixed prose/code/JSON estimate with safety margin.
+    return math.ceil(len(s.encode("utf-8")) / 3.2)
 
 
 MAX_TOOL_OUTPUT_CHARACTERS = 150000
@@ -1062,10 +1071,10 @@ class Context:
                     total += message._current_tokens
                     break
                 content = tool_result_text(message.get_msg(self))
-                total += get_token_estimate(content)
+                total += get_token_estimate(content, self.model)
 
             if self.pending_message:
-                total += get_token_estimate(self.pending_message.content + self.llm_cot)
+                total += get_token_estimate(self.pending_message.content + self.llm_cot, self.model)
             return total
 
     def is_token_count_estimate(self) -> bool:
@@ -2148,7 +2157,7 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         if ctx.pending_message and ctx.llm_output_type:
-            toks = f"~{get_token_estimate(ctx.pending_message.content + ctx.llm_cot)}"
+            toks = f"~{get_token_estimate(ctx.pending_message.content + ctx.llm_cot, ctx.model)}"
             if ctx.llm_result:
                 toks = str(ctx.llm_result.output_tokens)
             label = "thinking..." if ctx.llm_output_type == "cot" else "outputting..."

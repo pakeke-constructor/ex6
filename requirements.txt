@@ -2,3 +2,4 @@
 blessed
 Pillow
 copykitten
+tiktoken
