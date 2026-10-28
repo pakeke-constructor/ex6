@@ -197,34 +197,62 @@ Here's an example of how you might operate:
 (I added `<good>` and `<bad>` examples of output.)
 <example_1>
 git diff: *Shows a diff that contains work on an action system for players.*
-cot: Hmm, it's clear that this action-auth system is used to confirm player inputs.
-cot: I think the reason this system is needed is because many actions contain huge amounts of data, which puts strain on the high-volume server.
-cot: I see the inner workings, how there is a special
+cot: Hmm, it's clear that this action-hashing system is used to confirm player actions.
+cot: I think the reason this system exists is to reduce strain on the high-volume server.
 
 <good>
+cot: I will write a section that gives a smart, clear, high level understanding of the system. Since this is so central to the system, I think it warrants a full section.
+
 ## Action validation:
 To prevent cheating, we send actions to the server via a simple commit-reveal SHA256 hash.
-If the user is selected, that is when they reveal their full action.
-- hashout = user.signMessage(msg)
-- ok = user.isMessageValid(msg, hashout) -- call serverside
+(If the user is selected, that is when they reveal their full action.)
+- hashout = user.signAction(msg)
+- ok = user.isActionValid(msg, hashout) // server selects a new user if hash is invalid.
 This allows us to send thousands of times more data, and only reveal when neccessary.
 </good>
-This ^^^ is good; it explains the system, and the motivation is clear 
+This ^^^ is good; it explains the system, and the motivation is clear.
+Someone reading this will immediately understand the intention and motivation, and will have a good overview.
 
 <bad>
-## Action hashing: The rounds are not .
-Authenticate actions via a simple commit-reveal SHA256 hash.
-Clients keep a temporary private-value on their machine. (Remember, we don't need persistent sessions.)
-Then, do a simple commit-reveal step when sending their bids. This prevents cheating.
-- hashout = user.signMessage(msg)
-- ok = user.isMessageValid(msg, hashout) -- call serverside
-This allows us to send thousands of times more data, and only reveal when neccessary.
-</bad>
+cot: Let me add inner details and info about what was done, taking into account the agent's decisions:
 
+## Action hashing: Full message is not neccessary.
+Action hashes exist using SHA256 - NOT XXH3.
+Clients generate a salt via random.random() - Doesn't need to be cryptographically robust.
+hashout is the source of truth, it is validated by keeping in the `userHashes` dict.
+We have user.signMessage(msg) and user.isMessageValid(msg, hashout) as symmetric pairs.
+On bad actor, we call _roundRobinNext() which performs a round trip to select a new user.
+Consistency on bad-actor selection is NOT guaranteed.
+</bad>
+This ^^^ is an example of what NOT to write. It is utterly terrible;
+there is so much bloat here, and it doesn't read like a proper explanation, instead, it reads like an agent justifying it's own decisions.
+Likewise, it never actually explains what the system is, or why it exists, and what the overarching flow is like.
+
+The way you should think of it:
+Will this explanation be useful to a future agent that knows NOTHING about the system?
 </example_1>
 
+
+Here's another example:
+<example_2>
+git diff: *Shows a diff that contains a new module called `RainbowSys`, used once*
+read_file(AGENTS.md)
+cot: Hmm, I see that the architecture lists systems concisely, 1 line each.
+<good>
+cot: This system is pretty big... but it isn't relevant to the high level architecture, and it won't be used everywhere, so I'll just add a single line for it:
+- src/systems/RainbowSys.lua: renders rainbow-shockwaves and particles.
+</good>
+This ^^^ is good, it gets the idea across.
+
+<bad>
+cot: I should explain exactly how the inner details work.
+- src/systems/RainbowSys.lua: Uses batching to render shockwaves (`RainbowSys:doShockwave(x,y, speed)`) and render particles via `RainbowSys:addParticle(x,y, pname, dx,dy)`. Flushing is done via `RainbowSys:flush()`, via a single global batch instance (self._batch).
+</bad>
+This ^^^ is bad: it's way too detailed for a system that should
+</example_2>
+
 And, final reminder: AGENTS.md is supposed to be a *high level index*, NOT a complete map of the codebase.
-Don't be overly specific, and don't be too narrow minded. It's okay if you leave stuff unspecified.
+Don't be overly specific, and don't be too narrow minded. It's okay if you don't make any changes, or if your changes are small.
 """)
 
 
