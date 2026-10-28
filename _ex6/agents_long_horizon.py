@@ -239,16 +239,16 @@ git diff: *Shows a diff that contains a new module called `RainbowSys`, used onc
 read_file(AGENTS.md)
 cot: Hmm, I see that the architecture lists systems concisely, 1 line each.
 <good>
-cot: This system is pretty big... but it isn't relevant to the high level architecture, and it won't be used everywhere, so I'll just add a single line for it:
-- src/systems/RainbowSys.lua: renders rainbow-shockwaves and particles.
+cot: This system is pretty big... but it isn't relevant to the high level architecture, and it won't be used for every task, so I'll just add a single line for it:
+- src/systems/RainbowSys.lua: renders rainbow-shockwaves and rainbow-particles.
 </good>
 This ^^^ is good, it gets the idea across.
 
 <bad>
 cot: I should explain exactly how the inner details work.
-- src/systems/RainbowSys.lua: Uses batching to render shockwaves (`RainbowSys:doShockwave(x,y, speed)`) and render particles via `RainbowSys:addParticle(x,y, pname, dx,dy)`. Flushing is done via `RainbowSys:flush()`, via a single global batch instance (self._batch).
+- src/systems/RainbowSys.lua: Uses batching to render shockwaves (`RainbowSys:doShockwave(x,y, speed)`) and render particles via `RainbowSys:addParticle(x,y, pname, dx,dy)`. Flushing is done via `RainbowSys:flush()`, via a single global batch instance (self._batch). Colors are set my modifying on a per-attribute basis, and are flushed at the end of the draw loop.
 </bad>
-This ^^^ is bad: it's way too detailed for a system that should
+This ^^^ is bad: it's way too detailed for a system that most agents don't need to know about.
 </example_2>
 
 And, final reminder: AGENTS.md is supposed to be a *high level index*, NOT a complete map of the codebase.
