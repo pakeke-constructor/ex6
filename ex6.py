@@ -653,13 +653,11 @@ class LLMResult:
 
 @dataclass
 class ToolCall:
-    """A single tool-row for display. status: running | ok | error."""
-    id: str = ""
-    name: str = ""
-    args: list = field(default_factory=list)
-    kwargs: dict = field(default_factory=dict)
+    """A single tool-row for display. call: {id, name, args}. status: running | ok | error."""
+    call: dict
+    result: Any = None
     status: str = "running"
-    detail: Optional[str] = None
+    tokens: int = 0
 
 
 
@@ -860,41 +858,60 @@ def tool_to_schema(name: str, fn: Callable) -> dict:
 
 SPIN = "/-\\|"
 
-def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwargs=None, theme=None):
-    th = theme or Theme()
-    if status == 'running':
-        icon, color = SPIN[int(time.time() * 8) % 4], th.warning
-    elif status == 'error':
-        icon, color = 'x', th.error
-    else:
-        icon, color = '>', th.success
-    buf.puts(x, y, f"[{icon}]", txt_color=color, style='bold')
-    col = x + 4
-    end = x + w
-    def _put(s, clr):
-        nonlocal col
-        s = s[:max(0, end - col)]
-        buf.put_cells(col, y, s, txt_color=clr)
-        col += len(s)
-    _put(name + '(', th.accent)
-    value_color = th.muted
+@_handleable
+def render_tool_call(ctx, call, result):
+    """Handlers return spans [(text, theme_color_key), ...] for the text after the [tok] prefix, or None to abstain.
+    call: {id, name, args}. result: None while running."""
+    args = call["args"]
+    args = list(args.values()) if isinstance(args, dict) else [args]
+    spans = [(call["name"] + "(", "accent")]
     for i, a in enumerate(args):
-        if i: _put(', ', th.accent)
+        if i: spans.append((", ", "accent"))
         s = repr(a)
-        if len(s) > 40: s = s[:40] + '...'
-        _put(s, value_color)
-    if args and kwargs: _put(', ', th.accent)
-    if kwargs:
-        for i, (k, v) in enumerate(kwargs.items()):
-            if i: _put(', ', th.accent)
-            _put(f'{k}=', th.accent)
-            s = repr(v)
-            if len(s) > 40: s = s[:40] + '...'
-            _put(s, value_color)
-    _put(')', th.accent)
-    if detail and '\n' not in detail:
-        col += 1
-        buf.print_contained(str(detail), (col, y, x + w - col, 1), txt_color=th.muted, wrap=False, newlines=False)
+        spans.append((s[:40] + "..." if len(s) > 40 else s, "muted"))
+    spans.append((")", "accent"))
+    detail = tool_result_text(result)
+    if detail and "\n" not in detail:
+        spans.append((" " + detail, "muted"))
+    return spans
+
+
+_tool_token_cache = {}
+
+def tool_call_tokens(ctx, call, result) -> int:
+    """Estimated tokens of a tool call's args + result (incl. images). Cached per call id."""
+    key = (call["id"], result is None)
+    n = _tool_token_cache.get(key)
+    if n is None:
+        args = call["args"]
+        s = args if isinstance(args, str) else json.dumps(args, default=str)
+        n = get_token_estimate(s + tool_result_text(result), ctx.model)
+        for a in getattr(result, "attachments", ()):
+            if isinstance(a, ImageAttachment):
+                n += min(1600, a.width * a.height // 750)
+        _tool_token_cache[key] = n
+    return n
+
+
+def _fmt_tokens(n):
+    return (str(n) if n < 1000 else f"{round(n / 1000)}k").ljust(3)
+
+
+def render_tool_line(buf, x, y, w, ctx, row, th):
+    if row.status == 'running':
+        label, color = f" {SPIN[int(time.time() * 8) % 4]} ", th.warning
+    elif row.status == 'error':
+        label, color = " x ", th.error
+    else:
+        n = row.tokens
+        label = _fmt_tokens(n)
+        color = th.muted if n < 500 else th.success if n < 1500 else th.warning if n <= 4000 else th.error
+    buf.puts(x, y, f"[{label}]", txt_color=color, style='bold')
+    col, end = x + len(label) + 3, x + w
+    for text, key in ctx.app.call("render_tool_call", ctx, row.call, row.result):
+        s = text.replace('\r', ' ').replace('\n', ' ')[:max(0, end - col)]
+        buf.put_cells(col, y, s, txt_color=getattr(th, key))
+        col += len(s)
 
 
 
@@ -2067,19 +2084,12 @@ def _tokstr(msgs):
 
 
 
-def _default_tool_row(tc, result):
+def _tool_row(ctx, tc, result):
     if result is None:
-        status, detail = 'running', None
+        status = 'running'
     else:
-        detail = tool_result_text(result)
-        status = 'error' if detail.startswith("ERROR:") else 'ok'
-    args = tc["args"]
-    if isinstance(args, dict):
-        args = list(args.values())
-    else:
-        args = [args]
-    return ToolCall(id=tc["id"], name=tc["name"], args=args,
-                    status=status, detail=detail)
+        status = 'error' if tool_result_text(result).startswith("ERROR:") else 'ok'
+    return ToolCall(call=tc, result=result, status=status, tokens=tool_call_tokens(ctx, tc, result))
 
 
 
@@ -2110,11 +2120,11 @@ def render_work_mode(tui, buf, inpt, r):
             text += "█"
         lines = text.split('\n')
         tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
-        lines[:0] = [_default_tool_row({**nc, "name": "native:" + nc["name"]}, nc["result"]) for nc in msg.native_calls or ()]
+        lines[:0] = [_tool_row(ctx, {**nc, "name": "native:" + nc["name"]}, nc["result"]) for nc in msg.native_calls or ()]
         if msg is pending_assistant and pending is not None:
-            lines.extend(_default_tool_row(p.call, p.result) for p in pending)
+            lines.extend(_tool_row(ctx, p.call, p.result) for p in pending)
         elif msg.tool_calls:
-            lines.extend(_default_tool_row(tc, tool_results.get(tc["id"])) for tc in msg.tool_calls)
+            lines.extend(_tool_row(ctx, tc, tool_results.get(tc["id"])) for tc in msg.tool_calls)
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
 
 
@@ -2131,7 +2141,7 @@ def render_work_mode(tui, buf, inpt, r):
         for line in lines:
             if line == '' and has_tool_calls: continue
             if isinstance(line, ToolCall):
-                render_tool_line(buf, x, row, w, line.name, line.args, line.status, line.detail, line.kwargs, th)
+                render_tool_line(buf, x, row, w, ctx, line, th)
                 drawn = 1
             elif callable(line):
                 drawn = line(buf, x, row, w)

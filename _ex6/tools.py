@@ -1910,3 +1910,43 @@ def add_tool_repetition_guard(ctx: ex6.Context, guard: Optional[list] = None):
         m.tools = new_tools
     return ctx
 
+
+
+def _nlines(s):
+    return len(str(s or "").splitlines())
+
+
+@ex6.handler
+def render_tool_call(ctx, call, result):
+    """Compact rows for file tools: `edit_file: "a.py" +3 -2`, `read_file: "a.py" 1-40`."""
+    name, args = call["name"], call["args"]
+    if not isinstance(args, dict):
+        return None
+    if name in ("edit_file", "edit_file_codemode"):
+        add, rem = _nlines(args.get("replace")), _nlines(args.get("search"))
+    elif name == "edit_file_lines":
+        add, rem = _nlines(args.get("content")), (args.get("end") or 0) - (args.get("start") or 0) + 1
+    elif name == "patch_file":
+        lines = str(args.get("patch") or "").splitlines()
+        add, rem = sum(l.startswith("+") for l in lines), sum(l.startswith("-") for l in lines)
+    elif name == "write_file":
+        add, rem = _nlines(args.get("content")), 0
+    elif name == "read_file":
+        add = rem = None
+    else:
+        return None
+    spans = [(name + ": ", "accent"), (json.dumps(str(args.get("file") or args.get("path") or "")), "muted")]
+    if add is None:
+        rng = args.get("lines")
+        if isinstance(rng, (list, tuple)) and len(rng) == 2:
+            spans.append((f" {rng[0]}-{rng[1]}", "muted"))
+        elif result is not None:
+            spans.append((f" {_nlines(ex6.tool_result_text(result))} lines", "muted"))
+    else:
+        spans.append((f" +{add}", "success"))
+        if rem:
+            spans.append((f" -{rem}", "error"))
+    text = ex6.tool_result_text(result)
+    if text.startswith("ERROR:"):
+        spans.append((" " + text.split("\n")[0], "error"))
+    return spans

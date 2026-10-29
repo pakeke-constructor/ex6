@@ -70,7 +70,7 @@ LLM / tools:
 - `ToolResult`: tool output: text + attachments.
 - `PendingTool`: a tool call awaiting its result.
 - `Operation`: long-running tool work; tool returns cancel/poll fns, core polls until done.
-- `ToolCall`: display row for a tool call (status running/ok/error).
+- `ToolCall`: display row for a tool call (call, result, status running/ok/error, tokens).
 - `Attachment` / `ImageAttachment` / `AudioAttachment`: file-backed attachments (path, mime).
 - `InputValue`: submitted input text + attachments.
 - `StrictDataDict`: dict that only allows str/int/float/bool/None.
@@ -85,7 +85,7 @@ Rendering / input:
 Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
 - `@ex6.override`: replace an overridable fn (call_tools, make_input, render_* fns).
-- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
+- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer, render_tool_call): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
 - `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
 </architecture>
@@ -119,7 +119,7 @@ def approve_tool(ctx, tool, args):
 <core-plugins>
 ## Core plugins:
 Tools / agents:
-- _ex6/tools.py - all core tool-definitions: read_file, edit_file, patch_file, powershell, read_body, read_headers, explore_agent, handoff, etc. Also ENV_PROMPT, AGENTS_MD messages.
+- _ex6/tools.py - all core tool-definitions: read_file, edit_file, patch_file, powershell, read_body, read_headers, explore_agent, handoff, etc. Also ENV_PROMPT, AGENTS_MD messages, and render_tool_call rows for file tools (`edit_file: "a.py" +3 -2`).
 - _ex6/web_tools.py - websearch_agent tool (OpenRouter `:online` subagent)
 - _ex6/skills.py - load_skill tool; progressive disclosure of `_ex6/_skills/*.md` (yaml frontmatter)
 - _ex6/tasks.py - plan_write/plan_read/plan_add_log/plan_done/plan_list tools, backed by `.plans/*.md`
@@ -127,6 +127,7 @@ Tools / agents:
 - _ex6/agents_long_horizon.py - overnight loop over a markdown task file. No command; projects call `run_horizon(app, path, agents, pipeline=default_pipeline)` from their own command, agents (dict name -> Context) built via `default_agents` or by hand (must be yolo=True; see `_plugin_examples/_example_horizon.py`). Custom pipelines compose the step fns (run/review/fix_review/update_docs); the loop owns branching/merging and stops fatally if a pipeline moves HEAD or master (`check_git_state`)
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
+- _ex6/tool_summaries.py - bash/powershell rows show a cheap-model summary (`bash: [!] running tests`; `!` = changes things, `?` = read-only), stored in ctx.data
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
 Providers / models:
