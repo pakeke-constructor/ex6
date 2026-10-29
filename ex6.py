@@ -123,14 +123,14 @@ def yolo(tui):
     ctx.yolo = not ctx.yolo
 
 
-def get_folder() -> Path:
-    """Returns app data folder: %APPDATA%/ex6 on Windows, ~/ex6 on Unix."""
+def get_folder(owner: str) -> Path:
+    """Returns app data folder namespaced by owner (plugin id): %APPDATA%/ex6/<owner> on Windows, ~/ex6/<owner> on Unix."""
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home()))
     else:
         base = Path.home()
-    folder = base / "ex6"
-    folder.mkdir(exist_ok=True)
+    folder = base / "ex6" / owner
+    folder.mkdir(parents=True, exist_ok=True)
     return folder
 
 

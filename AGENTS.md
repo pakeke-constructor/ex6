@@ -130,17 +130,17 @@ Tools / agents:
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
 Providers / models:
-- _ex6/provider_util.py - shared provider helpers: `log_invoke` (every invoke -> `<get_folder()>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
+- _ex6/provider_util.py - shared provider helpers: `log_invoke` (every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
 - _ex6/provider_openrouter.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, supports_audio handler.
 - _ex6/provider_openai.py - openai provider, via ChatGPT subscription. invoke_llm handler for `openai/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH
 - _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. invoke_llm handler for `anthropic/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH, WEB_FETCH
-- _ex6/providers_test.py - live smoke test for silent provider failures (caching, tool args/results, images, protocol drift). `python -m _ex6.providers_test [anthropic] [openai] [openrouter]` or `run_tests()`. Results appended to `<get_folder()>/provider_tests/test-logs.jsonl`
+- _ex6/providers_test.py - live smoke test for silent provider failures (caching, tool args/results, images, protocol drift). `python -m _ex6.providers_test [anthropic] [openai] [openrouter]` or `run_tests()`. Results appended to `<get_folder("providers_test")>/test-logs.jsonl`
 - _ex6/models.py - model registry `M` (ModelInfo: id, ctx window, pricing)
 - _ex6/global_spend_limit.py - sets app.budget.limit
 
 UI / commands:
 - _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command
-- _ex6/themes.py - themes (oklch palettes) + /theme command, persisted to theme.json
+- _ex6/themes.py - themes (oklch palettes) + /theme command, persisted to `<get_folder("themes")>/theme.json`
 - _ex6/z_highlight_codeblock.py - output_renderer: pygments highlighting for code blocks
 - _ex6/z_highlight_markdown.py - output_renderer: markdown highlighting
 - _ex6/z_render_system_prompts.py - output_renderer: collapses system messages into expandable preview

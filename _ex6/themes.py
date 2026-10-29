@@ -102,7 +102,7 @@ THEMES = {
 
 def _load_saved_theme(app):
     try:
-        data = json.loads((ex6.get_folder() / "theme.json").read_text())
+        data = json.loads((ex6.get_folder("themes") / "theme.json").read_text())
         name = data.get("name", "")
         if name in THEMES:
             app.theme = copy.copy(THEMES[name])
@@ -135,7 +135,7 @@ def theme(tui, name: Optional[str]):
         tui.app.debug_print(f"Unknown theme: {name}")
         return
     tui.app.theme = copy.copy(THEMES[name])
-    path = ex6.get_folder() / "theme.json"
+    path = ex6.get_folder("themes") / "theme.json"
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({"name": name}))
     os.replace(tmp, path)

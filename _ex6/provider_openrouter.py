@@ -31,7 +31,7 @@ def supports_audio(ctx: ex6.Context) -> bool:
 
 
 def _cache_file():
-    return ex6.get_folder() / "cache_state.json"
+    return ex6.get_folder("provider_openrouter") / "cache_state.json"
 
 
 def cache_manually(ctx: ex6.Context, ttl="1h"):

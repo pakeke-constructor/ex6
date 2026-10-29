@@ -13,7 +13,7 @@ Loaded as a plugin too, but import has no side effects (own App is built inside 
 
 openrouter is opt-in: costs real money. Exit code 1 on any FAIL. WARN = degraded but not broken.
 Every run appends one JSON line per provider (all checks + numbers) to
-<ex6.get_folder()>/provider_tests/test-logs.jsonl. Compare against past runs to spot drift
+<ex6.get_folder("providers_test")>/test-logs.jsonl. Compare against past runs to spot drift
 (e.g. overhead tokens creeping up, cache ratios dropping). See .plans/provider-tests.md.
 """
 import json
@@ -224,7 +224,7 @@ def run_tests(names=("anthropic", "openai")):
         check(p, "debug canaries", not hits, "\n      ".join([""] + hits[:20]))
         for ctx in list(provider_anthropic._processes):
             provider_anthropic._processes.pop(ctx).close()
-        folder = ex6.get_folder() / "provider_tests"
+        folder = ex6.get_folder("providers_test")
         folder.mkdir(exist_ok=True)
         with open(folder / "test-logs.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": datetime.now().isoformat(timespec="seconds"), "provider": p, "model": cfg["model"],

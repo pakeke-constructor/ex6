@@ -33,7 +33,7 @@ _DB_LIMIT = 1_000_000_000  # bytes of live data in invokes.db; oldest invokes ar
 
 
 def _db():
-    db = sqlite3.connect(ex6.get_folder() / "invokes.db", timeout=30)
+    db = sqlite3.connect(ex6.get_folder("provider_util") / "invokes.db", timeout=30)
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript("""
         CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, data TEXT);
