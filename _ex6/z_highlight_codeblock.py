@@ -40,14 +40,17 @@ def render_highlighted_line(buf, x, y, w, text, lexer, bg_color=None, theme=None
 
 
 def make_code_renderer(code: str, lang: str, th) -> ex6.RenderFn:
-    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-        try: lexer = get_lexer_by_name(lang)
-        except: lexer = guess_lexer(code)
+    tokens = []  # (text, color), lexed on first render
 
-        tokencols = get_token_colors(th)
+    def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
+        if not tokens:
+            try: lexer = get_lexer_by_name(lang)
+            except: lexer = guess_lexer(code)
+            tokencols = get_token_colors(th)
+            tokens.extend((text, get_color(ttype, tokencols, th)) for ttype, text in lexer.get_tokens(code))
+
         wr = buf.writer(x, y, w)
-        for ttype, text in lexer.get_tokens(code):
-            color = get_color(ttype, tokencols, th)
+        for text, color in tokens:
             for ch in text:
                 if ch == '\n': wr.newline()
                 else: wr.put(ch, txt_color=color)
