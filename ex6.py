@@ -1928,16 +1928,18 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
     th = tui.app.theme
     token_count = ctx.token_count()
-    ratio = token_count / ctx.max_tokens if ctx.max_tokens else 0
-    filled = int(ratio * (bar_w - 2))
-    empty = (bar_w - 2) - filled
+    ratio = min(token_count / ctx.max_tokens, 1) if ctx.max_tokens else 0
+    color = th.accent_alt if ratio < 0.5 else th.warning if ratio < 0.8 else th.error
+    cells = ratio * bar_w
+    filled = int(cells)
+    bar = "█" * filled
+    if filled < bar_w and cells - filled >= 0.5: bar += "▌"
+    buf.puts(x, y, bar, txt_color=color)
+    buf.puts(x + len(bar), y, "░" * (bar_w - len(bar)), txt_color=th.muted)
     approx = "~" if ctx.is_token_count_estimate() else ""
-    tok_str = f"{approx}{token_count//1000}k/{ctx.max_tokens//1000}k"
-    buf.puts(x, y, "[", txt_color=th.muted)
-    buf.puts(x + 1, y, "█" * filled, txt_color=th.accent_alt)
-    buf.puts(x + 1 + filled, y, "-" * empty, txt_color=th.muted)
-    buf.puts(x + bar_w - 1, y, "]", txt_color=th.muted)
-    buf.puts(x + bar_w + 1, y, tok_str, txt_color=th.accent_alt)
+    used = f" {approx}{token_count//1000}k"
+    buf.puts(x + bar_w, y, used, txt_color=color)
+    buf.puts(x + bar_w + len(used), y, f" / {ctx.max_tokens//1000}k  {ratio:.0%}", txt_color=th.muted)
 
 @_overridable
 def render_selection_right(tui, buf, r):
@@ -1946,15 +1948,19 @@ def render_selection_right(tui, buf, r):
     buf.rect_line(r, txt_color=th.accent)
 
     ctx = tui.current
-    buf.puts(x + 2, y + 1, ctx.name, style='bold')
+    buf.puts(x + 2, y + 1, ctx.name, txt_color=th.accent_alt, style='bold')
     model_x = x + 2 + len(ctx.name) + 2
     try: via = ctx.get_invoker().__module__.rsplit(".", 1)[-1]
     except RuntimeError: via = "no provider"
-    buf.puts(model_x, y + 1, f"{ctx.model}  via {via}", style='dim')
+    model = ctx.model or ""
+    buf.puts(model_x, y + 1, model, txt_color=th.text)
+    buf.puts(model_x + len(model), y + 1, f"  · {via}", txt_color=th.muted)
     budget = tui.app.budget
-    budget_str = f"${budget.get_cost():.2f}/${budget.get_limit():.2f}"
-    budget_color = th.error if budget.is_over() else th.success
-    buf.puts(x + w - len(budget_str) - 2, y + 1, budget_str, txt_color=budget_color)
+    cost_str = f"${budget.get_cost():.2f}"
+    limit_str = f" / ${budget.get_limit():.2f}"
+    budget_x = x + w - len(cost_str) - len(limit_str) - 2
+    buf.puts(budget_x, y + 1, cost_str, txt_color=th.error if budget.is_over() else th.success)
+    buf.puts(budget_x + len(cost_str), y + 1, limit_str, txt_color=th.muted)
 
     bar_w = min(w - 4, 20)
     tui.app.call("render_context_window_bar", tui, buf, ctx, x + 2, y + 2, bar_w)
