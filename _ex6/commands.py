@@ -226,6 +226,9 @@ Some guidelines, in order:
 - Lastly, if the bad state can't be short-lived or recomputed, think about a way to invalidate it, or make the consumers aware of the duplication.
 Don't forget the bigger picture. 
 If the system/code is clean and minimal; that's fine, no changes needed.
+
+(Rule of thumb: If a goblin comes in and changes a bunch of memory/state randomly;
+the program should just change behaviour; nothing should ever become broken.)
 '''
 
 @ex6.command

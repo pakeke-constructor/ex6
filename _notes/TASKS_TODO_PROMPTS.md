@@ -16,8 +16,41 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 I wanna make ex6.debug_print way, way better.
 currently its kinda ass.
-There's no 
+I don't use it, (like ever,) and it sucks.
+Maybe we just remove it? idk?
 
+
+
+
+i want to make tool-rendering way better.
+
+Current tool rendering does this:
+`[>] bash('sed -i \'s/return not p.is_alive(), 1.0..., 120)`
+which is fine... but it's missing a few crucial pieces of info:
+"How many tokens did this incur?"
+"what's actually happening in this command?"
+
+SOLUTION to token-count:
+instead of `[>]`, we can show the token-count in the call, like `[2.1k]` or whatever. or just `[950]`.
+It gets spaced out to 3 characters regardless, so `99` gets done as `[99 ]`.
+
+SOLUTION to "what's happening":
+Allow tools to customize their own rendering.
+So for example, read_file can change, to become:
+`read_file: "file.txt", +304 -250`
+and the +304 in green, -250 in red.
+
+likewise, for bash, maybe we run a cheap GPT-luna agent that summarizes the command's purpose?
+Like:
+`bash: [!] running tests` 
+`bash: [?] checking for plugin usage` 
+And the agent chooses a [!] or a [?] based on whether the bash action makes any destructive-changes, (like edit file, or running another program), or whether it's just reading a file / reading something. This won't be perfect, it's okay if it's good enough tho.
+
+THE MAIN THING TO THINK ABOUT:
+What should the API for this look like? the render-tool-line stuff exists but IMO it is a bit weird/ugly... and hard to extend.
+
+help me design this, come up with at least 3 ideas for candidate APIs.
+be concise.
 
 
 
