@@ -3,7 +3,6 @@
 # Requires OPENROUTER_API_KEY for OpenRouter requests.
 
 import json
-import hashlib
 import ex6
 import openai
 import os
@@ -30,36 +29,10 @@ def supports_audio(ctx: ex6.Context) -> bool:
     return ctx.model.split(":")[0] in _audio_models
 
 
-def _cache_file():
-    return ex6.get_folder("provider_openrouter") / "cache_state.json"
-
-
 def cache_manually(ctx: ex6.Context, ttl="1h"):
-    """Mark a context for long-lived caching. Filesystem-backed, idempotent."""
-    import time
-    # Fingerprint: hash system messages + tools
-    parts = []
-    for m in ctx.get_messages():
-        if m.role == "system":
-            c = m.get_msg(ctx)
-            parts.append(c if isinstance(c, str) else json.dumps(c))
-    parts.append(json.dumps(ctx.get_tool_schemas()))
-    fp = hashlib.sha256("".join(parts).encode()).hexdigest()[:16]
-
-    # Check filesystem — skip if same content and still within TTL
-    f = _cache_file()
-    state = json.loads(f.read_text()) if f.exists() else {}
-    entry = state.get(ctx.name)
-    ttl_sec = 3600 if ttl == "1h" else 300
-    if entry and entry["fp"] == fp and (time.time() - entry["ts"]) < ttl_sec:
-        ctx.app.plugin_data.setdefault("provider:cached_contexts", {})[ctx.name] = ttl
-        return
-
+    """Mark a context for long-lived caching (cache_control on last system msg + tools)."""
     ctx.app.plugin_data.setdefault("provider:cached_contexts", {})[ctx.name] = ttl
-    state[ctx.name] = {"fp": fp, "ts": time.time()}
-    f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(state))
-    ctx.app.debug_print(f"[cache] registered {ctx.name} (ttl={ttl}, fp={fp})")
+    ctx.app.debug_print(f"[cache] registered {ctx.name} (ttl={ttl})")
 
 
 def _apply_cache_control(content: str | list[dict], cc: dict) -> list[dict]:
