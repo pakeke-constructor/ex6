@@ -1,5 +1,4 @@
-# Dependencies: openai (via provider.py's shared logging helper).
-# Install: python -m pip install openai
+# Dependencies: none (stdlib).
 # External: authenticated Claude Code CLI (`claude`) on PATH; no anthropic SDK needed.
 
 """
@@ -41,7 +40,7 @@ import threading
 import time
 
 import ex6
-from _ex6.provider import _log_invoke
+from _ex6.provider_util import log_invoke
 
 
 _INACTIVITY_TIMEOUT = 300  # seconds without any claude/MCP event mid-turn
@@ -224,7 +223,7 @@ class _ClaudeProcess:
         self.system = _system_prompt(ctx)
         self.tools = _mcp_tools(ctx)
         self.native_tools = _native_tools(ctx)
-        # What this process has been sent + its replies (claude-code holds the real history), for _log_invoke
+        # What this process has been sent + its replies (claude-code holds the real history), for log_invoke
         self.transcript = [{"role": "system", "content": self.system}]
         self.native_calls = {}  # tool_use_id -> record, until claude echoes its result (may be a later pump)
         self.seen = ()  # ex6 messages claude has been given
@@ -394,7 +393,7 @@ class _ClaudeProcess:
         return _digest(False, result.text)
 
     def log(self, result, text=""):
-        _log_invoke(self.ctx, "anthropic", self.transcript, self.tools + self.native_tools, result, text)
+        log_invoke(self.ctx, "anthropic", self.transcript, self.tools + self.native_tools, result, text)
 
     def _result(self, usage, output_tokens, calls, native_calls, finish_reason, text):
         cache_read = usage.get("cache_read_input_tokens", 0)
@@ -566,7 +565,7 @@ def invoke_anthropic(ctx: ex6.Context):
         if process and not process.closed:
             process.log(result)
         else:
-            _log_invoke(ctx, "anthropic", [], [], result)
+            log_invoke(ctx, "anthropic", [], [], result)
         yield result
     finally:
         # Interrupted or failed mid-turn: claude's state is unknown, so start fresh next time.

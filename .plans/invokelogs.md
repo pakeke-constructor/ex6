@@ -56,7 +56,7 @@ Refinement: hash at message granularity. Every message is a reference, so there'
 - toolstats (`.plans/toolstats.md`) stays as JSONL for now. It could move into this DB later.
 
 ## Files
-- `_ex6/provider.py` (`_log_invoke`, `_log_safe`)
+- `_ex6/provider_util.py` (`log_invoke`, `_log_safe`, db + cull); `_ex6/provider_openrouter.py`
 - `_ex6/provider_openai.py`
 - `_ex6/provider_anthropic.py`
 - `ex6.get_folder()` in `ex6.py`

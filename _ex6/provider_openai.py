@@ -10,7 +10,7 @@ import os
 import time
 import base64
 import uuid
-from _ex6.provider import _log_invoke
+from _ex6.provider_util import log_invoke
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ def invoke_openai(ctx: ex6.Context):
     unknown = [n for n in ctx.get_native_tools() if n not in NATIVE_TOOLS]
     if unknown:
         result = ex6.LLMResult(error=f"openai provider doesn't support native tools: {unknown}")
-        _log_invoke(ctx, "openai", sent, tools, result)
+        log_invoke(ctx, "openai", sent, tools, result)
         yield result
         return
     tools += [NATIVE_TOOLS[n] for n in ctx.get_native_tools()]
@@ -215,7 +215,7 @@ def invoke_openai(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[codex] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, "openai", sent, tools, result)
+        log_invoke(ctx, "openai", sent, tools, result)
         yield result
         return
 
@@ -265,7 +265,7 @@ def invoke_openai(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[codex] stream exception: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, "openai", sent, tools, result, text)
+        log_invoke(ctx, "openai", sent, tools, result, text)
         yield result
         return
 
@@ -276,7 +276,7 @@ def invoke_openai(ctx: ex6.Context):
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0, native_calls=native_calls,
                            cached_tokens=cached_tokens, raw_usage=raw_usage)
     ctx.app.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)} native={len(native_calls)}")
-    _log_invoke(ctx, "openai", sent, tools, result, text)
+    log_invoke(ctx, "openai", sent, tools, result, text)
     yield result
 
 

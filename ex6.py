@@ -563,6 +563,12 @@ def invoke_llm(ctx):
     raise RuntimeError(f"no provider handles model {ctx.model!r}")
 
 
+@_handleable
+def supports_audio(ctx):
+    """Provider handlers return True if ctx's model accepts audio input."""
+    return False
+
+
 class NativeTool:
     """Provider-hosted tool (eg web search). Goes in tool lists like a normal tool, but the
     provider runs it: no schema is sent, ex6 never calls it, approve_tool is not consulted.

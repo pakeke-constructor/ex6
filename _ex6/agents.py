@@ -1,6 +1,6 @@
 ﻿# Dependencies: watchfiles (via inline.py), plus the imported plugins below.
 # Install: python -m pip install watchfiles
-# Also install dependencies documented in tools.py, skills.py, provider.py,
+# Also install dependencies documented in tools.py, skills.py, provider_openrouter.py,
 # provider_openai.py, and provider_anthropic.py (including CLI prerequisites).
 # External: Git for the inline watcher.
 

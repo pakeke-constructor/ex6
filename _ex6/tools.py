@@ -1,5 +1,5 @@
-# Dependencies: tree-sitter, GitPython, Pillow, Pygments; openai via provider.py.
-# Install: python -m pip install tree-sitter GitPython Pillow Pygments openai
+# Dependencies: tree-sitter, GitPython, Pillow, Pygments.
+# Install: python -m pip install tree-sitter GitPython Pillow Pygments
 # read_body/read_headers also need grammars for the languages you use, e.g.:
 # Install: python -m pip install tree-sitter-python tree-sitter-javascript tree-sitter-typescript
 # Other supported grammars (pip names): tree-sitter-go, tree-sitter-solidity,
@@ -46,7 +46,6 @@ import locale
 import tempfile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
-from _ex6.provider import supports_audio
 from ex6 import Context, Message
 from typing import Optional
 
@@ -885,7 +884,7 @@ MAX_AUDIO_BYTES = 20 * 1024 * 1024
 
 def read_audio(ctx: ex6.Context, path: str) -> ex6.ToolResult:
     """Read a local audio file (WAV, MP3, FLAC, OGG, AAC, AIFF)."""
-    if not supports_audio(ctx):
+    if not ctx.app.call("supports_audio", ctx):
         raise ValueError(f"Audio input is not supported for this context ({ctx.model}).")
     p = ctx.resolve(path)
     _check_sensitive_image_path(p)

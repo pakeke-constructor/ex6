@@ -27,7 +27,7 @@ from contextlib import closing
 from datetime import datetime
 
 import ex6
-from _ex6 import provider, provider_anthropic, provider_openai
+from _ex6 import provider_openrouter, provider_anthropic, provider_openai
 from _ex6.models import M
 
 PROVIDERS = {
@@ -36,7 +36,7 @@ PROVIDERS = {
                       min_ratio=0.8, max_overhead=2000),
     "openai": dict(model=M.GPT_LUNA_LATEST.id, invoker=provider_openai.invoke_openai, usage=("openai:usage", "percent"),
                    min_ratio=0.5, max_overhead=500),
-    "openrouter": dict(model=M.HAIKU_45.id, invoker=provider.invoke_openrouter, usage=None,
+    "openrouter": dict(model=M.HAIKU_45.id, invoker=provider_openrouter.invoke_openrouter, usage=None,
                        min_ratio=0.8, max_overhead=500),
 }
 CANARIES = ["invalid output", "unexpected control request", "stalled", "exception", "diverged", "malformed", "failed:"]
@@ -177,7 +177,7 @@ def test_caching(p, cfg, nums):
     pad = "".join(f"Reference entry {i:04d}: code {i * 7919 % 10007:05d}, unused.\n" for i in range(700))  # ~7k tokens
     ctx = make_ctx(cfg, "t_cache", f"Run {random.random()}. You are a test agent; be brief.\n\n{pad}", [noop])
     if p == "openrouter":
-        provider.cache_manually(ctx)
+        provider_openrouter.cache_manually(ctx)
     procs, rs = [], []
     for prompt in ["Say hi.", "Say bye.", "Call noop, then say done."]:
         _, turn = run(ctx, prompt)

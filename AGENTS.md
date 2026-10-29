@@ -66,7 +66,7 @@ If you need to store more complex data (like lists, dicts, objects), you must us
 LLM / tools:
 - `ResponseChunk`: streamed chunk from invoke_llm ("text" or "cot").
 - `LLMResult`: final result of invoke_llm: tokens, tool_calls, native_calls, finish_reason, error, cost.
-- `NativeTool`: provider-hosted tool (eg web search), placed in tool lists like a normal tool. Provider runs it: no schema sent, ex6 never calls it, `approve_tool` is NOT consulted. Providers raise on names they don't support. Each call is recorded as `{id, name, args, result}` in `LLMResult.native_calls` -> `Message.native_calls` (display/debug only, never sent back), rendered as `native:<name>` tool rows, logged by `_log_invoke`. `ctx.get_native_tools()` lists names.
+- `NativeTool`: provider-hosted tool (eg web search), placed in tool lists like a normal tool. Provider runs it: no schema sent, ex6 never calls it, `approve_tool` is NOT consulted. Providers raise on names they don't support. Each call is recorded as `{id, name, args, result}` in `LLMResult.native_calls` -> `Message.native_calls` (display/debug only, never sent back), rendered as `native:<name>` tool rows, logged by `log_invoke`. `ctx.get_native_tools()` lists names.
 - `ToolResult`: tool output: text + attachments.
 - `PendingTool`: a tool call awaiting its result.
 - `Operation`: long-running tool work; tool returns cancel/poll fns, core polls until done.
@@ -85,7 +85,7 @@ Rendering / input:
 Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
 - `@ex6.override`: replace an overridable fn (call_tools, make_input, render_* fns).
-- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
+- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
 - `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
 </architecture>
@@ -130,7 +130,8 @@ Tools / agents:
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
 Providers / models:
-- _ex6/provider.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, /usage, invoke logging.
+- _ex6/provider_util.py - shared provider helpers: `log_invoke` (every invoke -> `<get_folder()>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
+- _ex6/provider_openrouter.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, supports_audio handler.
 - _ex6/provider_openai.py - openai provider, via ChatGPT subscription. invoke_llm handler for `openai/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH
 - _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. invoke_llm handler for `anthropic/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH, WEB_FETCH
 - _ex6/providers_test.py - live smoke test for silent provider failures (caching, tool args/results, images, protocol drift). `python -m _ex6.providers_test [anthropic] [openai] [openrouter]` or `run_tests()`. Results appended to `<get_folder()>/provider_tests/test-logs.jsonl`
