@@ -19,7 +19,17 @@ Storage must be "idempotent, robust, simple and painless."
    - `_ex6/provider_openai.py:167`
    Every call site must log the actual messages sent.
 3. Going forwards, keep logging invocations, but log on completion, not on invoke (include the model's output). Replace `_log_invoke` with the SQLite store below.
-4. Once fresh logs accumulate, use them to extract insights to make our agents more useful.
+4. Automatic culling of old logs (user: "Set like a storage limit (eg 1gb) and then cull by how old the stuff is automatically").
+   - `_DB_LIMIT = 1_000_000_000` bytes in provider.py.
+   - Live size = `(page_count - freelist_count) * page_size`. Freed pages get reused, so the file stays at ~limit with no VACUUM needed.
+   - Checked after every logged invoke (cheap pragma). Over limit: delete oldest 10% of invokes, GC unreferenced blobs (`json_each(invokes.messages)` + `invokes.tools`), repeat until under 90% of limit. The 90% target stops it re-culling on every invoke.
+5. Once fresh logs accumulate, use them to extract insights to make our agents more useful.
+
+## Status (2026-10-29)
+- Tasks 1-4 done. providers_test (anthropic, openai) passes and writes complete rows to invokes.db.
+- Anthropic logs `_ClaudeProcess.transcript`: system + everything sent to the claude process + its replies. That's the context window as ex6 sees it (claude-code adds its own bits on top).
+- Leftover: running ex6 instances on old code still write `logs/invoke-*.txt`. Restart them, then delete `%APPDATA%\ex6\logs`.
+- Next: task 5 (insights), once data accumulates.
 
 ## Storage design (agreed)
 User's idea: hash strings; store either directly or as a reference to a reused blob (eg sys-prompt).

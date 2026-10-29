@@ -162,21 +162,23 @@ def invoke_llm(ctx: ex6.Context):
 
 
 def invoke_openai(ctx: ex6.Context):
-    unknown = [n for n in ctx.get_native_tools() if n not in NATIVE_TOOLS]
-    if unknown:
-        result = ex6.LLMResult(error=f"openai provider doesn't support native tools: {unknown}")
-        _log_invoke(ctx, [], result)
-        yield result
-        return
-    access_token, account_id = _codex_auth()
     instructions, input_items = _to_responses_input(ctx)
+    instructions = instructions or "You are a helpful coding assistant."
+    sent = [{"role": "system", "content": instructions}] + input_items
 
     # chat-completions tool schema -> flat Responses schema
     tools = [{"type": "function", "name": t["function"]["name"],
               "description": t["function"]["description"],
               "parameters": t["function"]["parameters"]}
              for t in (ctx.get_tool_schemas() or [])]
+    unknown = [n for n in ctx.get_native_tools() if n not in NATIVE_TOOLS]
+    if unknown:
+        result = ex6.LLMResult(error=f"openai provider doesn't support native tools: {unknown}")
+        _log_invoke(ctx, "openai", sent, tools, result)
+        yield result
+        return
     tools += [NATIVE_TOOLS[n] for n in ctx.get_native_tools()]
+    access_token, account_id = _codex_auth()
 
     # ChatGPT backend routes cache affinity by the `session-id` header (codex-rs headers.rs), not the body key alone.
     if "openai:cache_key" not in ctx.data:
@@ -190,7 +192,7 @@ def invoke_openai(ctx: ex6.Context):
     def start(token):
         raw = _codex_client(token, account_id).responses.with_raw_response.create(
             model=ctx.model.split("/", 1)[1],
-            instructions=instructions or "You are a helpful coding assistant.",
+            instructions=instructions,
             input=input_items,
             tools=tools or openai.NOT_GIVEN,
             stream=True,
@@ -213,7 +215,7 @@ def invoke_openai(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[codex] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, input_items, result)
+        _log_invoke(ctx, "openai", sent, tools, result)
         yield result
         return
 
@@ -222,10 +224,12 @@ def invoke_openai(ctx: ex6.Context):
     finish_reason = "stop"
     tool_calls = []
     native_calls = []
+    text = ""
     try:
         for event in stream:
             t = event.type
             if t == "response.output_text.delta":
+                text += event.delta
                 yield ex6.ResponseChunk("text", event.delta)
             elif t == "response.reasoning_summary_text.delta":
                 yield ex6.ResponseChunk("cot", event.delta)
@@ -261,7 +265,7 @@ def invoke_openai(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[codex] stream exception: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, input_items, result, cached_tokens)
+        _log_invoke(ctx, "openai", sent, tools, result, text)
         yield result
         return
 
@@ -272,7 +276,7 @@ def invoke_openai(ctx: ex6.Context):
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=0, native_calls=native_calls,
                            cached_tokens=cached_tokens, raw_usage=raw_usage)
     ctx.app.debug_print(f"[codex] result: in={input_tokens} out={output_tokens} cached={cached_tokens} tools={len(tool_calls)} native={len(native_calls)}")
-    _log_invoke(ctx, input_items, result, cached_tokens)
+    _log_invoke(ctx, "openai", sent, tools, result, text)
     yield result
 
 

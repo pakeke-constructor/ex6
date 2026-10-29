@@ -4,6 +4,7 @@
 
 import json
 import hashlib
+import sqlite3
 import ex6
 import openai
 import os
@@ -125,19 +126,19 @@ def invoke_llm(ctx: ex6.Context):
 def invoke_openrouter(ctx: ex6.Context):
     messages = [msg_to_dict(m, ctx) for m in ctx.get_messages()]
 
+    tools = ctx.get_tool_schemas() or None
+
     if ctx.app.budget.is_over():
         result = ex6.LLMResult(error=f"daily budget exceeded (${ctx.app.budget.get_cost():.2f}/${ctx.app.budget.get_limit():.2f})")
-        _log_invoke(ctx, messages, result)
+        _log_invoke(ctx, "openrouter", messages, tools, result)
         yield result
         return
 
     if ctx.get_native_tools():
         result = ex6.LLMResult(error=f"openrouter provider supports no native tools: {ctx.get_native_tools()}")
-        _log_invoke(ctx, messages, result)
+        _log_invoke(ctx, "openrouter", messages, tools, result)
         yield result
         return
-
-    tools = ctx.get_tool_schemas() or None
 
     # Anthropic prompt caching
     if ctx.model.startswith("anthropic/"):
@@ -191,7 +192,7 @@ def invoke_openrouter(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[invoke] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, messages, result)
+        _log_invoke(ctx, "openrouter", messages, tools, result)
         yield result
         return
 
@@ -202,6 +203,7 @@ def invoke_openrouter(ctx: ex6.Context):
     finish_reason = "stop"
     tool_calls_acc = {}
     chunk_count = 0
+    text = ""
 
     try:
         for chunk in response:
@@ -209,6 +211,7 @@ def invoke_openrouter(ctx: ex6.Context):
             delta = chunk.choices[0].delta if chunk.choices else None
 
             if delta and delta.content:
+                text += delta.content
                 yield ex6.ResponseChunk("text", delta.content)
 
             # CoT (OpenRouter reasoning field)
@@ -242,7 +245,7 @@ def invoke_openrouter(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[invoke] stream exception: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, messages, result, cached_tokens, cache_write_tokens)
+        _log_invoke(ctx, "openrouter", messages, tools, result, text)
         yield result
         return
     ctx.app.debug_print(f"[invoke] stream done, {chunk_count} chunks, finish={finish_reason}")
@@ -275,7 +278,7 @@ def invoke_openrouter(ctx: ex6.Context):
     result = ex6.LLMResult(input_tokens, output_tokens, tool_calls, finish_reason, cost=cost, error=error,
                            cached_tokens=cached_tokens, cache_write_tokens=cache_write_tokens, raw_usage=raw_usage)
     ctx.app.debug_print(f"[invoke] result: in={input_tokens} out={output_tokens} cost=${cost:.4f} cached_tokens={cached_tokens} cache_write_tokens={cache_write_tokens} tools={len(tool_calls)}")
-    _log_invoke(ctx, messages, result, cached_tokens, cache_write_tokens)
+    _log_invoke(ctx, "openrouter", messages, tools, result, text)
     yield result
 
 
@@ -291,6 +294,8 @@ def usage(tui):
 
 
 def _log_safe(value):
+    if isinstance(value, dict) and value.get("type") in ("base64", "image") and "data" in value:  # anthropic / MCP images
+        return {**value, "data": "<base64 data omitted>"}
     if isinstance(value, dict):
         return {k: _log_safe(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -300,36 +305,62 @@ def _log_safe(value):
     return value
 
 
-def _log_invoke(ctx, messages, result, cached_tokens=0, cache_write_tokens=0):
+_DB_LIMIT = 1_000_000_000  # bytes of live data in invokes.db; oldest invokes are culled past this
+
+
+def _db():
+    db = sqlite3.connect(ex6.get_folder() / "invokes.db", timeout=30)
+    db.execute("PRAGMA journal_mode=WAL")
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, data TEXT);
+        CREATE TABLE IF NOT EXISTS invokes(id INTEGER PRIMARY KEY, ts, cwd, ctx, model, provider,
+            input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost, finish_reason, error,
+            messages TEXT, tools TEXT, output TEXT);
+    """)
+    return db
+
+
+def _blob(db, value):
+    data = json.dumps(_log_safe(value), sort_keys=True)
+    h = hashlib.sha256(data.encode()).hexdigest()
+    db.execute("INSERT OR IGNORE INTO blobs VALUES (?, ?)", (h, data))
+    return h
+
+
+def _db_size(db):
+    return db.execute("SELECT (page_count - freelist_count) * page_size "
+                      "FROM pragma_page_count(), pragma_freelist_count(), pragma_page_size()").fetchone()[0]
+
+
+def _cull(db):
+    """Over the limit: drop oldest invokes and their orphaned blobs until under 90% of it."""
+    if _db_size(db) <= _DB_LIMIT:
+        return
+    while _db_size(db) > _DB_LIMIT * 0.9:
+        db.execute("DELETE FROM invokes WHERE id IN "
+                   "(SELECT id FROM invokes ORDER BY id LIMIT (SELECT COUNT(*) / 10 + 1 FROM invokes))")
+        db.execute("DELETE FROM blobs WHERE hash NOT IN "
+                   "(SELECT value FROM invokes, json_each(invokes.messages) UNION SELECT tools FROM invokes)")
+
+
+def _log_invoke(ctx, provider, messages, tools, result, text=""):
+    """Record a finished invoke. messages/tools: the provider-format payload actually sent."""
     from datetime import datetime
-    import random
-    folder = ex6.get_folder() / "logs"
-    folder.mkdir(exist_ok=True)
-    ts = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    fname = f"invoke-{ts}-{random.randint(1000,9999)}.txt"
-
-    lines = [
-        "============",
-        f"model: {ctx.model}",
-        f"input_tokens: {result.input_tokens}",
-        f"output_tokens: {result.output_tokens}",
-        f"cached_tokens: {cached_tokens}",
-        f"cache_write_tokens: {cache_write_tokens}",
-        f"cost: ${result.cost:.4f}" if result.cost else "cost: N/A",
-        f"finish_reason: {result.finish_reason}",
-        f"native_tools: {ctx.get_native_tools()}",
-        f"native_calls: {json.dumps(result.native_calls)}",
-        f"error: {result.error}" if result.error else "error: None",
-        "============",
-        "",
-        "=== CONTEXT ===",
-    ]
-    for m in messages:
-        lines.append(f"[{m.get('role', m.get('type', '?'))}]")
-        c = _log_safe(m.get('content', m))
-        lines.append(c if isinstance(c, str) else json.dumps(c))
-        lines.append("")
-
-    (folder / fname).write_text("\n".join(lines), encoding="utf-8")
+    output = {"text": text, "tool_calls": result.tool_calls, "native_calls": result.native_calls}
+    db = _db()
+    try:
+        with db:  # one transaction per invoke
+            hashes = [_blob(db, m) for m in messages]
+            db.execute(
+                "INSERT INTO invokes (ts, cwd, ctx, model, provider, input_tokens, output_tokens, cached_tokens,"
+                " cache_write_tokens, cost, finish_reason, error, messages, tools, output)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (datetime.now().isoformat(timespec="seconds"), ctx.cwd or os.getcwd(), ctx.name, ctx.model,
+                 provider, result.input_tokens, result.output_tokens, result.cached_tokens,
+                 result.cache_write_tokens, result.cost, result.finish_reason, result.error,
+                 json.dumps(hashes), _blob(db, tools or []), json.dumps(_log_safe(output))))
+            _cull(db)
+    finally:
+        db.close()
 
 

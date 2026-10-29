@@ -224,6 +224,8 @@ class _ClaudeProcess:
         self.system = _system_prompt(ctx)
         self.tools = _mcp_tools(ctx)
         self.native_tools = _native_tools(ctx)
+        # What this process has been sent + its replies (claude-code holds the real history), for _log_invoke
+        self.transcript = [{"role": "system", "content": self.system}]
         self.native_calls = {}  # tool_use_id -> record, until claude echoes its result (may be a later pump)
         self.seen = ()  # ex6 messages claude has been given
         # ("claude", event) | ("call", tool_use_id, request_id, rpc_id) | ("exit", code)
@@ -383,19 +385,25 @@ class _ClaudeProcess:
         return None
 
     def send_user(self, content):
+        self.transcript.append({"role": "user", "content": content})
         self._send_event({"type": "user", "message": {"role": "user", "content": content}})
 
-    def _send(self, request_id, rpc_id, result):
+    def _send(self, tool_use_id, request_id, rpc_id, result):
+        self.transcript.append({"role": "tool", "tool_use_id": tool_use_id, "content": _tool_result_payload(result)})
         self._send_mcp(request_id, {"jsonrpc": "2.0", "id": rpc_id, "result": _tool_result_payload(result)})
         return _digest(False, result.text)
 
-    def _result(self, usage, output_tokens, calls, native_calls, finish_reason):
+    def log(self, result, text=""):
+        _log_invoke(self.ctx, "anthropic", self.transcript, self.tools + self.native_tools, result, text)
+
+    def _result(self, usage, output_tokens, calls, native_calls, finish_reason, text):
         cache_read = usage.get("cache_read_input_tokens", 0)
         cache_write = usage.get("cache_creation_input_tokens", 0)
         input_tokens = usage.get("input_tokens", 0) + cache_read + cache_write
         result = ex6.LLMResult(input_tokens, output_tokens, calls, finish_reason, cost=0, native_calls=native_calls,
                                cached_tokens=cache_read, cache_write_tokens=cache_write, raw_usage=usage)
-        _log_invoke(self.ctx, [], result, cache_read, cache_write)
+        self.log(result, text)
+        self.transcript.append({"role": "assistant", "content": text, "tool_calls": calls, "native_calls": native_calls})
         return result
 
     def pump(self, results):
@@ -407,6 +415,7 @@ class _ClaudeProcess:
         native_calls = []
         usage = {}
         output_tokens = 0
+        text = ""
         stash, self.waiting = self.waiting, {}
         for tool_use_id, ids in stash.items():  # calls that arrived before ex6 had results
             self.events.put(("call", tool_use_id, *ids))
@@ -429,7 +438,7 @@ class _ClaudeProcess:
             if item[0] == "call":
                 _, tool_use_id, request_id, rpc_id = item
                 if tool_use_id in results and tool_use_id not in sent:
-                    sent[tool_use_id] = self._send(request_id, rpc_id, results[tool_use_id])
+                    sent[tool_use_id] = self._send(tool_use_id, request_id, rpc_id, results[tool_use_id])
                 else:
                     self.waiting[tool_use_id] = (request_id, rpc_id)
                 continue
@@ -444,13 +453,14 @@ class _ClaudeProcess:
                 elif inner["type"] == "content_block_delta":
                     delta = inner["delta"]
                     if delta["type"] == "text_delta":
+                        text += delta["text"]
                         yield ex6.ResponseChunk("text", delta["text"])
                     elif delta["type"] == "thinking_delta":
                         yield ex6.ResponseChunk("cot", delta["thinking"])
                 elif inner["type"] == "message_stop" and calls:
                     # claude emits one assistant event per block; message_stop follows all of them.
                     self._check_echoed(results, echoed)
-                    yield self._result(usage, output_tokens, calls, native_calls, "tool_calls")
+                    yield self._result(usage, output_tokens, calls, native_calls, "tool_calls", text)
                     return
 
             elif event.get("type") == "assistant":
@@ -490,7 +500,7 @@ class _ClaudeProcess:
                 if event.get("is_error"):
                     raise RuntimeError(event.get("result") or "Claude invocation failed")
                 self._check_echoed(results, echoed)
-                yield self._result(usage, output_tokens, [], native_calls, event.get("stop_reason") or "stop")
+                yield self._result(usage, output_tokens, [], native_calls, event.get("stop_reason") or "stop", text)
                 return
 
     def _check_echoed(self, results, echoed):
@@ -553,7 +563,10 @@ def invoke_anthropic(ctx: ex6.Context):
     except Exception as e:
         ctx.app.debug_print(f"[claude] exception: {e}")
         result = ex6.LLMResult(error=str(e))
-        _log_invoke(ctx, [], result)
+        if process and not process.closed:
+            process.log(result)
+        else:
+            _log_invoke(ctx, "anthropic", [], [], result)
         yield result
     finally:
         # Interrupted or failed mid-turn: claude's state is unknown, so start fresh next time.
