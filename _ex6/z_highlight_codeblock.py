@@ -31,29 +31,35 @@ def render_highlighted_line(buf, x, y, w, text, lexer, bg_color=None, theme=None
     col = x
     tokencols = get_token_colors(th)
     for ttype, tok in lexer.get_tokens(text):
-        fg = get_color(ttype, tokencols, th)
-        for ch in tok:
-            if col - x >= w: return
-            if ch not in '\n\r':
-                buf.put(col, y, ch, txt_color=fg, bg_color=bg_color)
-                col += 1
+        if col - x >= w: return
+        tok = tok.replace('\n', '').replace('\r', '')[:x + w - col]
+        buf.put_cells(col, y, tok, txt_color=get_color(ttype, tokencols, th), bg_color=bg_color)
+        col += len(tok)
 
 
 def make_code_renderer(code: str, lang: str, th) -> ex6.RenderFn:
-    tokens = []  # (text, color), lexed on first render
+    lines = []  # per source line: [(text, color)] with same-color neighbours merged; lexed on first render
 
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
-        if not tokens:
+        if not lines:
             try: lexer = get_lexer_by_name(lang)
             except: lexer = guess_lexer(code)
             tokencols = get_token_colors(th)
-            tokens.extend((text, get_color(ttype, tokencols, th)) for ttype, text in lexer.get_tokens(code))
+            lines.append([])
+            for ttype, text in lexer.get_tokens(code):
+                color = get_color(ttype, tokencols, th)
+                for i, part in enumerate(text.split('\n')):
+                    if i: lines.append([])
+                    if not part: continue
+                    line = lines[-1]
+                    if line and line[-1][1] == color: line[-1] = (line[-1][0] + part, color)
+                    else: line.append((part, color))
 
         wr = buf.writer(x, y, w)
-        for text, color in tokens:
-            for ch in text:
-                if ch == '\n': wr.newline()
-                else: wr.put(ch, txt_color=color)
+        for i, line in enumerate(lines):
+            if i: wr.newline()
+            for text, color in line:
+                wr.puts(text, txt_color=color)
         return wr.lines
     return render
 

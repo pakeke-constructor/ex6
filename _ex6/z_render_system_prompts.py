@@ -30,22 +30,21 @@ def compress_system_prompt(lines: list, msg: ex6.Message, ctx: ex6.Context) -> N
                 row += drawn
             # collapse footer
             wr = buf.writer(x, y + row, w)
-            wr.put('[', txt_color=th.text)
-            for c in 'system': wr.put(c, txt_color=th.error)
-            wr.put(':', txt_color=th.text)
-            for c in ' click to collapse': wr.put(c, txt_color=th.muted)
-            wr.put(']', txt_color=th.text)
+            wr.puts('[', txt_color=th.text)
+            wr.puts('system', txt_color=th.error)
+            wr.puts(':', txt_color=th.text)
+            wr.puts(' click to collapse', txt_color=th.muted)
+            wr.puts(']', txt_color=th.text)
             return row + wr.lines
         else:
             wr = buf.writer(x, y, w)
-            wr.put('[', txt_color=th.text)
-            for c in 'system': wr.put(c, txt_color=th.error)
-            wr.put(' ', txt_color=th.text)
-            for c in f'~{char_count}c, {line_count}L': wr.put(c, txt_color=th.accent)
-            wr.put(':', txt_color=th.text)
-            wr.put(' ', txt_color=th.text)
-            for c in preview: wr.put(c, txt_color=th.muted)
-            wr.put(']', txt_color=th.text)
+            wr.puts('[', txt_color=th.text)
+            wr.puts('system', txt_color=th.error)
+            wr.puts(' ', txt_color=th.text)
+            wr.puts(f'~{char_count}c, {line_count}L', txt_color=th.accent)
+            wr.puts(': ', txt_color=th.text)
+            wr.puts(preview, txt_color=th.muted)
+            wr.puts(']', txt_color=th.text)
             return wr.lines
 
     lines[:] = [render]

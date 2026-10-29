@@ -1,6 +1,7 @@
 import ex6
 import re
 import zlib
+import itertools
 from urllib.parse import quote
 
 # URL chars: no whitespace, no control chars, no parens (one balanced level allowed in md links).
@@ -82,10 +83,14 @@ def make_md_renderer(line: str, th) -> ex6.RenderFn:
         cells.append((line[i], color, style))
         i += 1
 
+    # runs of cells sharing (color, style), written in one call each
+    runs = [([c[0] for c in grp], color, style)
+            for (color, style), grp in itertools.groupby(cells, key=lambda c: (c[1], c[2]))]
+
     def render(buf: ex6.ScreenBuffer, x: int, y: int, w: int) -> int:
         wr = buf.writer(x, y, w)
-        for ch, color, style in cells:
-            wr.put(ch, txt_color=color, style=style)
+        for run, color, style in runs:
+            wr.puts(run, txt_color=color, style=style)
         return wr.lines
     return render
 

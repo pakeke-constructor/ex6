@@ -7,6 +7,8 @@ from pathlib import Path
 from collections import deque, Counter
 from datetime import datetime
 import math
+import itertools
+import functools
 
 
 os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
@@ -871,10 +873,9 @@ def render_tool_line(buf, x, y, w, name, args=(), status='ok', detail=None, kwar
     end = x + w
     def _put(s, clr):
         nonlocal col
-        for ch in s:
-            if col >= end: return
-            buf.put(col, y, ch, txt_color=clr)
-            col += 1
+        s = s[:max(0, end - col)]
+        buf.put_cells(col, y, s, txt_color=clr)
+        col += len(s)
     _put(name + '(', th.accent)
     value_color = th.muted
     for i, a in enumerate(args):
@@ -1413,14 +1414,18 @@ class ScreenBuffer:
             self.bg_colors[y][x] = bg_color
 
     def puts(self, x, y, text, style=None, txt_color=None, bg_color=None):
+        self.put_cells(x, y, text.replace('\r', ' ').replace('\n', ' '), style, txt_color, bg_color)
+
+    def put_cells(self, x, y, cells, style=None, txt_color=None, bg_color=None):
+        """Write a str (one char per cell) or list of cell strings at (x, y), clipped. No newline handling."""
         if not 0 <= y < self.h: return
-        text = text.replace('\r', ' ').replace('\n', ' ')
-        for i in range(max(0, -x), min(len(text), self.w - x)):
-            xx = x + i
-            self.chars[y][xx] = text[i]
-            self.styles[y][xx] = style
-            self.txt_colors[y][xx] = txt_color
-            self.bg_colors[y][xx] = bg_color
+        i, j = max(0, -x), min(len(cells), self.w - x)
+        if j <= i: return
+        a, b, n = x + i, x + j, j - i
+        self.chars[y][a:b] = cells[i:j]
+        self.styles[y][a:b] = [style] * n
+        self.txt_colors[y][a:b] = [txt_color] * n
+        self.bg_colors[y][a:b] = [bg_color] * n
 
     def invalidate(self):
         self._invalidated = True
@@ -1428,114 +1433,81 @@ class ScreenBuffer:
     def clear_line(self, y):
         if not 0 <= y < self.h:
             return
-        for x in range(self.w):
-            self.chars[y][x] = ' '
-            self.styles[y][x] = None
-            self.txt_colors[y][x] = None
-            self.bg_colors[y][x] = None
+        w = self.w
+        self.chars[y][:] = [' '] * w
+        self.styles[y][:] = [None] * w
+        self.txt_colors[y][:] = [None] * w
+        self.bg_colors[y][:] = [None] * w
 
     def clear(self):
-        for row in self.chars: row[:] = [' '] * self.w
-        for row in self.styles: row[:] = [None] * self.w
-        for row in self.txt_colors: row[:] = [None] * self.w
-        for row in self.bg_colors: row[:] = [None] * self.w
+        for y in range(self.h): self.clear_line(y)
+
+    @staticmethod
+    @functools.lru_cache(maxsize=4096)
+    def _style_wrap(term, fg, st, bg):
+        """(prefix, suffix) escape sequences for a (fg, style, bg) run."""
+        styled_fg = None
+        if isinstance(fg, tuple):
+            styled_fg = term.color_rgb(*fg)
+            attr = st
+        elif fg and st: attr = f"{fg}_{st}"
+        elif fg: attr = fg
+        elif st: attr = st
+        else: attr = None
+        if bg and isinstance(bg, tuple): styled_bg = term.on_color_rgb(*bg)
+        elif bg: attr = f"{attr}_on_{bg}" if attr else f"on_{bg}"; styled_bg = None
+        else: styled_bg = None
+        styled = getattr(term, attr, None) if attr else None
+        s = '\x01'
+        if styled: s = styled(s)
+        if styled_fg: s = styled_fg(s)
+        if styled_bg: s = styled_bg(s)
+        return tuple(s.split('\x01'))
 
     def flush(self, term, output=None):
-        skip_diff = self._invalidated
-        self._invalidated = False
-
-        def apply_style(fg, st, bg, s):
-            s = s.replace('\t', ' ')
-            styled_fg = None
-            if isinstance(fg, tuple):
-                styled_fg = term.color_rgb(*fg)
-                attr = st
-            elif fg and st: attr = f"{fg}_{st}"
-            elif fg: attr = fg
-            elif st: attr = st
-            else: attr = None
-            if bg and isinstance(bg, tuple): styled_bg = term.on_color_rgb(*bg)
-            elif bg: attr = f"{attr}_on_{bg}" if attr else f"on_{bg}"; styled_bg = None
-            else: styled_bg = None
-            styled = getattr(term, attr, None) if attr else None
-            if styled: s = styled(s)
-            if styled_fg: s = styled_fg(s)
-            if styled_bg: s = styled_bg(s)
-            return s
-
-        # count dirty cells to pick strategy
-        if not skip_diff:
-            pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
-            dirty = 0
-            for y in range(self.h):
-                for x in range(self.w):
-                    if pc[y][x] != self.chars[y][x] or pf[y][x] != self.txt_colors[y][x] or ps[y][x] != self.styles[y][x] or pb[y][x] != self.bg_colors[y][x]:
-                        dirty += 1
-            if dirty > (self.w * self.h) * 0.08:  # if 8% of cells are dirty = do full rewrite.
-                skip_diff = True
-
+        chars, styles, fgs, bgs = self.chars, self.styles, self.txt_colors, self.bg_colors
         pc, ps, pf, pb = self._prev_chars, self._prev_styles, self._prev_txt_colors, self._prev_bg_colors
-        rows = range(self.h) if skip_diff else (
-            y for y in range(self.h)
-            if any(pc[y][x] != self.chars[y][x]
-                   or pf[y][x] != self.txt_colors[y][x]
-                   or ps[y][x] != self.styles[y][x]
-                   or pb[y][x] != self.bg_colors[y][x]
-                   for x in range(self.w))
-        )
+        if self._invalidated:
+            rows = range(self.h)
+        else:  # whole-row compares run at C speed
+            rows = [y for y in range(self.h) if chars[y] != pc[y] or fgs[y] != pf[y] or styles[y] != ps[y] or bgs[y] != pb[y]]
+        self._invalidated = False
 
         out = []
         for y in rows:
             # Clear dirty rows first so content omitted by this frame cannot linger.
             out.append(term.move(y, 0))
             out.append(term.clear_eol)
-
-            row_end = self.w
-            while row_end and self.chars[y][row_end - 1] == ' ' \
-                    and self.styles[y][row_end - 1] is None \
-                    and self.txt_colors[y][row_end - 1] is None \
-                    and self.bg_colors[y][row_end - 1] is None:
-                row_end -= 1
-
-            cur_fg = None
-            cur_st = None
-            cur_bg = None
-            seg = []
-            for x in range(row_end):
-                fg = self.txt_colors[y][x]
-                st = self.styles[y][x]
-                bg = self.bg_colors[y][x]
-                if x == 0:
-                    cur_fg = fg; cur_st = st; cur_bg = bg
-                if fg != cur_fg or st != cur_st or bg != cur_bg:
-                    out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
-                    seg = []
-                    cur_fg = fg; cur_st = st; cur_bg = bg
-                seg.append(self.chars[y][x])
-            if seg:
-                out.append(apply_style(cur_fg, cur_st, cur_bg, "".join(seg)))
+            cr, sr, fr, br = chars[y], styles[y], fgs[y], bgs[y]
+            end = self.w
+            while end and cr[end - 1] == ' ' and sr[end - 1] is None and fr[end - 1] is None and br[end - 1] is None:
+                end -= 1
+            x = 0
+            for key, grp in itertools.groupby(zip(fr[:end], sr[:end], br[:end])):
+                n = sum(1 for _ in grp)
+                pre, post = self._style_wrap(term, *key)
+                out.append(pre + "".join(cr[x:x + n]).replace('\t', ' ') + post)
+                x += n
 
         if out:
             output = output or sys.__stdout__
             output.write("".join(out))
             output.flush()
         # swap: current becomes prev, prev becomes current (will be cleared next frame)
-        self.chars, self._prev_chars = self._prev_chars, self.chars
-        self.styles, self._prev_styles = self._prev_styles, self.styles
-        self.txt_colors, self._prev_txt_colors = self._prev_txt_colors, self.txt_colors
-        self.bg_colors, self._prev_bg_colors = self._prev_bg_colors, self.bg_colors
+        self.chars, self._prev_chars = pc, chars
+        self.styles, self._prev_styles = ps, styles
+        self.txt_colors, self._prev_txt_colors = pf, fgs
+        self.bg_colors, self._prev_bg_colors = pb, bgs
 
     def fill(self, r: Rect, char='█', style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
-        for row in range(y, y + h):
-            for col in range(x, x + w):
-                self.put(col, row, char, style, txt_color, bg_color)
+        for row in range(max(0, y), min(self.h, y + h)):
+            self.put_cells(x, row, [char] * w, style, txt_color, bg_color)
 
     def rect(self, r: Rect, char='█', style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
-        for col in range(x, x + w):
-            self.put(col, y, char, style, txt_color, bg_color)
-            self.put(col, y + h - 1, char, style, txt_color, bg_color)
+        self.put_cells(x, y, [char] * w, style, txt_color, bg_color)
+        self.put_cells(x, y + h - 1, [char] * w, style, txt_color, bg_color)
         for row in range(y + 1, y + h - 1):
             self.put(x, row, char, style, txt_color, bg_color)
             self.put(x + w - 1, row, char, style, txt_color, bg_color)
@@ -1543,21 +1515,15 @@ class ScreenBuffer:
     def rect_line(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, w, h = r
         if w < 2 or h < 2: return
-        for col in range(x + 1, x + w - 1):
-            self.put(col, y, '─', style, txt_color, bg_color)
-            self.put(col, y + h - 1, '─', style, txt_color, bg_color)
+        self.put_cells(x, y, '┌' + '─' * (w - 2) + '┐', style, txt_color, bg_color)
+        self.put_cells(x, y + h - 1, '└' + '─' * (w - 2) + '┘', style, txt_color, bg_color)
         for row in range(y + 1, y + h - 1):
             self.put(x, row, '│', style, txt_color, bg_color)
             self.put(x + w - 1, row, '│', style, txt_color, bg_color)
-        self.put(x, y, '┌', style, txt_color, bg_color)
-        self.put(x + w - 1, y, '┐', style, txt_color, bg_color)
-        self.put(x, y + h - 1, '└', style, txt_color, bg_color)
-        self.put(x + w - 1, y + h - 1, '┘', style, txt_color, bg_color)
 
     def hline(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, w, _ = r
-        for i in range(w):
-            self.put(x + i, y, '─', style, txt_color, bg_color)
+        self.put_cells(x, y, '─' * w, style, txt_color, bg_color)
 
     def vline(self, r: Rect, style=None, txt_color=None, bg_color=None):
         x, y, _, h = r
@@ -1567,30 +1533,43 @@ class ScreenBuffer:
     def print_wrapped(self, txt: str, x: int, y: int, w: int, style=None, txt_color=None, bg_color=None) -> int:
         """Write text with word-wrapping at width w. Returns number of lines consumed."""
         lines = txt.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        chars, styles, fgs, bgs, W, H = self.chars, self.styles, self.txt_colors, self.bg_colors, self.w, self.h
         row = 0
         for line in lines:
             if not line:
                 row += 1; continue
             col = 0
             words = line.split(' ')
+            last = len(words) - 1
             for wi, word in enumerate(words):
-                if col > 0 and col + len(word) > w:
+                L = len(word)
+                if col > 0 and col + L > w:
                     row += 1; col = 0
-                for c in word:
+                i = 0
+                while i < L:  # long words hard-wrap
                     if col >= w: row += 1; col = 0
-                    self.put(x + col, y + row, c, style, txt_color, bg_color)
-                    col += 1
-                if wi < len(words) - 1 and col < w:
+                    n = L - i if L - i < w - col else max(1, w - col)
+                    yy, a = y + row, x + col
+                    if 0 <= yy < H:  # clip [a, a+n) to [0, W)
+                        s, e = (0 if a >= 0 else -a), (n if a + n <= W else W - a)
+                        if s < e:
+                            chars[yy][a + s:a + e] = word[i + s:i + e]
+                            k = e - s
+                            styles[yy][a + s:a + e] = [style] * k
+                            fgs[yy][a + s:a + e] = [txt_color] * k
+                            bgs[yy][a + s:a + e] = [bg_color] * k
+                    col += n; i += n
+                if wi < last and col < w:
                     col += 1  # space
             row += 1
         return max(row, 1)
 
     def fill_bg(self, x, y, w, h, color):
-        for i in range(h):
-            if 0 <= y+i < self.h:
-                for c in range(w):
-                    if 0 <= x+c < self.w and self.bg_colors[y+i][x+c] is None:
-                        self.bg_colors[y+i][x+c] = color
+        a, b = max(0, x), min(self.w, x + w)
+        if b <= a: return
+        for yy in range(max(0, y), min(self.h, y + h)):
+            row = self.bg_colors[yy]
+            row[a:b] = [color if c is None else c for c in row[a:b]]
 
     def writer(self, x, y, w):
         return WrapWriter(self, x, y, w)
@@ -1601,12 +1580,21 @@ class ScreenBuffer:
             txt = txt.replace('\n', ' ')
         txt = txt.replace('\r\n', '\n').replace('\r', '\n')
         row, col = 0, 0
-        for c in txt:
-            if c == '\n': row += 1; col = 0; continue
-            if wrap and col >= w: row += 1; col = 0
-            if row >= h or (not wrap and col >= w): continue
-            self.put(x + col, y + row, c, style, txt_color, bg_color)
-            col += 1
+        for li, line in enumerate(txt.split('\n')):
+            if li: row += 1
+            col = 0
+            if not wrap:
+                if row < h:
+                    col = max(0, min(len(line), w))
+                    self.put_cells(x, y + row, line[:col], style, txt_color, bg_color)
+                continue
+            i, L = 0, len(line)
+            while i < L:
+                if col >= w: row += 1; col = 0
+                if row >= h: break
+                n = max(1, min(L - i, w - col))
+                self.put_cells(x + col, y + row, line[i:i + n], style, txt_color, bg_color)
+                col += n; i += n
         return row + 1 if col > 0 or row == 0 else row
 
 
@@ -1622,6 +1610,16 @@ class WrapWriter:
             self.cy += 1; self.cx = 0
         self.buf.put(self.x + self.cx, self.y + self.cy, ch, style, txt_color, bg_color)
         self.cx += 1
+
+    def puts(self, cells, style=None, txt_color=None, bg_color=None):
+        """Write a run of cells (str or list of cell strings), wrapping at w. Same result as put() per cell."""
+        i, L = 0, len(cells)
+        while i < L:
+            if self.cx >= self.w:
+                self.cy += 1; self.cx = 0
+            n = max(1, min(L - i, self.w - self.cx))
+            self.buf.put_cells(self.x + self.cx, self.y + self.cy, cells[i:i + n], style, txt_color, bg_color)
+            self.cx += n; i += n
 
     def newline(self):
         self.cy += 1; self.cx = 0
