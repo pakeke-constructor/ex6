@@ -76,11 +76,24 @@ def _get_gitignore_patterns(ctx):
     return state["patterns"]
 
 def _get_file_lock(ctx, path):
+    # setdefault is atomic, so parallel tool threads always share one lock per path
     locks = ctx.app.plugin_data.setdefault("tools:file_locks", {})
-    key = os.path.normpath(os.path.abspath(path))
-    if key not in locks:
-        locks[key] = threading.Lock()
-    return locks[key]
+    key = os.path.normcase(os.path.normpath(os.path.abspath(path)))
+    return locks.setdefault(key, threading.Lock())
+
+def _read_text(p):
+    """Read utf-8 text with line endings untouched. Returns (text with \\n endings, original newline)."""
+    with open(p, "r", encoding="utf-8", newline="") as f:
+        text = f.read()
+    newline = "\r\n" if "\r\n" in text else "\n"
+    return text.replace("\r\n", "\n"), newline
+
+def _write_text(p, text, newline):
+    text = text.replace("\r\n", "\n")
+    if newline != "\n":
+        text = text.replace("\n", newline)
+    with open(p, "w", encoding="utf-8", newline="") as f:
+        f.write(text)
 
 def _is_gitignored(ctx, path):
     root = ctx.cwd or os.getcwd()
@@ -273,17 +286,15 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
     with _get_file_lock(ctx, p):
         if os.path.exists(p):
             _check_read(ctx, file)
-            with open(p, "r") as f:
-                old = f.read()
+            old, newline = _read_text(p)
         else:
-            old = ""
+            old, newline = "", "\n"
         diff = _make_diff(old, content)
         denial = _approve(ctx, "write_file", {"file": file, "content": content}, f"Write file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
         d = os.path.dirname(p)
         if d: os.makedirs(d, exist_ok=True)
-        with open(p, "w") as f:
-            f.write(content)
+        _write_text(p, content, newline)
         ctx.mark_file_read(file)
         return f"Wrote {len(content)} chars to {file}"
 
@@ -418,17 +429,18 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     _check_secret(file)
     p = ctx.resolve(file)
 
+    search = search.replace("\r\n", "\n")
+    replace = replace.replace("\r\n", "\n")
+
     with _get_file_lock(ctx, p):
-        with open(p, "r") as f:
-            content = f.read()
+        content, newline = _read_text(p)
 
         def do_edit(original):
             new_content = content.replace(original, replace, 1)
             diff = _make_diff(original, replace)
             denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
             if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
-            with open(p, "w") as f:
-                f.write(new_content)
+            _write_text(p, new_content, newline)
             ctx.mark_file_read(file)
             return f"Updated {file}"
 
@@ -514,8 +526,8 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     p = ctx.resolve(file)
 
     with _get_file_lock(ctx, p):
-        with open(p, "r") as f:
-            lines = f.readlines()
+        text, newline = _read_text(p)
+        lines = io.StringIO(text, newline="\n").readlines()
 
         # snapshot check
         snapshot = ctx.get_line_snapshot(file)
@@ -551,8 +563,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         diff = _make_diff(old_text, new_text)
         denial = _approve(ctx, "edit_file_lines", {"file": file, "start": start, "end": end, "content": content}, f"Edit file: {file} (lines {start}-{end})", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
         if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
-        with open(p, "w") as f:
-            f.writelines(new_lines)
+        _write_text(p, new_text, newline)
         ctx.mark_file_read(file)
         snapshot = ctx.get_line_snapshot(file)
         for line_no in list(snapshot):
@@ -615,7 +626,7 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
                 continue
             fp = os.path.join(root, f)
             try:
-                with open(fp, "r", errors="ignore") as fh:
+                with open(fp, "r", encoding="utf-8", errors="ignore") as fh:
                     if "\0" in fh.read(8192):
                         continue
                     fh.seek(0)
@@ -913,26 +924,27 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
     """
     _check_secret(path)
     p = ctx.resolve(path)
-    with open(p, "rb") as f:
-        data = f.read()
-    if _looks_like_image(p, data[:16]):
-        raise ValueError(f"'{path}' is an image. Use read_image instead.")
-    try:
-        content = data.decode("utf-8", errors="strict")
-    except UnicodeDecodeError as e:
-        raise ValueError(f"'{path}' is a binary file and cannot be read as text.") from e
-    if "\x00" in content:
-        raise ValueError(f"'{path}' is a binary file and cannot be read as text.")
-    all_lines = content.splitlines(keepends=True)
-    if lines:
-        start, end = lines
-        end = min(end, len(all_lines)) # end-line can't go beyond file
-        selected = all_lines[start-1:end]
-        ctx.mark_file_read(path, list(range(start, end + 1)))
-        return _add_line_numbers("".join(selected), start=start)
-    if ex6.get_token_estimate(content) > ex6.MAX_TOOL_OUTPUT_CHARACTERS:
-        raise ValueError("File is too big!")
-    ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
+    with _get_file_lock(ctx, p):
+        with open(p, "rb") as f:
+            data = f.read()
+        if _looks_like_image(p, data[:16]):
+            raise ValueError(f"'{path}' is an image. Use read_image instead.")
+        try:
+            content = data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as e:
+            raise ValueError(f"'{path}' is a binary file and cannot be read as text.") from e
+        if "\x00" in content:
+            raise ValueError(f"'{path}' is a binary file and cannot be read as text.")
+        all_lines = content.splitlines(keepends=True)
+        if lines:
+            start, end = lines
+            end = min(end, len(all_lines)) # end-line can't go beyond file
+            selected = all_lines[start-1:end]
+            ctx.mark_file_read(path, list(range(start, end + 1)))
+            return _add_line_numbers("".join(selected), start=start)
+        if ex6.get_token_estimate(content) > ex6.MAX_TOOL_OUTPUT_CHARACTERS:
+            raise ValueError("File is too big!")
+        ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
     if line_numbers:
         return _add_line_numbers(content)
     return content
@@ -1632,7 +1644,11 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = Tru
             return out.strip() or "(no output)"
         except subprocess.TimeoutExpired:
             return f"ERROR: command timed out after {timeout}s"
-    return _windows_shell(ctx, [exe, "-c", command], timeout, condense, "utf-8")
+    # `bash -c command` on Windows goes through list2cmdline + MSYS argv re-parsing, which collapses `\\` to `\`.
+    # A script file has no quoting layer, so the command reaches bash byte-for-byte.
+    with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False, encoding="utf-8", newline="") as f:
+        f.write(command)
+    return _windows_shell(ctx, [exe, f.name.replace("\\", "/")], timeout, condense, "utf-8", script=f.name)
 
 
 def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
@@ -1651,7 +1667,7 @@ def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool
                           timeout, condense, locale.getpreferredencoding(False))
 
 
-def _windows_shell(ctx, args, timeout, condense, encoding):
+def _windows_shell(ctx, args, timeout, condense, encoding, script=None):
     stdout, stderr = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     try:
         proc = subprocess.Popen(args,
@@ -1660,6 +1676,7 @@ def _windows_shell(ctx, args, timeout, condense, encoding):
     except Exception:
         stdout.close()
         stderr.close()
+        if script: os.unlink(script)
         raise
     deadline = time.monotonic() + timeout
     timed_out, killer = False, None
@@ -1693,6 +1710,7 @@ def _windows_shell(ctx, args, timeout, condense, encoding):
         finally:
             stdout.close()
             stderr.close()
+            if script: os.unlink(script)
         if timed_out:
             return f"ERROR: command timed out after {timeout}s"
         if condense:

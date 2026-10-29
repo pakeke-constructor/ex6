@@ -54,7 +54,7 @@ def plan_write(ctx: ex6.Context, content: str, id: str = None) -> str:
                 break
         else:
             raise ValueError("Could not generate unique plan id")
-    with open(_plan_path(ctx, tid), "w") as f:
+    with open(_plan_path(ctx, tid), "w", encoding="utf-8", newline="") as f:
         f.write(content)
     ctx.data["plan:id"] = tid
     created = "Created" if not id else "Updated"
@@ -67,7 +67,7 @@ def plan_read(ctx: ex6.Context, id: str = None) -> str:
     path = _plan_path(ctx, tid)
     if not os.path.isfile(path):
         raise ValueError(f"Plan '{tid}' not found at {path}")
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
 
@@ -76,11 +76,9 @@ def plan_add_log(ctx: ex6.Context, short_str: str, type: str = "PROGRESS") -> st
     type: BLOCKER, PROGRESS, LEARNING, or HUMAN."""
     tid = _focused_id(ctx)
     path = _plan_path(ctx, tid)
-    with open(path, "r") as f:
-        content = f.read()
     entry = f"\n[{_now()}] [{type}] {short_str}"
-    with open(path, "w") as f:
-        f.write(content + entry)
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        f.write(entry)
     return f"Logged to plan '{tid}'."
 
 
@@ -108,7 +106,7 @@ def plan_list(ctx: ex6.Context) -> str:
     focused = ctx.data.get("plan:id")
     for f in files:
         pid = f.removesuffix(".md")
-        with open(os.path.join(td, f)) as fh:
+        with open(os.path.join(td, f), encoding="utf-8") as fh:
             first_line = fh.readline().strip() or "(empty)"
         marker = " *" if pid == focused else ""
         lines.append(f"[{pid}] {first_line}{marker}")
