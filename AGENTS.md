@@ -134,7 +134,7 @@ Providers / models:
 - _ex6/provider_openrouter.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, supports_audio handler.
 - _ex6/provider_openai.py - openai provider, via ChatGPT subscription. invoke_llm handler for `openai/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH
 - _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. invoke_llm handler for `anthropic/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH, WEB_FETCH
-- _ex6/providers_test.py - live smoke test for silent provider failures (caching, tool args/results, images, protocol drift). `python -m _ex6.providers_test [anthropic] [openai] [openrouter]` or `run_tests()`. Results appended to `<get_folder("providers_test")>/test-logs.jsonl`
+- _ex6/providers_test.py - smoke test for silent provider failures (caching, tool args/results, images, protocol drift).
 - _ex6/models.py - model registry `M` (ModelInfo: id, ctx window, pricing)
 - _ex6/global_spend_limit.py - sets app.budget.limit
 
@@ -144,6 +144,7 @@ UI / commands:
 - _ex6/z_highlight_codeblock.py - output_renderer: pygments highlighting for code blocks
 - _ex6/z_highlight_markdown.py - output_renderer: markdown highlighting
 - _ex6/z_render_system_prompts.py - output_renderer: collapses system messages into expandable preview
+- _ex6/profiler.py - Profiling. Use this if you want to benchmark.
 
 Not loaded (underscore-prefixed):
 - _ex6/_test.py - old test agent setup
