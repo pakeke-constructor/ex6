@@ -76,6 +76,11 @@ Guidelines for writing a good plan:
 - Use the words of the user; this prevents deviation.
 - ALWAYS include the overarching motivation / reasoning from the perspective of the product or codebase
 - If neccessary, include a bulletpointed list of relevant files. This way, future agents don't need to look for them.
+
+Guidelines for executing a plan:
+- The plan motivation and instructions from the user take precedence over plan details.
+- Plans are usually not final; if you find a smarter/more robust way to do something, do it.
+- When done, delete/remove the plan file.
 </plans>
 </agent_tactics>
 
