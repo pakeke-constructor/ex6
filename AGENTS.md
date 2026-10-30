@@ -95,7 +95,7 @@ Plugin decorators:
 `_ex6/` is the folder where the user's "plugins" are kept, per project. On boot, ex6 loads all python files in `_ex6` folder, and calls `setup(app)` if a file defines it.
 Without plugins, ex6 does *NOTHING.* Plugins call the LLM, control contexts, and even define what terminal-UI is.
 
-Loading: core `_ex6/` (next to ex6.py) loads first, then project `_ex6/` (cwd). Files/subfolders starting with `_` are skipped. Files load in sorted order (hence `z_` prefix = load last).
+Loading: core `_ex6/` (next to ex6.py) loads first, then user `<get_folder()>/_ex6/` (per-machine, e.g. opting into logging), then project `_ex6/` (cwd). Same-named files across dirs collide: first wins, later skipped (debug_print warns). Files/subfolders starting with `_` are skipped. Files load in sorted order (hence `z_` prefix = load last).
 </plugin-ideology>
 
 <overrides-vs-handlers>
@@ -131,7 +131,7 @@ Tools / agents:
 - _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
 
 Providers / models:
-- _ex6/provider_util.py - shared provider helpers: `log_invoke` (every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
+- _ex6/provider_util.py - shared provider helpers: `log_invoke` (opt-in via `LOG_INVOKES = True`; every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
 - _ex6/provider_openrouter.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, supports_audio handler.
 - _ex6/provider_openai.py - openai provider, via ChatGPT subscription. invoke_llm handler for `openai/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH
 - _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. invoke_llm handler for `anthropic/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH, WEB_FETCH

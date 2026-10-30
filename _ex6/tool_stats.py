@@ -10,10 +10,12 @@ from typing import Optional
 import ex6
 
 _lock = threading.Lock()
+ENABLED = False  # opt-in: set True from a user/project plugin's setup()
 ARG_CHARS = 100  # string args truncated to this many chars
 
 
 def _write(ctx, name, args, text):
+    if not ENABLED: return
     args = args or {}
     row = {
         "ts": time.time(),
@@ -57,6 +59,9 @@ def log_native_calls(ctx):
 def toolstats(tui, month: Optional[str]):
     'Tool call counts and estimated tokens. Arg: YYYY-MM (default current month) or all.'
     from _ex6.commands import _text_panel
+    if not ENABLED:
+        _text_panel(tui, ["Tool stats disabled. Opt in: set _ex6.tool_stats.ENABLED = True in a plugin setup()."])
+        return
     folder = ex6.get_folder("toolstats")
     pattern = "*.jsonl" if month == "all" else f"{month or time.strftime('%Y-%m')}.jsonl"
     counts, args_tok, result_tok = Counter(), Counter(), Counter()

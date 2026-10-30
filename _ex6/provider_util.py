@@ -29,6 +29,7 @@ def _log_safe(value):
     return value
 
 
+LOG_INVOKES = False  # opt-in: set True from a user/project plugin's setup()
 _DB_LIMIT = 1_000_000_000  # bytes of live data in invokes.db; oldest invokes are culled past this
 
 
@@ -69,6 +70,7 @@ def _cull(db):
 
 def log_invoke(ctx, provider, messages, tools, result, text=""):
     """Record a finished invoke. messages/tools: the provider-format payload actually sent."""
+    if not LOG_INVOKES: return
     from datetime import datetime
     output = {"text": text, "tool_calls": result.tool_calls, "native_calls": result.native_calls}
     db = _db()

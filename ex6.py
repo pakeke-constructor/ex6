@@ -2311,12 +2311,13 @@ def _load_plugins(app):
     import importlib.util
     import types
 
-    # Core plugins: next to ex6.py. Project plugins: in cwd.
+    # Core plugins: next to ex6.py. User plugins: in get_folder(). Project plugins: in cwd.
     core_dir = os.path.join(_ex6_dir, "_ex6")
+    user_dir = str(get_folder() / "_ex6")
     project_dir = os.path.abspath("_ex6")
     dirs = []
-    if os.path.isdir(core_dir): dirs.append(core_dir)
-    if os.path.isdir(project_dir) and project_dir != core_dir: dirs.append(project_dir)
+    for d in (core_dir, user_dir, project_dir):
+        if os.path.isdir(d) and d not in dirs: dirs.append(d)
 
     if not dirs: return
 
@@ -2343,11 +2344,14 @@ def _load_plugins(app):
                 if not filename.endswith(".py") or filename.startswith("_"):
                     continue
                 mod_name = f"{pkg_name}.{filename[:-3]}"
+                path = os.path.join(dirpath, filename)
                 existing = sys.modules.get(mod_name)
-                if existing and getattr(existing, '__file__', None):
+                existing_file = getattr(existing, '__file__', None)
+                if existing_file:
+                    if os.path.normcase(os.path.abspath(existing_file)) != os.path.normcase(os.path.abspath(path)):
+                        app.debug_print(f"[plugins] skipped {path}: {mod_name} already loaded from {existing_file}")
                     module = existing
                 else:
-                    path = os.path.join(dirpath, filename)
                     spec = importlib.util.spec_from_file_location(mod_name, path)
                     assert spec and spec.loader
                     module = importlib.util.module_from_spec(spec)
