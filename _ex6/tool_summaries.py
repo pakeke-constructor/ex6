@@ -3,6 +3,7 @@
 # Summaries start while the call runs (or right after its batch); old history is never summarized.
 
 import threading
+import time
 import ex6
 from _ex6.models import M
 
@@ -51,6 +52,7 @@ sed -i 's/buf\\.add(/buf.push(/g' src/render/*.py
 """
 
 _started = set()
+_t0 = {}
 
 
 def _key(call):
@@ -98,10 +100,15 @@ def render_tool_call(ctx, call, result):
         return None
     if result is None:
         _start(ctx, call)
+        _t0.setdefault(call["id"], time.monotonic())  # timed from first render, not the real start
     s = ctx.data.get(_key(call))
     if not s:
         return None
     spans = [(call["name"] + " ", "accent"), (f"[{s[0]}] ", "warning" if s[0] == "!" else "muted"), (s[2:], "text_alt")]
+    if result is None:
+        elapsed = time.monotonic() - _t0[call["id"]]
+        if elapsed > 10:
+            spans.append((f" {int(elapsed)}s/{call['args'].get('timeout', 30)}s", "muted"))
     text = ex6.tool_result_text(result)
     if text.startswith("ERROR:"):
         spans.append((" " + text.split("\n")[0], "error"))
