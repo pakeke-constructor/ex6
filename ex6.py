@@ -360,6 +360,7 @@ class Theme:
     name: str = "default"
     text: Color = "white"
     muted: Color = "bright_black"
+    text_alt: Color = (200, 150, 100)  # soft orange: secondary text that should read without looking like an error
     cot: Color = "red"
     user_background: Color = "black"
     accent: Color = "blue"

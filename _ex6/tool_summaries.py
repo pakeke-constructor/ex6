@@ -1,4 +1,4 @@
-# Shell tool rows show a cheap-model summary instead of the raw command: `bash: [!] running tests`.
+# Shell tool rows show a cheap-model summary instead of the raw command: `bash [!] running tests`.
 # [!] = changes things / runs programs, [?] = read-only. Stored in ctx.data["tool_summaries:<call id>"] (survives fork/save).
 # Summaries start while the call runs (or right after its batch); old history is never summarized.
 
@@ -14,12 +14,43 @@ Prefix with `!` if it modifies files/state or runs programs (tests, builds, scri
 Reply with only that line, e.g. `! running tests` or `? checking for plugin usage`.
 
 <examples>
+python -m pytest tests/test_auth.py -q -k "expiry"
+! running tests
 
+grep -rn "render_tool_line\\|ToolCall" --include=*.py . | head -20
+? searching code
+
+cd /c/proj && git status --short && git diff --stat
+? checking git status
+
+sed -i 's/return not p.is_alive(), 1.0/return True, 0/' ex6.py
+! editing file
+
+python -c "import json; print(json.load(open('config.json'))['model'])"
+? reading config
+
+rm -rf build dist && pip install -e .
+! reinstalling package
+
+ls -la "$APPDATA/ex6/provider_util/"
+? listing files
+
+git add -A && git commit -m "fix spinner"
+! committing changes
+
+cat 
+! committing changes
+
+sed -i 's/self.vel = 0/self.vel = Vec2()/' src/systems/ecs/abc.py
+! editing abc.py
+
+sed -i 's/buf\\.add(/buf.push(/g' src/render/*.py
+! replacing buf.add with buf.push
 </examples>
 
-- Don't output any newlines
-- Keep it short; use a maximum of around 30 characters
-- If unsure
+- Don't output any newlines.
+- Keep it short; use a maximum of around 30 characters.
+- If unsure, keep your response generic
 """
 
 _started = set()
@@ -73,7 +104,7 @@ def render_tool_call(ctx, call, result):
     s = ctx.data.get(_key(call))
     if not s:
         return None
-    spans = [(call["name"] + ": ", "accent"), (f"[{s[0]}] ", "warning" if s[0] == "!" else "muted"), (s[2:], "text")]
+    spans = [(call["name"] + " ", "accent"), (f"[{s[0]}] ", "warning" if s[0] == "!" else "muted"), (s[2:], "text_alt")]
     text = ex6.tool_result_text(result)
     if text.startswith("ERROR:"):
         spans.append((" " + text.split("\n")[0], "error"))

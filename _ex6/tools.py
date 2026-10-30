@@ -1918,7 +1918,7 @@ def _nlines(s):
 
 @ex6.handler
 def render_tool_call(ctx, call, result):
-    """Compact rows for file tools: `edit_file: "a.py" +3 -2`, `read_file: "a.py" 1-40`."""
+    """Compact rows for file tools: `edit_file a.py +3 -2`, `read_file a.py 1-40`."""
     name, args = call["name"], call["args"]
     if not isinstance(args, dict):
         return None
@@ -1935,7 +1935,7 @@ def render_tool_call(ctx, call, result):
         add = rem = None
     else:
         return None
-    spans = [(name + ": ", "accent"), (json.dumps(str(args.get("file") or args.get("path") or "")), "muted")]
+    spans = [(name + " ", "accent"), (str(args.get("file") or args.get("path") or ""), "muted")]
     if add is None:
         rng = args.get("lines")
         if isinstance(rng, (list, tuple)) and len(rng) == 2:
