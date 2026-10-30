@@ -193,14 +193,21 @@ class DailyBudget:
 
 _tiktoken_enc = None
 
-def get_token_estimate(s: str, model: str = "") -> int:
+def _o200k(s: str) -> int:
     global _tiktoken_enc
+    if _tiktoken_enc is None:
+        import tiktoken
+        _tiktoken_enc = tiktoken.get_encoding("o200k_base")
+    return len(_tiktoken_enc.encode(s, disallowed_special=()))
+
+
+def get_token_estimate(s: str, model: str = "") -> int:
     if model.startswith("openai/"):
-        if _tiktoken_enc is None:
-            import tiktoken
-            _tiktoken_enc = tiktoken.get_encoding("o200k_base")
-        return len(_tiktoken_enc.encode(s, disallowed_special=()))
-    # Claude or other: mixed prose/code/JSON estimate with safety margin.
+        return _o200k(s)
+    elif model.startswith("anthropic/"):
+        # Claude 5.5: real ~= 1.71 * o200k, fit from invokes.db input deltas.
+        return math.ceil(_o200k(s) * 1.7)
+    # Other: mixed prose/code/JSON estimate with safety margin.
     return math.ceil(len(s.encode("utf-8")) / 3.2)
 
 
