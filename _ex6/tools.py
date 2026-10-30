@@ -1128,29 +1128,28 @@ HANDOFF_GUIDELINES = """
 You are seeing this message because you called `handoff(s, ready=False)`.
 This tool output will give you guidance for how to structure a good handoff document.
 
-... finish the rest of this.
+The structure of your output should look like this:
 
-handoff structure:
-```
+<handoff_structure>
 ## Motivation / original prompt:
-What task are we working on, and what's the motivation for solving the task?
-What's the bigger picture in terms of the product or system?
-(Include the exact user's words or prompt if relevant)
+What task are we working on, what's the motivation for solving the task?
+Include the bigger picture, and include the exact user's words if possible.
 
-## Relevant files and functions: (brief bulletpoints)
+## Relevant files and functions: (brief bulletpoints. DO NOT be too verbose here)
 - read_file(src/file1.py)
-- read_file(tests/file1.py)
+- read_file(tests/file1.py) # this file is big, only read lines 200-400
 - read_headers(src/db.py)
 - read_body(src/auth.py, get_auth)
 
-## What's been done: (brief bulletpoints)
-...
+## What's been done:
+- (brief bulletpoints)
 
-## Blockers, decisions, or other relevant info. (These should be brief bulletpoints)
-...
+## Blockers, decisions, other relevant info.
+- (brief bulletpoints)
 
 ## Suggested direction going forwards: (Also brief bulletpoints.)
-[IMPORTANT: For this part, don't be overconfident. It's possible that the new agent will discover a better/simpler solution, so you should encourage exploring new ideas, and encourage taking a step back.]
+[IMPORTANT: For this part, don't be overconfident. The new agent might discover a better/simpler solution, so you should encourage exploring new ideas / taking a step back.]
+</handoff_structure>
 """
 
 
