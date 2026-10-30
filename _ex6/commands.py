@@ -6,6 +6,8 @@ from typing import Optional
 import subprocess
 import threading
 import json
+import math
+import textwrap
 import pyperclip
 import time
 import ex6
@@ -265,39 +267,125 @@ def short(tui, additional_msg: Optional[str]):
 
 
 
+_SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_BAR_PARTIAL = " ▏▎▍▌▋▊▉"
+
+CM_STAGES = [  # (label, bar fraction at end of stage, fake time constant in seconds)
+    ("Staging changes", 0.08, 0.3),
+    ("Reading diff", 0.15, 0.3),
+    ("Writing commit message", 0.9, 3.0),
+    ("Committing", 1.0, 0.5),
+]
+
+
 @ex6.command
 def cm(tui, msg: Optional[str]):
     """Generate a commit message from git diff and commit."""
-    output_lines = ["Generating commit message..."]
+    # result: None (running) | "ok" | "empty" | "fail"
+    s = {"stage": 0, "t0": time.time(), "times": [], "result": None, "done_at": 0.0,
+         "shown": 0.0, "last": time.time(), "commit": "", "stat": "", "notes": [], "errors": []}
 
     def draw(buf, inpt, r):
-        x, y, w, h = r
         th = tui.app.theme
-        content_h = max(6, len(output_lines) + 2)
-        panel = ex6.Region(x, y, w, min(content_h, h))
-        px, py, pw, ph = panel
+        now = time.time()
+        stage, result = s["stage"], s["result"]
+
+        # Fake progress: ease toward the current stage's end, then smooth the displayed value.
+        if result in ("ok", "empty"):
+            target = 1.0
+        elif result == "fail":
+            target = s["shown"]
+        else:
+            i = min(stage, len(CM_STAGES) - 1)
+            a = CM_STAGES[i - 1][1] if i else 0.0
+            _, b, tau = CM_STAGES[i]
+            target = a + (b - a) * (1 - math.exp(-(now - s["t0"]) / tau))
+        s["shown"] += (target - s["shown"]) * min(1.0, (now - s["last"]) * 10)
+        s["last"] = now
+
+        pw = min(r[2], 72)
+        inner = pw - 6
+        rows = [[]]
+        for i, (label, _, _) in enumerate(CM_STAGES):
+            t = ""
+            if i < stage:
+                icon, ic, lc, t = "✓", th.success, th.text, f"{s['times'][i]:.1f}s"
+            elif i == stage and result == "fail":
+                icon, ic, lc = "✗", th.error, th.error
+            elif i == stage and result is None:
+                icon, ic, lc = _SPINNER[int(now * 12) % len(_SPINNER)], th.running, th.text
+                t = f"{now - s['t0']:.1f}s"
+            elif result == "empty":
+                icon, ic, lc = "-", th.muted, th.muted
+            else:
+                icon, ic, lc = "·", th.muted, th.muted
+            gap = " " * max(1, inner - 2 - len(label) - len(t))
+            rows.append([(icon + " ", ic), (label, lc), (gap + t, th.muted)])
+        rows.append([])
+
+        bar_color = {"ok": th.success, "empty": th.warning, "fail": th.error}.get(result, th.accent)
+        bar_w = inner - 5
+        cells = s["shown"] * bar_w
+        full = int(cells)
+        part = _BAR_PARTIAL[int((cells - full) * 8)].strip() if full < bar_w else ""
+        filled = "█" * full + part
+        rows.append([(filled, bar_color), ("─" * (bar_w - len(filled)), th.muted),
+                     (f"{int(s['shown'] * 100):>4}%", th.text)])
+
+        for note in s["notes"]:
+            rows.append([(note[:inner], th.text_alt)])
+        if s["commit"]:
+            rows.append([])
+            for line in textwrap.wrap(s["commit"], inner) or [""]:
+                rows.append([(line, th.md_bold)])
+        if s["stat"]:
+            rows.append([(s["stat"][:inner], th.muted)])
+        if result == "empty":
+            rows += [[], [("Nothing to commit.", th.warning)]]
+        if result == "ok":
+            rows += [[], [("Committed.", th.success)]]
+        if s["errors"]:
+            rows.append([])
+        for line in s["errors"]:
+            rows.append([(line[:inner], th.error)])
+        rows.append([])
+
+        ph = min(r[3], len(rows) + 2)
+        panel = ex6.Region(r[0] + (r[2] - pw) // 2, r[1] + max(0, (r[3] - ph) // 3), pw, ph)
+        px, py, _, _ = panel
         buf.fill(panel, ' ')
-        buf.rect_line(panel, txt_color=th.accent)
-        visible = ph - 2
-        start = max(0, len(output_lines) - visible)
-        for i, line in enumerate(output_lines[start:start + visible]):
-            buf.puts(px + 2, py + 1 + i, line[:pw - 4], txt_color=th.text)
-    done_time = [None]
+        buf.rect_line(panel, txt_color=bar_color)
+        buf.puts(px + 2, py, " git commit ", txt_color=th.accent_alt)
+        if result == "fail":
+            buf.puts(px + pw - 16, py + ph - 1, " esc to close ", txt_color=th.muted)
+        for j, row in enumerate(rows[:ph - 2]):
+            cx = px + 3
+            for text, color in row:
+                buf.puts(cx, py + 1 + j, text, txt_color=color)
+                cx += len(text)
 
-    def draw_auto_close(buf, inpt, r):
-        draw(buf, inpt, r)
-        if done_time[0] is not None and time.time() - done_time[0] >= 0.5:
-            tui.ui_panel_stack.pop()
+        if result in ("ok", "empty") and now - s["done_at"] >= 1.5 and draw in tui.ui_panel_stack:
+            tui.ui_panel_stack.remove(draw)
 
-    tui.ui_panel_stack.append(draw_auto_close)
+    tui.ui_panel_stack.append(draw)
+
+    def advance():
+        s["times"].append(time.time() - s["t0"])
+        s["stage"] += 1
+        s["t0"] = time.time()
+
+    def finish(result):
+        s["result"] = result
+        s["done_at"] = time.time()
 
     def run():
         subprocess.run(["git", "add", "."], capture_output=True)
+        advance()
         diff = subprocess.run(["git", "diff", "-M", "-D", "HEAD"], capture_output=True, text=True).stdout
         if not diff:
-            output_lines.append("No changes to commit.")
-            done_time[0] = time.time()
+            finish("empty")
             return
+        s["stat"] = subprocess.run(["git", "diff", "--shortstat", "-M", "HEAD"], capture_output=True, text=True).stdout.strip()
 
         from _ex6.models import M
         model = M.GPT_LUNA_LATEST.id
@@ -305,26 +393,33 @@ def cm(tui, msg: Optional[str]):
         hint = f"User hint: {msg}" if msg else ""
         diff_for_llm = diff
         if len(diff) > 8000:
-            output_lines.append("Large diff; using git diff --stat summary.")
+            s["notes"].append("Large diff; using git diff --stat summary.")
             diff_for_llm = subprocess.run(
                 ["git", "diff", "--stat", "-M", "HEAD"], capture_output=True, text=True
             ).stdout
             if len(diff_for_llm) > 8000:
                 diff_for_llm = diff_for_llm[:8000] + "\n[Summary truncated.]"
             diff_for_llm = "[Full diff omitted; file change summary only.]\n" + diff_for_llm
+        advance()
         system = CM_SYSTEM_PROMPT
         user = f"Write a commit message for this diff:{hint}\n\n{diff_for_llm}"
-        commit_msg = _llm_one_shot(tui.app, model, system, user)
-        output_lines.append(f"Commit: {commit_msg}")
+        try:
+            s["commit"] = _llm_one_shot(tui.app, model, system, user)
+        except Exception as e:
+            s["errors"] = [f"LLM call failed: {e}"]
+            finish("fail")
+            return
+        advance()
 
         subprocess.run(["git", "add", "."], capture_output=True)
-        result = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
+        result = subprocess.run(["git", "commit", "-m", s["commit"]], capture_output=True, text=True)
         if result.returncode == 0:
-            output_lines.append("Committed.")
+            advance()
+            finish("ok")
         else:
-            output_lines.append(f"git commit failed:")
-            output_lines.extend(result.stderr.split('\n'))
-        done_time[0] = time.time()
+            out = (result.stderr + "\n" + result.stdout).strip()
+            s["errors"] = ["git commit failed:"] + out.split('\n')
+            finish("fail")
 
     threading.Thread(target=run, daemon=True).start()
 

@@ -48,8 +48,8 @@ import tempfile
 from contextlib import closing
 
 
-# 3 lines per scroll
-ARROW_SCROLL_SPEED: int = 3
+# 6 lines per scroll
+ARROW_SCROLL_SPEED: int = 6
 
 
 
