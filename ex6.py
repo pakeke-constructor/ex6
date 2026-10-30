@@ -895,7 +895,7 @@ def tool_call_tokens(ctx, call, result) -> int:
 
 
 def _fmt_tokens(n):
-    return (str(n) if n < 1000 else f"{round(n / 1000)}k").ljust(3)
+    return str(n) if n < 1000 else f"{round(n / 1000)}k"
 
 
 def render_tool_line(buf, x, y, w, ctx, row, th):
@@ -908,7 +908,7 @@ def render_tool_line(buf, x, y, w, ctx, row, th):
         label = _fmt_tokens(n)
         color = th.muted if n < 500 else th.success if n < 1500 else th.warning if n <= 4000 else th.error
     buf.puts(x, y, f"[{label}]", txt_color=color, style='bold')
-    col, end = x + len(label) + 3, x + w
+    col, end = x + 6, x + w
     for text, key in ctx.app.call("render_tool_call", ctx, row.call, row.result):
         s = text.replace('\r', ' ').replace('\n', ' ')[:max(0, end - col)]
         buf.put_cells(col, y, s, txt_color=getattr(th, key))
