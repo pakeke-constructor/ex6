@@ -125,3 +125,47 @@ Never let agents change yolo, budget.limit, approval handlers. Only worth it: `s
 - `_ex6/sigils.py`: delete in step 0 (copy "Known sigils" content out first)
 - `_ex6/skills.py`: `_parse_frontmatter`
 - `_ex6/tools.py`: `_approve`, `ask_user_question` (uses `ctx.ui_stack`), `explore_agent` (wait pattern)
+
+
+
+# HUMAN NOTE:
+the following stuff is written by me, the human.
+
+there is a branch called `vim` with a lot of this stuff implemented.
+you might wanna take a look.
+
+### MY OPINION, AFTER TRYING IT:
+I think that the implementation in `vim` branch is WAYYY too similar to vim. it's actually kinda janky to use.
+
+And in general; i think we can do it better.
+we should work back from pain-points directly.
+### IDEA:
+- in work-mode, you are typing prompts. (like insert-mode in vim)
+- in selection-mode, you do fancy keybinds. (like normal-mode in vim)
+dont have any modes outside this.
+HOWEVER: in selection-mode, we should ALSO be able to type prompts and dispatch them without opening work-mode.
+IDEA: `space` is special character; if it's typed in selection-mode, the user opens input box for whatever agent is selected. Then when they press enter it is dispatched.
+
+### COMPLETE LIST OF PRIMITIVES:
+`h` => h stands for "human". Instantly opens the first ui-stack panel on the nearest agent that needs human help. (NOTE: might want to formalize the idea of "human help" so its usable in selection-mode?)
+`p` => p pops a message
+`g` => go. starts an LLM
+`f` => fork
+`j k` => up-down
+`[n]yy` => yank Nth last user prompt
+`[n]yc` => yank agent's Nth last code-block
+`[n]yl` => yank agent's last N lines of output (defaults to 1 line)
+`[n]ya` => yank agent's Nth last code-block
+`[n]dd` => delete last usr prompt
+`da` => delete ALL spawned agents (agents that ex6 didnt start with)
+`n` => creates a new agent and opens input for typing (in selection-mode). Configure your favorite agent with `tui.set_favorite(agent)`
+`cc` => pops last user prompt and opens input
+`ca` => pops last user prompt, opens input, and pastes last user prompt. Cursor it at end of line
+
+### Compound stuff:
+`f<space>hello there<enter>` => forks a context and types hello
+`ohello there<enter>` => (o is same as `f<space>`) forks a context and types hello
+
+- For the ask-user-question stuff, make the UX WAYYY better. should be able to tap buttons.
+
+
