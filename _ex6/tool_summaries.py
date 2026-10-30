@@ -36,16 +36,13 @@ ls -la "$APPDATA/ex6/provider_util/"
 ? listing files
 
 git add -A && git commit -m "fix spinner"
-! committing changes
-
-cat 
-! committing changes
+! committing files
 
 sed -i 's/self.vel = 0/self.vel = Vec2()/' src/systems/ecs/abc.py
 ! editing abc.py
 
 sed -i 's/buf\\.add(/buf.push(/g' src/render/*.py
-! replacing buf.add with buf.push
+! renaming buf.add to buf.push
 </examples>
 
 - Don't output any newlines.
