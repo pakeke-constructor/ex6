@@ -270,13 +270,13 @@ def short(tui, additional_msg: Optional[str]):
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
-@ex6.command
-def cm(tui, msg: Optional[str]):
-    """Generate a commit message from git diff and commit."""
-    s = {"status": "Reading diff", "lines": [], "ok": None, "t0": time.time(), "done_at": 0.0}
+def _git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True)
 
-    def git(*args):
-        return subprocess.run(["git", *args], capture_output=True, text=True)
+
+def _status_panel(tui, title, status):
+    """Push an animated status card with a fake progress bar. Returns (state, finish); auto-closes on success."""
+    s = {"status": status, "lines": [], "ok": None, "t0": time.time(), "done_at": 0.0}
 
     def draw(buf, inpt, r):
         th = tui.app.theme
@@ -290,7 +290,7 @@ def cm(tui, msg: Optional[str]):
         x, y = r[0] + (r[2] - w) // 2, r[1] + (r[3] - h) // 3
         buf.fill((x, y, w, h), ' ')
         buf.rect_line((x, y, w, h), txt_color=color)
-        buf.puts(x + 2, y, " git commit ", txt_color=th.accent_alt)
+        buf.puts(x + 2, y, f" {title} ", txt_color=th.accent_alt)
         buf.puts(x + 3, y + 2, f"{icon} {s['status']}", txt_color=color)
         bar_w = w - 12
         full = int(frac * bar_w)
@@ -301,26 +301,33 @@ def cm(tui, msg: Optional[str]):
         if s["ok"] and now - s["done_at"] > 0.7 and draw in tui.ui_panel_stack:
             tui.ui_panel_stack.remove(draw)
 
-    tui.ui_panel_stack.append(draw)
-
     def finish(ok, status, *lines):
         s["lines"] += lines
         s.update(ok=ok, status=status, done_at=time.time())
 
+    tui.ui_panel_stack.append(draw)
+    return s, finish
+
+
+@ex6.command
+def cm(tui, msg: Optional[str]):
+    """Generate a commit message from git diff and commit."""
+    s, finish = _status_panel(tui, "git commit", "Reading diff")
+
     def run():
-        git("add", ".")
-        diff = git("diff", "-M", "-D", "HEAD").stdout
+        _git("add", ".")
+        diff = _git("diff", "-M", "-D", "HEAD").stdout
         if not diff:
             return finish(True, "Nothing to commit")
         s["status"] = "Writing commit message"
-        stat = git("diff", "--stat", "-M", "HEAD").stdout
+        stat = _git("diff", "--stat", "-M", "HEAD").stdout
         hint = f"\nUser hint: {msg}" if msg else ""
         user = f"Write a commit message for this diff:{hint}\n\n{stat}\n{diff[:8000]}"
         from _ex6.models import M
         commit_msg = _llm_one_shot(tui.app, M.GPT_LUNA_LATEST.id, CM_SYSTEM_PROMPT, user)
         s["lines"].append(commit_msg)
         s["status"] = "Committing"
-        result = git("commit", "-m", commit_msg)
+        result = _git("commit", "-m", commit_msg)
         if result.returncode == 0:
             finish(True, "Committed")
         else:
@@ -328,83 +335,26 @@ def cm(tui, msg: Optional[str]):
 
     threading.Thread(target=run, daemon=True).start()
 
+
 @ex6.command
 def sync(tui):
     """Fetch origin, then merge origin/<branch>, then origin/main or origin/master."""
-    output_lines = ["Fetching origin..."]
-    done = [False]
-
-    def mark_done():
-        if not done[0]:
-            output_lines.append("Press any key to close.")
-            done[0] = True
-
-    def draw(buf, inpt, r):
-        x, y, w, h = r
-        th = tui.app.theme
-        content_h = max(6, len(output_lines) + 2)
-        panel = ex6.Region(x, y, w, min(content_h, h))
-        px, py, pw, ph = panel
-        buf.fill(panel, ' ')
-        buf.rect_line(panel, txt_color=th.accent)
-        visible = ph - 2
-        start = max(0, len(output_lines) - visible)
-        for i, line in enumerate(output_lines[start:start + visible]):
-            buf.puts(px + 2, py + 1 + i, line[:pw - 4], txt_color=th.text)
-        if done[0] and inpt._keys:
-            inpt._keys.clear()
-            tui.ui_panel_stack.pop()
-
-    tui.ui_panel_stack.append(draw)
+    s, finish = _status_panel(tui, "git sync", "Fetching origin")
 
     def run():
-        fetch = subprocess.run(["git", "fetch", "origin"], capture_output=True, text=True)
+        fetch = _git("fetch", "origin")
         if fetch.returncode != 0:
-            output_lines.append("git fetch failed:")
-            if fetch.stderr:
-                output_lines.extend(fetch.stderr.split('\n'))
-            mark_done()
-            return
-
-        branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True)
-        name = branch.stdout.strip() if branch.returncode == 0 else ""
-
-        targets = []
-        if name and name != "HEAD":
-            targets.append(f"origin/{name}")
-        targets.extend(["origin/main", "origin/master"])
-        targets = list(dict.fromkeys(targets))
-
-        merged_any = False
-        for target in targets:
-            output_lines.append(f"Merging {target}...")
-            merge = subprocess.run(["git", "merge", target], capture_output=True, text=True)
+            return finish(False, "git fetch failed", *fetch.stderr.strip().split("\n"))
+        branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        for target in dict.fromkeys([f"origin/{branch}", "origin/main", "origin/master"]):
+            s["status"] = f"Merging {target}"
+            merge = _git("merge", target)
+            out = (merge.stdout + merge.stderr).strip()
             if merge.returncode == 0:
-                merged_any = True
-                output_lines.append(f"Merged {target}.")
-                if merge.stdout:
-                    output_lines.extend(merge.stdout.split('\n'))
-                if merge.stderr:
-                    output_lines.extend(merge.stderr.split('\n'))
-                continue
-
-            merge_text = (merge.stdout or "") + "\n" + (merge.stderr or "")
-            if "not something we can merge" in merge_text:
-                output_lines.append(f"Skipping {target} (missing remote branch).")
-                continue
-
-            output_lines.append("git merge failed:")
-            if merge.stdout:
-                output_lines.extend(merge.stdout.split('\n'))
-            if merge.stderr:
-                output_lines.extend(merge.stderr.split('\n'))
-            mark_done()
-            return
-
-        if not merged_any:
-            output_lines.append("No matching remote branches found.")
-
-        mark_done()
+                s["lines"].append(f"{target}: {out.splitlines()[-1].strip() if out else 'merged'}")
+            elif "not something we can merge" not in out:
+                return finish(False, f"Merging {target} failed", *out.split("\n"))
+        finish(True, "Synced" if s["lines"] else "No remote branches found")
 
     threading.Thread(target=run, daemon=True).start()
 
