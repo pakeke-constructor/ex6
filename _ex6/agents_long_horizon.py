@@ -334,7 +334,7 @@ def review(repo, review_agent, t, summary, base_branch):
     repo.git.add(A=True) # so new files show in the diff
     missing = object()
     review_agent.data_volatile[REVIEW_RESULT_KEY] = missing
-    run(review_agent, f"Review the changes (`git diff {base_branch}`) for this task:\n\n{t}\n\nThe agent's final message:\n\n{summary}")
+    run(review_agent, f"Review the changes (`git diff {base_branch}`) for this task:\n\n<original_task>\n{t}\n</original_task>\n\nThe agent's final message:\n\n<agents_final_message>\n{summary}\n</agents_final_message>")
     result = review_agent.data_volatile[REVIEW_RESULT_KEY]
     if result is missing:
         raise RuntimeError("review_agent finished without calling review_diff")
