@@ -1977,7 +1977,8 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
     elif tui.is_unseen(ctx): suffix += " ●"  # finished while you weren't looking
     if ctx.yolo: suffix += " !"
 
-    if ctx.is_running(): name_color = th.running
+    if ctx.ui_stack: name_color = th.error
+    elif ctx.is_running(): name_color = th.running
     elif ctx.llm_suspended: name_color = th.success
     else: name_color = th.text
 

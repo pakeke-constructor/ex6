@@ -12,7 +12,7 @@ from _ex6.commands import _text_panel
 def _idle(tui):
     ctx = tui.current
     if ctx.is_running():
-        tui.echo(f"{ctx.name} is running (ctrl-x to stop)", error=True)
+        tui.echo("running (ctrl-x to stop)", error=True)
         return None
     return ctx
 
@@ -116,7 +116,7 @@ def yolo(tui, n):
     'Toggle yolo (auto-approve tools).'
     ctx = tui.current
     ctx.yolo = not ctx.yolo
-    tui.echo(f"{ctx.name}: yolo {'ON' if ctx.yolo else 'off'}", error=ctx.yolo)
+    tui.echo(f"yolo {'ON' if ctx.yolo else 'off'}", error=ctx.yolo)
 
 
 @key("<C-x>")
