@@ -217,20 +217,13 @@ class DailyBudget:
 
 
 _tiktoken_enc = None
-_o200k_cache = {}  # hash(s) -> count; selection mode re-counts every message every frame
 
 def _o200k(s: str) -> int:
     global _tiktoken_enc
-    key = hash(s)
-    if key in _o200k_cache:
-        return _o200k_cache[key]
     if _tiktoken_enc is None:
         import tiktoken
         _tiktoken_enc = tiktoken.get_encoding("o200k_base")
-    if len(_o200k_cache) > 100_000:
-        _o200k_cache.clear()
-    n = _o200k_cache[key] = len(_tiktoken_enc.encode(s, disallowed_special=()))
-    return n
+    return len(_tiktoken_enc.encode(s, disallowed_special=()))
 
 
 def get_token_estimate(s: str, model: str = "") -> int:
@@ -650,6 +643,7 @@ class Message:
     attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
     _current_tokens: Optional[int] = field(default=None, repr=False)
+    _token_estimate: Optional[tuple] = field(default=None, repr=False, compare=False)  # ((text, model), count): selection mode counts every frame
     _render_cache: Optional[tuple] = field(default=None, repr=False, compare=False)  # (text, theme, lines): output_renderer results
 
     def __post_init__(self):
@@ -1155,8 +1149,10 @@ class Context:
                 if message._current_tokens is not None:
                     total += message._current_tokens
                     break
-                content = tool_result_text(message.get_msg(self))
-                total += get_token_estimate(content, self.model)
+                key = (tool_result_text(message.get_msg(self)), self.model)
+                if message._token_estimate is None or message._token_estimate[0] != key:
+                    message._token_estimate = (key, get_token_estimate(*key))
+                total += message._token_estimate[1]
 
             if self.pending_message:
                 total += get_token_estimate(self.pending_message.content + self.llm_cot, self.model)
