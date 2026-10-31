@@ -255,7 +255,7 @@ def custom_setup(app: ex6.App, messages: list):
         ctx.after_tool_calls(context_usage_reminder)
         tui.add_context(ctx)
     tui.current = tui.get_context(SOL["name"])
-    tui.set_favorite(tui.current)
+    tui.favorite = tui.current
 
 
 

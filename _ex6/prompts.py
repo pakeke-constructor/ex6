@@ -1,5 +1,6 @@
-# Prompt files: `_prompts/*.md` (core, user, project; later dirs win). `;name` in an input box pastes the body verbatim.
+# Prompt files: `_prompts/*.md` (core, user, project; later dirs win). `;name` in a prompt pastes the body verbatim on Enter (`;;name` = literal `;name`).
 
+import re
 from pathlib import Path
 import ex6
 from _ex6.skills import _parse_frontmatter
@@ -18,5 +19,9 @@ def prompts() -> dict:
 
 
 @ex6.handler
-def expand_abbrev(app, name):
-    return prompts().get(name)
+def transform_user_prompt(text, ctx):
+    bodies = prompts()
+    def sub(m):
+        if m.group(2) not in bodies: return m.group(0)
+        return ";" + m.group(2) if m.group(1) else bodies[m.group(2)]
+    return re.sub(r"(?<!\S)(;?);([\w-]+)", sub, text)

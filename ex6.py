@@ -94,18 +94,12 @@ def handler(fn=None, *, order=0):
 
 
 def key(*seqs):
-    """Bind fn(tui, k: KeyArgs) to selection-mode key sequences, eg @ex6.key("dd", "<C-x>")."""
+    """Bind fn(tui, count: int) to selection-mode key sequences, eg @ex6.key("dd", "<C-x>")."""
     def mark(fn):
         fn._ex6_declaration = "key"
         fn._ex6_keys = seqs
         return fn
     return mark
-
-
-@dataclass
-class KeyArgs:
-    count: int = 1
-    has_count: bool = False
 
 
 def split_keys(seq: str) -> tuple:
@@ -430,7 +424,7 @@ class Theme:
 class App:
     def __init__(self):
         self.commands = {}
-        self.keys = {}  # token tuple (see split_keys) -> fn(tui, KeyArgs)
+        self.keys = {}  # token tuple (see split_keys) -> fn(tui, count)
         self.context_hooks = {kind: [] for kind in CONTEXT_HOOK_KINDS}
         self.overrides = {}
         self.default_implementations = {}
@@ -614,7 +608,6 @@ def run_tui():
                 return
             bootstrap()
             _load_plugins(app)
-        tui.boot_contexts = list(tui.contexts)
         _run_tui_loop(tui, real_stdout, real_stderr)
     finally:
         sys.stdout, sys.stderr = real_stdout, real_stderr
@@ -1190,7 +1183,8 @@ class Context:
 
     def get_input_box(self):
         if self._input_box is None:
-            self._input_box = InputBox(self.submit_input, allow_images=True, app=self.app)
+            self._input_box = InputBox(self.submit_input, allow_images=True,
+                                       transform=lambda t: self.app.pipeline("transform_user_prompt", t, self))
         return self._input_box
 
     def submit_input(self, value: InputValue):
@@ -1335,8 +1329,7 @@ class Context:
         def run():
             try:
                 if text is not None:
-                    text_ = app.pipeline("transform_user_prompt", text, self)
-                    self.append_message(Message(role="user", content=text_, attachments=dict(attachments or {})))
+                    self.append_message(Message(role="user", content=text, attachments=dict(attachments or {})))
                 should_loop = True
                 while should_loop and not self.stop_early and self._scheduled is None:
                     message = self._read_llm_stream(llm_fn)
@@ -1452,8 +1445,20 @@ class Context:
         messages = copy.deepcopy(self.get_messages())
         return self._clone(new_name or self.name, list(messages))
 
-    def push_ui(self, draw_fn):
-        self.ui_stack.append(draw_fn)
+    def ask_human(self, draw):
+        """Show a panel until draw(buf, inpt, r) returns a value (returned here). Blocks the calling (tool) thread.
+        Returns None if the agent is stopped first."""
+        result = []
+        def panel(buf, inpt, r):
+            value = draw(buf, inpt, r)
+            if value is not None:
+                result.append(value)
+                self.ui_stack = [p for p in self.ui_stack if p is not panel]
+        self.ui_stack.append(panel)
+        while not result and not self.stop_early and panel in self.ui_stack:
+            time.sleep(0.05)
+        self.ui_stack = [p for p in self.ui_stack if p is not panel]
+        return result[0] if result else None
 
 
 
@@ -1823,10 +1828,11 @@ class InputPass:
 
 
 class InputBox:
-    def __init__(self, on_submit, allow_images=False, app=None):
+    def __init__(self, on_submit=None, allow_images=False, transform=None):
         self.on_submit = on_submit
         self.allow_images = allow_images
-        self.app = app  # enables `;name` abbreviations via the expand_abbrev handler
+        self.transform = transform  # fn(text) -> text on Enter; a change is shown first, next Enter sends
+        self._shown = None  # last transform result, sent as-is
         self.text = ""
         self.cursor = 0
         self.attachments = {}
@@ -1853,19 +1859,6 @@ class InputBox:
         self.text = self.text[:self.cursor] + token + self.text[self.cursor:]
         self.cursor += len(token)
 
-    def _expand_abbrev(self, tail=""):
-        """`;name` right before the cursor (minus tail) -> expand_abbrev(name), verbatim. `;;name` -> literal `;name`."""
-        if not self.app: return False
-        end = self.cursor - len(tail)
-        m = re.search(r"(;?);([\w-]+)$", self.text[:end])
-        if not m: return False
-        value = self.app.call("expand_abbrev", self.app, m.group(2))
-        if value is None: return False
-        value = ";" + m.group(2) if m.group(1) else value
-        self.text = self.text[:m.start()] + value + self.text[end:]
-        self.cursor = m.start() + len(value) + len(tail)
-        return True
-
     @staticmethod
     def _wrap(s, w):
         lines = []
@@ -1882,11 +1875,12 @@ class InputBox:
         return len(lines) - 1, len(lines[-1])
 
     def __call__(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
-        self.draw(buf, inpt, r, txt_color=txt_color)
+        return self.draw(buf, inpt, r, txt_color=txt_color)
 
     def draw(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
+        """Returns the InputValue submitted this frame (also passed to on_submit), else None."""
         inner_w = r[2]
-        if inner_w < 1: return
+        if inner_w < 1: return None
 
         if self.allow_images and inpt.consume('KEY_ALT_V'):
             attachment = clipboard_image_attachment()
@@ -1897,8 +1891,6 @@ class InputBox:
         if typed:
             self.text = self.text[:self.cursor] + typed + self.text[self.cursor:]
             self.cursor += len(typed)
-            if len(typed) == 1 and not (typed.isalnum() or typed in "_-;"):
-                self._expand_abbrev(tail=typed)
         for i, k in enumerate(inpt._keys):
             if k.name == 'KEY_ALT_ENTER' or str(k) == '\n':
                 self.text = self.text[:self.cursor] + '\n' + self.text[self.cursor:]
@@ -1927,14 +1919,19 @@ class InputBox:
             cy, cx = self._cursor_visual(inner_w)
             line = self._wrap(self.text, inner_w)[cy]
             self.cursor += len(line) - cx
-        if inpt.consume('KEY_ENTER') and self.text:
-            if self._expand_abbrev(): return  # show the expansion first; next Enter sends
+        if self.text and inpt.consume('KEY_ENTER'):
+            if self.transform and self.text != self._shown:
+                new = self.transform(self.text)
+                if new != self.text:
+                    self.text = self._shown = new
+                    self.cursor = len(new)
+                    return None
             attachments = {token: attachment for token, attachment in self.attachments.items()
                            if token in self.text}
             value = InputValue(self.text, attachments)
-            self.text, self.cursor, self.attachments = "", 0, {}
-            self.on_submit(value)
-            return
+            self.text, self.cursor, self.attachments, self._shown = "", 0, {}, None
+            if self.on_submit: self.on_submit(value)
+            return value
 
         cursor_char = "█"
         cy, cx = self._cursor_visual(inner_w)
@@ -1964,7 +1961,7 @@ class InputBox:
 
 
 @_overridable
-def make_input(on_submit):
+def make_input(on_submit=None):
     return InputBox(on_submit)
 
 
@@ -1995,19 +1992,13 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
     buf.puts(x, y, suffix, txt_color=th.warning)
 
 @_overridable
-def render_selection_left(tui, buf, inpt, r, allow_nav=True):
+def render_selection_left(tui, buf, inpt, r):
     x, y, w, h = r
     th = tui.app.theme
     buf.rect_line(r, txt_color=th.accent)
 
     ctxs = tui.context_list()
     idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
-
-    if allow_nav:
-        if inpt.consume('KEY_UP') and idx > 0:
-            tui.current = ctxs[idx - 1]
-        if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
-            tui.current = ctxs[idx + 1]
 
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
@@ -2296,13 +2287,8 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
 
 @_handleable
 def transform_user_prompt(text, ctx):
+    """Pipeline, run on input box Enter. A changed prompt is shown to the user first; the next Enter sends it."""
     return text
-
-
-@_handleable
-def expand_abbrev(app, name):
-    """Handlers return the text that `;name` in an input box expands to, or None to abstain."""
-    return None
 
 
 def request_approval(ctx, tool, args):
@@ -2493,15 +2479,14 @@ class TUI:
     app: App
     contexts: list[Context] = field(default_factory=list, init=False)
     current: Optional[Context] = field(default=None, init=False)
-    mode: Literal["selection", "work", "help", "scroll"] = "selection"
-    prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"
+    mode: Literal["selection", "work", "scroll"] = "selection"
+    prev_mode: Literal["selection", "work", "scroll"] = "selection"
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
     sel_input: bool = False  # selection mode: current's input box is open (space)
     pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
     status: tuple = ("", 0.0, False)  # (msg, time, is_error), see echo()
-    boot_contexts: list = field(default_factory=list)  # contexts that existed after plugin setup
-    favorite: Optional[Context] = None  # template for new agents (`n`), see set_favorite()
+    favorite: Optional[Context] = None  # template for new agents (`n`)
     buf: Any = None
     keyls: list = field(default_factory=list)
     input_box: Any = None  # per-context; resolved each frame
@@ -2521,9 +2506,6 @@ class TUI:
     def get_context(self, name):
         return next((c for c in self.contexts if c.name == name), None)
 
-    def set_favorite(self, ctx):
-        self.favorite = ctx
-
     def context_list(self):
         """Contexts in display order (selection list, `j/k`)."""
         return sorted(self.contexts, key=lambda c: c.name)
@@ -2539,14 +2521,14 @@ class TUI:
         return self.mode == "selection" and self.current and not self.sel_input and not self.ui_panel_stack
 
     def _resolve_keys(self):
-        """(fn, KeyArgs) on a full match, "wait" on a prefix or count, None on no match."""
+        """(fn, count) on a full match, "wait" on a prefix or count, None on no match."""
         toks = self.pending_keys
         i = 0
         while i < len(toks) and toks[i].isdigit() and (i or toks[i] != "0"): i += 1
         digits, seq = "".join(toks[:i]), tuple(toks[i:])
         if not seq: return "wait"
         if seq in self.app.keys:
-            return self.app.keys[seq], KeyArgs(int(digits or 1), bool(digits))
+            return self.app.keys[seq], int(digits or 1)
         return "wait" if any(b[:len(seq)] == seq for b in self.app.keys) else None
 
     def key_continuations(self):
@@ -2709,26 +2691,29 @@ def _tui_loop(tui: TUI):
     elif tui.mode == "selection":
         th = tui.app.theme
         left, right = main_r.split_horizontal(1, 3)
-        tui.app.call("render_selection_left", tui, buf, inpt, left, allow_nav=not tui.sel_input)
+        tui.app.call("render_selection_left", tui, buf, inpt, left)
         tui.app.call("render_selection_right", tui, buf, right)
-        if tui.sel_input:
+        if tui.sel_input and not tui.current.ui_stack:
             buf.rect_line(input_r, txt_color=th.invoking if tui.current.is_running() else th.accent)
             buf.puts(input_r[0] + 2, input_r[1], f" {tui.current.name} ", txt_color=th.accent_alt)
-            submitting = inpt.peek('KEY_ENTER') and input_box.text
-            input_box(buf, inpt, input_r.shrink(1), txt_color=th.text)
-            if submitting and not input_box.text: tui.sel_input = False
+            if input_box(buf, inpt, input_r.shrink(1), txt_color=th.text): tui.sel_input = False
             render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
-    else:
-        assert tui.mode == "help"
 
     if tui.mode != "scroll":
         tui.app.call("render_status_line", tui, buf, inpt, status_r)
         if tui.ui_panel_stack:
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.ui_panel_stack[-1](buf, inpt, r)
-        elif tui.mode == "work" and tui.current and tui.current.ui_stack:
+        elif tui.current.ui_stack and (tui.mode == "work" or tui.sel_input):  # selection mode: space/h to answer
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.current.ui_stack[-1](buf, inpt, r)
+            if not tui.current.ui_stack: tui.sel_input = False
+        if tui.mode == "selection" and not tui.ui_panel_stack:  # leftover keys: bare ex6 stays navigable
+            ctxs = tui.context_list()
+            idx = ctxs.index(tui.current)
+            if not tui.sel_input and inpt.consume('KEY_UP'): tui.current = ctxs[max(0, idx - 1)]
+            if not tui.sel_input and inpt.consume('KEY_DOWN'): tui.current = ctxs[min(len(ctxs) - 1, idx + 1)]
+            if inpt.consume('KEY_ENTER'): tui.mode, tui.sel_input = "work", False
         if tui.mode == "work":
             available = main_r[3] - 1
             if inpt.consume('KEY_PGUP'): tui.current._scroll_up += available // 2

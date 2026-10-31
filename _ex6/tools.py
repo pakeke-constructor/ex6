@@ -1188,29 +1188,15 @@ def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
 
 def ask_user(ctx: ex6.Context, question: str) -> str: 
     """Ask user a question and wait for their response. Blocks until answered."""
-    result = [None]
-
-    def on_submit(value):
-        result[0] = value.text
-        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-
-    input_draw = ctx.app.call("make_input", on_submit)
+    input_draw = ctx.app.call("make_input")
 
     def draw(buf: ex6.ScreenBuffer, inpt, r):
         x, y, w, h = r
         th = ctx.app.theme
         buf.puts(x, y, f"? {question}", txt_color=th.warning)
-        input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1))
+        if value := input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1)): return value.text
 
-    ctx.push_ui(draw)
-
-    while draw in ctx.ui_stack:
-        if ctx.stop_early:
-            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-            break
-        time.sleep(0.05)
-
-    return result[0] or ""
+    return ctx.ask_human(draw) or ""
 
 
 
@@ -1224,15 +1210,7 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
     options = [str(o) for o in (opt or [])]
     selected = [0]
     typed_mode = [len(options) == 0]
-    result = [None]
-
-    def on_submit(value):
-        if not value.text:
-            return
-        result[0] = value.text
-        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-
-    input_draw = ctx.app.call("make_input", on_submit)
+    input_draw = ctx.app.call("make_input")
 
     def _wrap_words(text: str, width: int) -> list[str]:
         if width < 1:
@@ -1287,15 +1265,9 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
                 selected[0] = (selected[0] - 1) % len(options)
             if inpt.consume('KEY_DOWN'):
                 selected[0] = (selected[0] + 1) % len(options)
-            for i in range(min(9, len(options))):  # tap a number to answer
-                if inpt.consume(str(i + 1)):
-                    result[0] = options[i]
-                    if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-                    return
-            if inpt.consume('KEY_ENTER'):
-                result[0] = options[selected[0]]
-                if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-                return
+            for i in range(min(9, len(options))):  # tap a number to answer. TODO: `1` as first char of a custom answer picks option 1
+                if inpt.consume(str(i + 1)): return options[i]
+            if inpt.consume('KEY_ENTER'): return options[selected[0]]
             if inpt._keys:
                 typed_mode[0] = True
                 show_options = False
@@ -1316,19 +1288,11 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
         buf.puts(cx, cy, "Type custom answer, ENTER submit", txt_color=th.text)
         cy += 1
         input_h = max(1, y + box_h - 1 - cy)
-        input_draw(buf, inpt, (cx, cy, max(1, w - 6), input_h))
-        if options and getattr(input_draw, 'text', '') == "":
+        if value := input_draw(buf, inpt, (cx, cy, max(1, w - 6), input_h)): return value.text
+        if options and input_draw.text == "":
             typed_mode[0] = False
 
-    ctx.push_ui(draw)
-
-    while draw in ctx.ui_stack:
-        if ctx.stop_early:
-            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-            break
-        time.sleep(0.05)
-
-    answer = result[0] or ""
+    answer = ctx.ask_human(draw) or ""
     return f"Q: {question}\nA: {answer}"
 
 
@@ -1346,13 +1310,7 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
     severity: 1=informational, 2=blocking, 3=critical."""
     if ctx.parent:
         raise EscalationError(reason, severity)
-    result = [None]
-
-    def on_submit(value):
-        result[0] = value.text
-        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-
-    input_draw = ctx.app.call("make_input", on_submit)
+    input_draw = ctx.app.call("make_input")
     sev_labels = {1: "INFO", 2: "BLOCKING", 3: "CRITICAL"}
     label = sev_labels.get(severity, f"SEV-{severity}")
 
@@ -1380,17 +1338,9 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
             buf.puts(cx, cy + 1 + i, l, txt_color=th.warning, bg_color=None)
         prompt_y = cy + 1 + len(lines) + 1
         buf.puts(cx, prompt_y - 1, "Respond to agent:", txt_color=th.text, bg_color=None)
-        input_draw(buf, inpt, (cx, prompt_y, w - 6, 1))
+        if value := input_draw(buf, inpt, (cx, prompt_y, w - 6, 1)): return value.text
 
-    ctx.push_ui(draw)
-
-    while draw in ctx.ui_stack:
-        if ctx.stop_early:
-            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-            break
-        time.sleep(0.05)
-
-    return result[0] or ""
+    return ctx.ask_human(draw) or ""
 
 
 def _make_diff(old: str, new: str) -> list:
@@ -1496,13 +1446,7 @@ def _ask_human(ctx, title, preview=None, height=None):
     if ctx.app.tui is None:
         return True # No TUI; so just continue
 
-    result = [None]  # denial reason
-
-    def on_submit(value):
-        result[0] = value.text if value.text.strip() else None
-        if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-
-    input_draw = ctx.app.call("make_input", on_submit)
+    input_draw = ctx.app.call("make_input")
 
     def draw(buf, inpt, r):
         th = ctx.app.theme
@@ -1515,23 +1459,15 @@ def _ask_human(ctx, title, preview=None, height=None):
         buf.rect_line(panel, txt_color=th.accent)
         buf.puts(content[0], content[1], title[:content[2]], txt_color=th.accent_alt, style='bold')
         buf.puts(content[0], content[1] + 1, "ENTER approve | type reason + ENTER to deny"[:content[2]], txt_color=th.muted)
-        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'):
-            if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
-            return
-        input_draw(buf, inpt, ex6.Region(content[0], content[1] + 2, content[2], 1), txt_color=th.warning)
         preview_r = ex6.Region(content[0], content[1] + 4, content[2], max(0, content[3] - 4))
         if preview and preview_r[3] > 0:
             preview(buf, *preview_r)
+        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'): return True
+        if value := input_draw(buf, inpt, ex6.Region(content[0], content[1] + 2, content[2], 1), txt_color=th.warning):
+            return value.text
 
-    ctx.push_ui(draw)
-    while draw in ctx.ui_stack:
-        if ctx.stop_early:
-            ctx.ui_stack.remove(draw)
-            return "stopped"
-        time.sleep(0.05)
-    if ctx.stop_early:
-        return "stopped"
-    return result[0] or True
+    verdict = ctx.ask_human(draw)
+    return "stopped" if verdict is None or ctx.stop_early else verdict
 
 
 def _approve(ctx, tool, args, title, preview=None, height=None) -> str | None:

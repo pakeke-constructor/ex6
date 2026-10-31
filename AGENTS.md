@@ -35,7 +35,7 @@ ex6.py Classes:
 Core:
 - `App`: plugin registry (commands, overrides, handlers, context hooks), theme, budget. `app.call(name, ...)` dispatches overridables/handleables.
 
-- `TUI`: holds contexts, `current`, mode (selection/work/help/scroll), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
+- `TUI`: holds contexts, `current`, mode (selection/work/scroll), `favorite` (template for `n`), `ui_panel_stack` (modal draw fns). Main loop in `_tui_loop`.
 
 - `Context`: a single LLM conversation, plus the agent running it. See below.
 <Context>
@@ -47,6 +47,8 @@ Every agent you see in selection-mode is a Context.
 Instantiation: `Context(app, "name", model="openai/model", reasoning="low", messages=[...], tools=[...])`. An agent is mostly "a system prompt plus some tools".
 
 Running it: `ctx.invoke("some prompt")` adds the user message and starts the LLM in a background thread. It keeps looping (LLM replies, tools run, LLM replies again) until the model stops calling tools. `ctx.stop_early = True` asks it to stop.
+
+Human panels: a tool calls `ctx.ask_human(draw)`, which blocks until `draw(buf, inpt, r)` returns a value (None on stop). Shown in work mode, and in selection mode via space/`h`.
 
 Which backend runs the request?
 The `ctx.get_invoker()` polls a handler to choose between models. With the default plugins in _ex6, anthropic models use claude-code backend, openai models use codex-backend, and both of these fallback to openrouter. (To force a backend, pass `invoke_llm=some_fn` when building the Context.)
@@ -80,13 +82,13 @@ Rendering / input:
 - `WrapWriter`: char writer that wraps at width (`buf.writer(x, y, w)`).
 - `Region`: represents (x,y,w,h) tuple; used for immediate-mode layout.
 - `InputPass`: cleared every frame; handles input management/blocking (`inpt.consume(key)`).
-- `InputBox`: text input widget (cursor, word nav, image paste).
+- `InputBox`: text input widget (cursor, word nav, image paste). `draw` returns the submitted InputValue (also passed to optional on_submit).
 
 Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
-- `@ex6.key("dd", "<C-x>")`: selection-mode key binding, `fn(tui, k: KeyArgs)` (k.count, k.has_count from leading digits). No timeouts, so a binding can't be a prefix of another (`app.bind` raises). `tui.echo(msg)` shows a status-line message.
+- `@ex6.key("dd", "<C-x>")`: selection-mode key binding, `fn(tui, count: int)` (count from leading digits, default 1). No timeouts, so a binding can't be a prefix of another (`app.bind` raises). `tui.echo(msg)` shows a status-line message.
 - `@ex6.override`: replace an overridable fn (call_tools, make_input, render_* fns).
-- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer, render_tool_call): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
+- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer, render_tool_call): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn. It runs on input box Enter; a changed prompt is shown first, next Enter sends (`ctx.invoke(text)` sends raw).
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
 - `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
 </architecture>
@@ -129,8 +131,8 @@ Tools / agents:
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/tool_summaries.py - bash/powershell rows show a cheap-model summary (`bash [!] running tests`; `!` = changes things, `?` = read-only), stored in ctx.data
-- _ex6/keys.py - selection-mode keymap: j k, Enter, space (prompt the selected agent), / (command), h (agent needing a human), g go, z yolo, ctrl-x stop, f/o fork, n new (from `tui.set_favorite`), yy ya yc yl, p dd da cc ca, ?. `?` and /help list them.
-- _ex6/prompts.py - prompt files `_ex6/_prompts/*.md` (frontmatter); `;name` in an input box pastes the body verbatim (expand_abbrev handler), `;;name` = literal
+- _ex6/vim.py - selection-mode keymap: j k, space/a (prompt the selected agent), / (command), h (answer agent needing a human), g go, z yolo, ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc, p dd da cc ca, ?. `?` and /help list them. Core handles leftover arrows + Enter (work mode).
+- _ex6/prompts.py - prompt files `_ex6/_prompts/*.md` (frontmatter); `;name` in a prompt pastes the body verbatim on Enter (transform_user_prompt handler), `;;name` = literal
 
 Providers / models:
 - _ex6/provider_util.py - shared provider helpers: `log_invoke` (opt-in via `LOG_INVOKES = True`; every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
@@ -142,7 +144,7 @@ Providers / models:
 - _ex6/global_spend_limit.py - sets app.budget.limit
 
 UI / commands:
-- _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command. Per-agent actions are keys (keys.py)
+- _ex6/commands.py - commands like /clr, /cm, registered via @ex6.command. Per-agent actions are keys (vim.py)
 - _ex6/themes.py - themes (oklch palettes) + /theme command, persisted to `<get_folder("themes")>/theme.json`
 - _ex6/z_highlight_codeblock.py - output_renderer: pygments highlighting for code blocks
 - _ex6/z_highlight_markdown.py - output_renderer: markdown highlighting
@@ -169,7 +171,7 @@ Right panel - displays context information
 Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)
 User may be prompted to answer questions / clarifications by the LLM. Such questions should be isolated in the context that asked them.
 
-Selection-mode is for keys (keys.py, `?`): list shows relative numbers and markers (`?` needs a human, `●` finished unseen, `!` yolo). `space` opens the selected agent's input box without leaving the list. Bottom row is a status line (mode, agent, echo, pending keys + which-key popup).
+Selection-mode is for keys (vim.py, `?`): list shows relative numbers and markers (`?` needs a human, `●` finished unseen, `!` yolo). `space`/`a` opens the selected agent's input box (or its pending question) without leaving the list; Enter on an empty box opens work mode. Bottom row is a status line (mode, agent, echo, pending keys + which-key popup).
 Work-mode is for typing prompts. Both modes can run `/` commands.
 The user may choose to type commands, (and/or talk to the LLM if in work-mode)
 </ui-ux>

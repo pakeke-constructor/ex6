@@ -13,4 +13,4 @@ Open questions: which modes a remap applies in, how ambiguous prefixes resolve, 
 
 ## Files
 - `ex6.py`: `key`, `split_keys`, `key_token`, `App.bind`, `TUI._resolve_keys`/`feed_keys`, `InputPass`, `InputBox.draw`, `_tui_loop` Esc handling
-- `_ex6/vim.py` (currently `keys.py`)
+- `_ex6/vim.py`

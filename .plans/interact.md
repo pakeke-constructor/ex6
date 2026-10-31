@@ -88,7 +88,7 @@ Take a step back...
 User's words: "typing ;smp should paste the smp register." "remove the sigils system plugin, it's bad imo; and i havent found i like using it. take what you can from it with ssot and smp tho."
 - Each prompt is a file-backed, read-only register named by filename. Replaces smp/ssot/short commands.
 - `;name` in the input box pastes the prompt text in place, verbatim. No LLM rewrite (that was sigils' problem: it mangled user wording). User sees and can edit exactly what is sent.
-  - Paste live in InputBox when `;name` + a non-word char is typed and `name` exists (vim abbreviation style). Unknown names stay as typed. Not a transform_user_prompt handler: hidden expansion on submit breaks "no hidden context".
+  - Done as a transform_user_prompt handler that runs on input box Enter: the expansion is shown first, next Enter sends (no hidden context). Unknown names stay as typed. Live expansion on space was dropped; add back if missed.
   - Escaping: `;;name` -> literal `;name`. (`;;;` inline prompts live in files, not the input box; no clash.)
 - `@` stays single-letter registers as a key; `;name` is the in-text form for any register, so the earlier `@smp` clash is gone.
 - Pasted mid-sentence, so prompt files must read as standalone paragraphs.
@@ -154,11 +154,10 @@ IDEA: `space` is special character; if it's typed in selection-mode, the user op
 `j k` => up-down
 `[n]yy` => yank Nth last user prompt
 `[n]yc` => yank agent's Nth last code-block
-`[n]yl` => yank agent's last N lines of output (defaults to 1 line)
-`[n]ya` => yank agent's Nth last code-block
+`[n]yr` => yank agent's Nth last response
 `[n]dd` => delete last usr prompt
-`da` => delete ALL spawned agents (agents that ex6 didnt start with)
-`n` => creates a new agent and opens input for typing (in selection-mode). Configure your favorite agent with `tui.set_favorite(agent)`
+`da` => delete ALL spawned agents (`ctx.parent` set: forks, subagents, inline)
+`n` => creates a new agent and opens input for typing (in selection-mode). Configure your favorite agent with `tui.favorite = agent`
 `cc` => pops last user prompt and opens input
 `ca` => pops last user prompt, opens input, and pastes last user prompt. Cursor it at end of line
 
@@ -171,6 +170,6 @@ IDEA: `space` is special character; if it's typed in selection-mode, the user op
 
 
 ## STATUS (2026-10-31)
-Done (human's primitive list, minimal): `_ex6/keys.py` (`@ex6.key` core registry in ex6.py, counts, which-key popup, status line + `tui.echo`), space/`/` open selected agent's input in selection mode, `h g f o n j k yy ya yc yl p dd da cc ca ctrl-x ?`, list markers (`?` `●` `!`) + relative numbers, ask_user_question 1-9 tap. Sigils deleted, `_prompts/*.md` + `;name` paste (`_ex6/prompts.py`); /smp /ssot /short /pop /yy /fork /stop /go removed.
-Assumed `ya` = agent's Nth-last message (list said code-block, same as `yc`).
-Not done: registers (2), agent messaging (4), set_reasoning (5), undo.
+Done: `_ex6/vim.py` (`@ex6.key` core registry in ex6.py, counts, which-key popup, status line + `tui.echo`), space/a/`/` open selected agent's input in selection mode, `h g f o n j k yy yr yc p dd da cc ca ctrl-x ?`, list markers (`?` `●` `!`) + relative numbers. Core handles leftover arrows/Enter in selection mode. Human panels: `ctx.ask_human(draw)` (draw returns the answer), shown in selection mode while the agent's input is open (space/`h`); ask_user_question 1-9 tap. Sigils deleted, `_prompts/*.md` + `;name` (transform_user_prompt on Enter, `_ex6/prompts.py`).
+Known bug: typing `1` as the first char of a custom answer in ask_user_question picks option 1.
+Not done: registers (2), agent messaging (4), set_reasoning (5), undo. Remaps (`kj` -> Esc): `.plans/remap.md`.

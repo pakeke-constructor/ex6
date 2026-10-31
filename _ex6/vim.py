@@ -69,56 +69,50 @@ def _pop_prompts(tui, n):
 # --- navigate / start ---
 
 @key("j")
-def down(tui, k):
+def down(tui, n):
     'Next agent.'
     ctxs = tui.context_list()
-    tui.current = ctxs[min(len(ctxs) - 1, ctxs.index(tui.current) + k.count)]
+    tui.current = ctxs[min(len(ctxs) - 1, ctxs.index(tui.current) + n)]
 
 
 @key("k")
-def up(tui, k):
+def up(tui, n):
     'Prev agent.'
     ctxs = tui.context_list()
-    tui.current = ctxs[max(0, ctxs.index(tui.current) - k.count)]
+    tui.current = ctxs[max(0, ctxs.index(tui.current) - n)]
 
 
-@key("<CR>")
-def work(tui, k):
-    'Open agent in work mode.'
-    tui.mode = "work"
-
-
-@key(" ")
-def prompt(tui, k):
-    'Type a prompt for the agent, without leaving the list.'
+@key(" ", "a")
+def prompt(tui, n):
+    'Type a prompt for the agent (or answer its question), without leaving the list. Enter on empty = work mode.'
     _open_input(tui)
 
 
 @key("/")
-def command(tui, k):
+def command(tui, n):
     'Run a /command.'
     _open_input(tui, "/")
 
 
 @key("h")
-def human(tui, k):
-    'Go to the nearest agent that needs a human (? in the list).'
+def human(tui, n):
+    'Answer the nearest agent that needs a human (? in the list).'
     ctxs = tui.context_list()
     i = ctxs.index(tui.current)
     asks = sorted((c for c in ctxs if c.ui_stack), key=lambda c: abs(ctxs.index(c) - i))
     if not asks: return tui.echo("nobody needs you")
     tui.current = asks[0]
-    tui.mode = "work"
+    _open_input(tui)
 
 
 @key("g")
-def go(tui, k):
+def go(tui, n):
     'Go: run the agent without a new message.'
     if ctx := _idle(tui): ctx.invoke()
 
 
 @key("z")
-def yolo(tui, k):
+def yolo(tui, n):
     'Toggle yolo (auto-approve tools).'
     ctx = tui.current
     ctx.yolo = not ctx.yolo
@@ -126,28 +120,28 @@ def yolo(tui, k):
 
 
 @key("<C-x>")
-def stop(tui, k):
+def stop(tui, n):
     'Stop the agent.'
     if tui.current.is_running(): tui.current.stop_early = True
 
 
 @key("f")
-def fork(tui, k):
+def fork(tui, n):
     'Fork the agent (`f<space>` = fork and prompt).'
     ctx = tui.current
     _add(tui, ctx.fork(_unique_name(tui, ctx.name)))
 
 
 @key("o")
-def fork_prompt(tui, k):
+def fork_prompt(tui, n):
     'Fork the agent and type a prompt for the fork.'
-    fork(tui, k)
+    fork(tui, n)
     _open_input(tui)
 
 
 @key("n")
-def new(tui, k):
-    'New agent from the favorite (tui.set_favorite), type a prompt.'
+def new(tui, n):
+    'New agent from tui.favorite, type a prompt.'
     fav = tui.favorite or tui.current
     ctx = fav.fork(_unique_name(tui, fav.name))
     ctx.clear()
@@ -158,80 +152,79 @@ def new(tui, k):
 # --- yank ---
 
 @key("yy")
-def yank_prompt(tui, k):
+def yank_prompt(tui, n):
     'Yank Nth-last user prompt.'
-    _yank(tui, _nth_last(_texts(tui.current, "user"), k.count), "prompt")
+    _yank(tui, _nth_last(_texts(tui.current, "user"), n), "prompt")
 
 
-@key("ya")
-def yank_agent(tui, k):
-    "Yank agent's Nth-last message."
-    _yank(tui, _nth_last(_texts(tui.current, "assistant"), k.count), "message")
+@key("yr")
+def yank_response(tui, n):
+    "Yank agent's Nth-last response."
+    _yank(tui, _nth_last(_texts(tui.current, "assistant"), n), "response")
 
 
 @key("yc")
-def yank_code(tui, k):
+def yank_code(tui, n):
     "Yank agent's Nth-last code block."
     blocks = [m.group(1).rstrip("\n") for t in _texts(tui.current, "assistant")
               for m in re.finditer(r"```[^\n]*\n(.*?)```", t, re.S)]
-    _yank(tui, _nth_last(blocks, k.count), "code block")
-
-
-@key("yl")
-def yank_lines(tui, k):
-    "Yank last N lines of agent's output."
-    last = _nth_last(_texts(tui.current, "assistant"), 1)
-    _yank(tui, "\n".join(last.strip().split("\n")[-k.count:]) if last else None, "lines")
+    _yank(tui, _nth_last(blocks, n), "code block")
 
 
 # --- edit history ---
 
 @key("p")
-def pop(tui, k):
+def pop(tui, n):
     'Pop the last N messages.'
     ctx = _idle(tui)
     if not ctx: return
     msgs = ctx.get_messages()
-    keep = max(len(msgs) - k.count, sum(1 for m in msgs if m.role == "system"))
+    keep = max(len(msgs) - n, sum(1 for m in msgs if m.role == "system"))
     ctx.truncate(keep)
     tui.echo(f"popped {len(msgs) - keep} message(s)")
 
 
 @key("dd")
-def delete_prompt(tui, k):
+def delete_prompt(tui, n):
     'Delete last N user prompts (and everything after). Copies the prompt.'
-    text = _pop_prompts(tui, k.count)
+    text = _pop_prompts(tui, n)
     if text is not None:
         pyperclip.copy(text)
-        tui.echo(f"popped {k.count} prompt(s), copied")
+        tui.echo(f"popped {n} prompt(s), copied")
 
 
 @key("da")
-def delete_spawned(tui, k):
-    "Delete all agents ex6 didn't start with."
-    spawned = [c for c in tui.contexts if c not in tui.boot_contexts]
+def delete_spawned(tui, n):
+    "Delete all spawned agents (forks, subagents)."
+    spawned = [c for c in tui.contexts if c.parent is not None]
     for c in spawned: tui.remove_context(c)
     tui.echo(f"deleted {len(spawned)} agent(s)")
 
 
 @key("cc")
-def change(tui, k):
+def change(tui, n):
     'Pop last user prompt, type a new one.'
-    if _pop_prompts(tui, k.count) is not None: _open_input(tui, "")
+    if _pop_prompts(tui, n) is not None: _open_input(tui, "")
 
 
 @key("ca")
-def change_append(tui, k):
+def change_append(tui, n):
     'Pop last user prompt, edit it.'
-    text = _pop_prompts(tui, k.count)
+    text = _pop_prompts(tui, n)
     if text is not None: _open_input(tui, text)
 
 
 # --- help ---
 
 @key("?")
-def show_help(tui, k):
+def show_help(tui, n):
     'Keys and commands.'
+    _text_panel(tui, help_lines(tui.app))
+
+
+@ex6.command
+def help(tui):
+    'List keys and commands.'
     _text_panel(tui, help_lines(tui.app))
 
 
@@ -244,5 +237,5 @@ def help_lines(app):
     for name, (fn, spec) in sorted(app.iter_commands()):
         args = " ".join(f"<{a}>" for a, _, _ in spec)
         lines.append(f"  /{name} {args}".ljust(24) + " ".join((fn.__doc__ or "").split()))
-    lines += ["", "Type ;name in any prompt to paste _prompts/name.md (;;name = literal)."]
+    lines += ["", ";name in a prompt pastes _prompts/name.md on Enter (shown first; ;;name = literal)."]
     return lines

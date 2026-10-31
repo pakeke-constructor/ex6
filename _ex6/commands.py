@@ -238,9 +238,3 @@ def sync(tui):
 
     threading.Thread(target=run, daemon=True).start()
 
-
-@ex6.command
-def help(tui):
-    'List keys and commands.'
-    from _ex6.keys import help_lines
-    _text_panel(tui, help_lines(tui.app))
