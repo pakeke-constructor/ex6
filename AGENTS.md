@@ -84,6 +84,7 @@ Rendering / input:
 
 Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
+- `@ex6.key("dd", "<C-x>")`: selection-mode key binding, `fn(tui, k: KeyArgs)` (k.count, k.has_count from leading digits). No timeouts, so a binding can't be a prefix of another (`app.bind` raises). `tui.echo(msg)` shows a status-line message.
 - `@ex6.override`: replace an overridable fn (call_tools, make_input, render_* fns).
 - `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer, render_tool_call): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn.
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
@@ -128,7 +129,8 @@ Tools / agents:
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/tool_summaries.py - bash/powershell rows show a cheap-model summary (`bash [!] running tests`; `!` = changes things, `?` = read-only), stored in ctx.data
-- _ex6/sigils.py - expands `;git`, `;fast`, `;smp`, etc. in user prompts via a cheap LLM (transform_user_prompt handler)
+- _ex6/keys.py - selection-mode keymap: j k, Enter, space (prompt the selected agent), / (command), h (agent needing a human), g go, z yolo, ctrl-x stop, f/o fork, n new (from `tui.set_favorite`), yy ya yc yl, p dd da cc ca, ?. `?` and /help list them.
+- _ex6/prompts.py - prompt files `_ex6/_prompts/*.md` (frontmatter); `;name` in an input box pastes the body verbatim (expand_abbrev handler), `;;name` = literal
 
 Providers / models:
 - _ex6/provider_util.py - shared provider helpers: `log_invoke` (opt-in via `LOG_INVOKES = True`; every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
@@ -140,7 +142,7 @@ Providers / models:
 - _ex6/global_spend_limit.py - sets app.budget.limit
 
 UI / commands:
-- _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command
+- _ex6/commands.py - commands like /help, /clr, /cm, registered via @ex6.command. Per-agent actions are keys (keys.py)
 - _ex6/themes.py - themes (oklch palettes) + /theme command, persisted to `<get_folder("themes")>/theme.json`
 - _ex6/z_highlight_codeblock.py - output_renderer: pygments highlighting for code blocks
 - _ex6/z_highlight_markdown.py - output_renderer: markdown highlighting
@@ -167,7 +169,8 @@ Right panel - displays context information
 Prompt LLMs, run commands, see the entire conversation history for this context in the terminal (can scroll up.)
 User may be prompted to answer questions / clarifications by the LLM. Such questions should be isolated in the context that asked them.
 
-Both work-mode AND selection-mode have a command-input-box at the bottom.
+Selection-mode is for keys (keys.py, `?`): list shows relative numbers and markers (`?` needs a human, `●` finished unseen, `!` yolo). `space` opens the selected agent's input box without leaving the list. Bottom row is a status line (mode, agent, echo, pending keys + which-key popup).
+Work-mode is for typing prompts. Both modes can run `/` commands.
 The user may choose to type commands, (and/or talk to the LLM if in work-mode)
 </ui-ux>
 

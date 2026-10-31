@@ -9,6 +9,7 @@ from datetime import datetime
 import math
 import itertools
 import functools
+import re
 
 
 os.environ.setdefault('ESCDELAY', '25')  # reduce escape key delay (ms)
@@ -90,6 +91,36 @@ def handler(fn=None, *, order=0):
         setattr(value, "_ex6_order", order)
         return value
     return mark if fn is None else mark(fn)
+
+
+def key(*seqs):
+    """Bind fn(tui, k: KeyArgs) to selection-mode key sequences, eg @ex6.key("dd", "<C-x>")."""
+    def mark(fn):
+        fn._ex6_declaration = "key"
+        fn._ex6_keys = seqs
+        return fn
+    return mark
+
+
+@dataclass
+class KeyArgs:
+    count: int = 1
+    has_count: bool = False
+
+
+def split_keys(seq: str) -> tuple:
+    return tuple(re.findall(r"<[^>]+>|.", seq))
+
+
+def key_token(k) -> str:
+    """Blessed keystroke -> keymap token: 'a', ' ', '<CR>', '<Esc>', '<C-x>', '<UP>'."""
+    s = str(k)
+    if k.name == 'KEY_ENTER' or s in ('\r', '\n'): return '<CR>'
+    if k.name == 'KEY_ESCAPE' or s == '\x1b': return '<Esc>'
+    if s == '\t': return '<Tab>'
+    if len(s) == 1 and ord(s) < 32: return f"<C-{chr(ord(s) + 64).lower()}>"
+    if k.is_sequence and k.name: return f"<{k.name.removeprefix('KEY_')}>"
+    return s
 
 
 
@@ -192,13 +223,20 @@ class DailyBudget:
 
 
 _tiktoken_enc = None
+_o200k_cache = {}  # hash(s) -> count; selection mode re-counts every message every frame
 
 def _o200k(s: str) -> int:
     global _tiktoken_enc
+    key = hash(s)
+    if key in _o200k_cache:
+        return _o200k_cache[key]
     if _tiktoken_enc is None:
         import tiktoken
         _tiktoken_enc = tiktoken.get_encoding("o200k_base")
-    return len(_tiktoken_enc.encode(s, disallowed_special=()))
+    if len(_o200k_cache) > 100_000:
+        _o200k_cache.clear()
+    n = _o200k_cache[key] = len(_tiktoken_enc.encode(s, disallowed_special=()))
+    return n
 
 
 def get_token_estimate(s: str, model: str = "") -> int:
@@ -392,6 +430,7 @@ class Theme:
 class App:
     def __init__(self):
         self.commands = {}
+        self.keys = {}  # token tuple (see split_keys) -> fn(tui, KeyArgs)
         self.context_hooks = {kind: [] for kind in CONTEXT_HOOK_KINDS}
         self.overrides = {}
         self.default_implementations = {}
@@ -424,6 +463,16 @@ class App:
         empty = inspect.Parameter.empty
         spec = [(p.name, str if p.annotation is empty else p.annotation, None if p.default is empty else p.default) for p in params]
         self.commands[fn.__name__.lower()] = (fn, spec)
+        return fn
+
+    def bind(self, seq, fn):
+        """Bind a key sequence. Raises if it's a prefix of (or prefixed by) another binding: there are no timeouts."""
+        toks = split_keys(seq)
+        for other in self.keys:
+            n = min(len(other), len(toks))
+            if other[:n] == toks[:n]:
+                raise RuntimeError(f"key {seq!r} conflicts with {''.join(other)!r}")
+        self.keys[toks] = fn
         return fn
 
     def add_context_hook(self, kind, fn):
@@ -520,6 +569,8 @@ class App:
             kind = getattr(value, "_ex6_declaration", None)
             if kind in CONTEXT_HOOK_KINDS: self.add_context_hook(kind, value)
             elif kind == "command": self.command(value)
+            elif kind == "key":
+                for seq in value._ex6_keys: self.bind(seq, value)
             elif kind == "overridable": self._register_overridable(value)
             elif kind == "override": self.override(value)
             elif kind == "handleable": self._register_handleable(value)
@@ -563,6 +614,7 @@ def run_tui():
                 return
             bootstrap()
             _load_plugins(app)
+        tui.boot_contexts = list(tui.contexts)
         _run_tui_loop(tui, real_stdout, real_stderr)
     finally:
         sys.stdout, sys.stderr = real_stdout, real_stderr
@@ -605,6 +657,7 @@ class Message:
     attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
     _current_tokens: Optional[int] = field(default=None, repr=False)
+    _render_cache: Optional[tuple] = field(default=None, repr=False, compare=False)  # (text, theme, lines): output_renderer results
 
     def __post_init__(self):
         for fn in self.tools:
@@ -1040,6 +1093,7 @@ class Context:
     llm_output_type: str = ""
     last_invoke_time_end: float = 0
     last_invoke_time_start: float = 0
+    last_seen: float = 0  # last frame the user had this context open in work mode
     llm_result: Optional[LLMResult] = None
     ui_stack: list = field(default_factory=list)
     llm_suspended: bool = False
@@ -1136,7 +1190,7 @@ class Context:
 
     def get_input_box(self):
         if self._input_box is None:
-            self._input_box = InputBox(self.submit_input, allow_images=True)
+            self._input_box = InputBox(self.submit_input, allow_images=True, app=self.app)
         return self._input_box
 
     def submit_input(self, value: InputValue):
@@ -1769,9 +1823,10 @@ class InputPass:
 
 
 class InputBox:
-    def __init__(self, on_submit, allow_images=False):
+    def __init__(self, on_submit, allow_images=False, app=None):
         self.on_submit = on_submit
         self.allow_images = allow_images
+        self.app = app  # enables `;name` abbreviations via the expand_abbrev handler
         self.text = ""
         self.cursor = 0
         self.attachments = {}
@@ -1797,6 +1852,19 @@ class InputBox:
         self.attachments[token] = attachment
         self.text = self.text[:self.cursor] + token + self.text[self.cursor:]
         self.cursor += len(token)
+
+    def _expand_abbrev(self, tail=""):
+        """`;name` right before the cursor (minus tail) -> expand_abbrev(name), verbatim. `;;name` -> literal `;name`."""
+        if not self.app: return False
+        end = self.cursor - len(tail)
+        m = re.search(r"(;?);([\w-]+)$", self.text[:end])
+        if not m: return False
+        value = self.app.call("expand_abbrev", self.app, m.group(2))
+        if value is None: return False
+        value = ";" + m.group(2) if m.group(1) else value
+        self.text = self.text[:m.start()] + value + self.text[end:]
+        self.cursor = m.start() + len(value) + len(tail)
+        return True
 
     @staticmethod
     def _wrap(s, w):
@@ -1829,6 +1897,8 @@ class InputBox:
         if typed:
             self.text = self.text[:self.cursor] + typed + self.text[self.cursor:]
             self.cursor += len(typed)
+            if len(typed) == 1 and not (typed.isalnum() or typed in "_-;"):
+                self._expand_abbrev(tail=typed)
         for i, k in enumerate(inpt._keys):
             if k.name == 'KEY_ALT_ENTER' or str(k) == '\n':
                 self.text = self.text[:self.cursor] + '\n' + self.text[self.cursor:]
@@ -1858,6 +1928,7 @@ class InputBox:
             line = self._wrap(self.text, inner_w)[cy]
             self.cursor += len(line) - cx
         if inpt.consume('KEY_ENTER') and self.text:
+            if self._expand_abbrev(): return  # show the expansion first; next Enter sends
             attachments = {token: attachment for token, attachment in self.attachments.items()
                            if token in self.text}
             value = InputValue(self.text, attachments)
@@ -1909,6 +1980,9 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
     toks = f" ({approx}{ctx.token_count()//1000}k)"
     spin = "/—\\|"[int(time.time() * 12) % 4]
     suffix = f" {spin}" if ctx.is_running() else ""
+    if ctx.ui_stack: suffix += " ?"  # needs a human
+    elif tui.is_unseen(ctx): suffix += " ●"  # finished while you weren't looking
+    if ctx.yolo: suffix += " !"
 
     if ctx.is_running(): name_color = th.running
     elif ctx.llm_suspended: name_color = th.success
@@ -1926,7 +2000,7 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
     th = tui.app.theme
     buf.rect_line(r, txt_color=th.accent)
 
-    ctxs = sorted(tui.contexts, key=lambda c: c.name)
+    ctxs = tui.context_list()
     idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
 
     if allow_nav:
@@ -1934,18 +2008,14 @@ def render_selection_left(tui, buf, inpt, r, allow_nav=True):
             tui.current = ctxs[idx - 1]
         if inpt.consume('KEY_DOWN') and idx < len(ctxs) - 1:
             tui.current = ctxs[idx + 1]
-        if inpt.consume('k', 'w') and idx > 0:
-            tui.current = ctxs[idx - 1]
-        if inpt.consume('j', 's') and idx < len(ctxs) - 1:
-            tui.current = ctxs[idx + 1]
 
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
         selected = (ctx is tui.current)
-        prefix = ">> " if selected else "   "
         row = y + 1 + i
-        buf.puts(x + 1, row, prefix, txt_color=th.selection if selected else None)
-        tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(prefix), row)
+        num = f"{i + 1:>3} " if selected else f"{abs(i - idx):>3} "  # relativenumber: `3j` at a glance
+        buf.puts(x + 1, row, num, txt_color=th.selection if selected else th.muted, style='bold' if selected else None)
+        tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(num), row)
 
 @_overridable
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
@@ -2126,8 +2196,13 @@ def render_work_mode(tui, buf, inpt, r):
                 message_outputs.append(('cot', (cot + ("" if text else "█")).split('\n'), False))
             if cot and not text: continue
             text += "█"
-        lines = text.split('\n')
-        tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
+        cache = msg._render_cache
+        if cache and cache[0] == text and cache[1] is th:
+            lines = list(cache[2])
+        else:
+            lines = text.split('\n')
+            tui.app.run_context_hooks("output_renderer", ctx, lines, msg)
+            msg._render_cache = (text, th, list(lines))
         lines[:0] = [_tool_row(ctx, {**nc, "name": "native:" + nc["name"]}, nc["result"]) for nc in msg.native_calls or ()]
         if msg is pending_assistant and pending is not None:
             lines.extend(_tool_row(ctx, p.call, p.result) for p in pending)
@@ -2137,6 +2212,7 @@ def render_work_mode(tui, buf, inpt, r):
 
 
     available = h - 1
+    ctx._scroll_up = min(ctx._scroll_up, max(0, ctx._prev_height - available))
 
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
     row = (y + 1) - scroll_offset
@@ -2223,6 +2299,12 @@ def transform_user_prompt(text, ctx):
     return text
 
 
+@_handleable
+def expand_abbrev(app, name):
+    """Handlers return the text that `;name` in an input box expands to, or None to abstain."""
+    return None
+
+
 def request_approval(ctx, tool, args):
     """Run the approve_tool chain. True = approved, "reason" = denied, None = no handler decided."""
     if ctx.stop_early:
@@ -2284,6 +2366,38 @@ def render_workmodefooter_and_commands(tui, buf, r, ctx):
                        (" " + args if args else "", th.warning),
                        ("  " + doc if doc else "", th.muted)):
             buf.puts(cx, y + i, s, txt_color=col); cx += len(s)
+
+
+@_overridable
+def render_status_line(tui, buf, inpt, r):
+    """Bottom row: [MODE] agent info, echo, pending keys + which-key popup."""
+    x, y, w, h = r
+    th = tui.app.theme
+    buf.clear_line(y)
+    ctx = tui.current
+    label, bg = (" AGENTS ", th.accent) if tui.mode == "selection" else (" WORK ", th.success)
+    buf.puts(x, y, label, txt_color="black", bg_color=bg, style='bold')
+    cx = x + len(label) + 1
+    if ctx:
+        info = f"{ctx.name} · {ctx.reasoning}" + (" · yolo" if ctx.yolo else "")
+        buf.puts(cx, y, info, txt_color=th.muted)
+        cx += len(info) + 2
+    msg, t, err = tui.status
+    if msg and time.time() - t < 4:
+        buf.puts(cx, y, _one_line(msg)[:max(0, w - cx - 12)], txt_color=th.error if err else th.text)
+    pending = "".join(tui.pending_keys)
+    if not pending: return
+    buf.puts(x + w - len(pending) - 1, y, pending, txt_color=th.accent_alt, style='bold')
+    rows = tui.key_continuations()[:max(1, buf.h - 4)]
+    if not rows: return
+    kw = max(len(k) for k, _ in rows)
+    pw = min(w - 2, max(kw + 3 + len(d) for k, d in rows) + 4)
+    px, py = x + w - pw - 1, y - len(rows) - 2
+    buf.fill((px, py, pw, len(rows) + 2), ' ')
+    buf.rect_line((px, py, pw, len(rows) + 2), txt_color=th.accent)
+    for i, (k, d) in enumerate(rows):
+        buf.puts(px + 2, py + 1 + i, k.ljust(kw), txt_color=th.accent_alt, style='bold')
+        buf.puts(px + 3 + kw, py + 1 + i, _one_line(d)[:pw - kw - 5], txt_color=th.text)
 
 
 _ex6_dir = os.path.dirname(os.path.abspath(__file__))
@@ -2383,8 +2497,11 @@ class TUI:
     prev_mode: Literal["selection", "work", "help", "scroll"] = "selection"
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
-    sel_input_open: bool = False
-    sel_input_box: Any = None
+    sel_input: bool = False  # selection mode: current's input box is open (space)
+    pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
+    status: tuple = ("", 0.0, False)  # (msg, time, is_error), see echo()
+    boot_contexts: list = field(default_factory=list)  # contexts that existed after plugin setup
+    favorite: Optional[Context] = None  # template for new agents (`n`), see set_favorite()
     buf: Any = None
     keyls: list = field(default_factory=list)
     input_box: Any = None  # per-context; resolved each frame
@@ -2403,6 +2520,55 @@ class TUI:
 
     def get_context(self, name):
         return next((c for c in self.contexts if c.name == name), None)
+
+    def set_favorite(self, ctx):
+        self.favorite = ctx
+
+    def context_list(self):
+        """Contexts in display order (selection list, `j/k`)."""
+        return sorted(self.contexts, key=lambda c: c.name)
+
+    def is_unseen(self, ctx):
+        return not ctx.is_running() and ctx.last_invoke_time_end > ctx.last_seen
+
+    def echo(self, msg, error=False):
+        """Show a message in the status line for a few seconds."""
+        self.status = (msg, time.time(), error)
+
+    def keys_active(self):
+        return self.mode == "selection" and self.current and not self.sel_input and not self.ui_panel_stack
+
+    def _resolve_keys(self):
+        """(fn, KeyArgs) on a full match, "wait" on a prefix or count, None on no match."""
+        toks = self.pending_keys
+        i = 0
+        while i < len(toks) and toks[i].isdigit() and (i or toks[i] != "0"): i += 1
+        digits, seq = "".join(toks[:i]), tuple(toks[i:])
+        if not seq: return "wait"
+        if seq in self.app.keys:
+            return self.app.keys[seq], KeyArgs(int(digits or 1), bool(digits))
+        return "wait" if any(b[:len(seq)] == seq for b in self.app.keys) else None
+
+    def key_continuations(self):
+        """[(keys, description)] for bindings continuing pending_keys (which-key popup)."""
+        seq = tuple(t for t in self.pending_keys if not t.isdigit())
+        if not seq: return []
+        return [("".join(b[len(seq):]), (fn.__doc__ or "").strip().split("\n")[0])
+                for b, fn in self.app.keys.items() if len(b) > len(seq) and b[:len(seq)] == seq]
+
+    def feed_keys(self, inpt):
+        """Run key bindings. Unbound single keys stay in inpt for others (eg arrow nav)."""
+        keys, inpt._keys = inpt._keys, []
+        for i, k in enumerate(keys):
+            if not self.keys_active():  # a binding opened an input: the rest is typing
+                inpt._keys += keys[i:]
+                return
+            self.pending_keys.append(key_token(k))
+            r = self._resolve_keys()
+            if r == "wait": continue
+            if r is None and len(self.pending_keys) == 1: inpt._keys.append(k)
+            self.pending_keys = []
+            if r: r[0](self, r[1])
 
     def remove_context(self, ctx):
         if ctx not in self.contexts:
@@ -2425,14 +2591,8 @@ class TUI:
                     char += msvcrt.getwch()
                 return char
             self.term.getch = getch
-        self.sel_input_box = self.app.call("make_input", self.sel_on_submit)
         self.buf = ScreenBuffer(self.term.width, self.term.height)
         self.stdout_sink = _StdoutSink(self.app.debug_print)
-
-    def sel_on_submit(self, value: InputValue):
-        self.sel_input_open = False
-        if value.text.startswith("/"):
-            self.app.dispatch_command(self, value.text)
 
     def enter_scroll_mode(self):
         if self.mode == "scroll":
@@ -2453,9 +2613,10 @@ def _tui_loop(tui: TUI):
         sys.stdout, sys.stderr = _sink, _sink
     if tui.app.fatal_error:
         raise RuntimeError(f"FATAL: {tui.app.fatal_error}")
-    for _ in range(4):
+    for i in range(4):
+        if i: time.sleep(0.001)  # inkey(timeout>0) sleeps in 10ms steps on Windows
         try:
-            key = term.inkey(timeout=0.001, esc_delay=ESC_DELAY)
+            key = term.inkey(timeout=0, esc_delay=ESC_DELAY)
         except UnicodeDecodeError:
             key = None
         while key:
@@ -2499,21 +2660,31 @@ def _tui_loop(tui: TUI):
 
     if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
         tui.ui_panel_stack.pop()
+    if tui.sel_input and inpt.consume('KEY_ESCAPE'):
+        tui.sel_input = False
+    if tui.keys_active():
+        tui.feed_keys(inpt)
+    input_box = tui.input_box = tui.current.get_input_box()  # a key may have switched agent
 
     footer_r = Region()
+    status_r = Region(0, term.height - 1, term.width, 1)
 
     if tui.mode == "work":
+        tui.current.last_seen = time.time()
         input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
         space_below_input = 2
         reserved_h = 1 + input_h + 1 + space_below_input
         main_h = max(0, term.height - reserved_h)
         main_r = Region(0, 0, term.width, main_h)
         input_r = Region(0, main_r[1] + main_r[3] + 1, term.width, input_h)
-        footer_r = Region(0, input_r[1] + input_r[3] + 1, term.width, space_below_input)
+        footer_r = Region(0, input_r[1] + input_r[3] + 1, term.width, space_below_input - 1)
+    elif tui.sel_input:
+        input_h = max(1, min(input_box.get_height(term.width - 2), term.height // 3))
+        footer_r = Region(0, term.height - 2, term.width, 1)
+        input_r = Region(0, footer_r[1] - input_h - 2, term.width, input_h + 2)
+        main_r = Region(0, 0, term.width, input_r[1])
     else:
-        input_h = 3
-        input_r = Region(0, term.height - input_h, term.width, input_h)
-        main_r = Region(0, 0, term.width, term.height - input_h)
+        main_r = Region(0, 0, term.width, term.height - 1)
 
     if tui.mode == "scroll":
         if inpt._keys:
@@ -2537,29 +2708,21 @@ def _tui_loop(tui: TUI):
             tui.current.stop_early = True
     elif tui.mode == "selection":
         th = tui.app.theme
-        if not tui.sel_input_open and inpt.consume("KEY_ENTER"):
-            tui.mode = "work"
-        if not tui.sel_input_open and inpt.consume("/"):
-            tui.sel_input_open = True
-            tui.sel_input_box.set_text("/")
-        if tui.sel_input_open and inpt.consume("KEY_ESCAPE"):
-            tui.sel_input_open = False
-            tui.sel_input_box.set_text("")
-        if tui.sel_input_open:
-            left, right = main_r.split_horizontal(1, 3)
-            tui.app.call("render_selection_left", tui, buf, inpt, left, allow_nav=False)
-            tui.app.call("render_selection_right", tui, buf, right)
-            buf.rect_line(input_r, txt_color=th.error)
-            tui.sel_input_box(buf, inpt, input_r.shrink(1))
-        else:
-            full_r = Region(0, 0, term.width, term.height)
-            left, right = full_r.split_horizontal(1, 3)
-            tui.app.call("render_selection_left", tui, buf, inpt, left)
-            tui.app.call("render_selection_right", tui, buf, right)
+        left, right = main_r.split_horizontal(1, 3)
+        tui.app.call("render_selection_left", tui, buf, inpt, left, allow_nav=not tui.sel_input)
+        tui.app.call("render_selection_right", tui, buf, right)
+        if tui.sel_input:
+            buf.rect_line(input_r, txt_color=th.invoking if tui.current.is_running() else th.accent)
+            buf.puts(input_r[0] + 2, input_r[1], f" {tui.current.name} ", txt_color=th.accent_alt)
+            submitting = inpt.peek('KEY_ENTER') and input_box.text
+            input_box(buf, inpt, input_r.shrink(1), txt_color=th.text)
+            if submitting and not input_box.text: tui.sel_input = False
+            render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
     else:
         assert tui.mode == "help"
 
     if tui.mode != "scroll":
+        tui.app.call("render_status_line", tui, buf, inpt, status_r)
         if tui.ui_panel_stack:
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.ui_panel_stack[-1](buf, inpt, r)

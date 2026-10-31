@@ -24,7 +24,7 @@ def context_usage_reminder(ctx: Context):
     used = ctx.token_count()
     bucket = used * 10 // ctx.max_tokens
     last = ctx.data_volatile.get("context_usage_bucket", 0)
-    ctx.data_volatile["context_usage_bucket"] = bucket # tracks downward too, so /pop re-arms it
+    ctx.data_volatile["context_usage_bucket"] = bucket # tracks downward too, so dd/p re-arms it
     if bucket <= last and used < 150_000: return
     note = f"{round(used/1000)}k/{round(ctx.max_tokens/1000)}k tokens used."
     if used >= 150_000:
@@ -255,6 +255,7 @@ def custom_setup(app: ex6.App, messages: list):
         ctx.after_tool_calls(context_usage_reminder)
         tui.add_context(ctx)
     tui.current = tui.get_context(SOL["name"])
+    tui.set_favorite(tui.current)
 
 
 

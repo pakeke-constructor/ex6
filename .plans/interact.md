@@ -169,3 +169,8 @@ IDEA: `space` is special character; if it's typed in selection-mode, the user op
 - For the ask-user-question stuff, make the UX WAYYY better. should be able to tap buttons.
 
 
+
+## STATUS (2026-10-31)
+Done (human's primitive list, minimal): `_ex6/keys.py` (`@ex6.key` core registry in ex6.py, counts, which-key popup, status line + `tui.echo`), space/`/` open selected agent's input in selection mode, `h g f o n j k yy ya yc yl p dd da cc ca ctrl-x ?`, list markers (`?` `●` `!`) + relative numbers, ask_user_question 1-9 tap. Sigils deleted, `_prompts/*.md` + `;name` paste (`_ex6/prompts.py`); /smp /ssot /short /pop /yy /fork /stop /go removed.
+Assumed `ya` = agent's Nth-last message (list said code-block, same as `yc`).
+Not done: registers (2), agent messaging (4), set_reasoning (5), undo.

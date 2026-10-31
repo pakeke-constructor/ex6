@@ -1287,6 +1287,11 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
                 selected[0] = (selected[0] - 1) % len(options)
             if inpt.consume('KEY_DOWN'):
                 selected[0] = (selected[0] + 1) % len(options)
+            for i in range(min(9, len(options))):  # tap a number to answer
+                if inpt.consume(str(i + 1)):
+                    result[0] = options[i]
+                    if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
+                    return
             if inpt.consume('KEY_ENTER'):
                 result[0] = options[selected[0]]
                 if draw in ctx.ui_stack: ctx.ui_stack.remove(draw)
@@ -1296,13 +1301,13 @@ def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] 
                 show_options = False
 
         if show_options:
-            buf.puts(cx, cy, "UP/DOWN choose | ENTER submit | type custom answer", txt_color=th.text)
+            buf.puts(cx, cy, "1-9 answer | UP/DOWN + ENTER | type custom answer", txt_color=th.text)
             cy += 1
             for i, option in enumerate(options):
                 if cy >= y + box_h - 1:
                     break
                 is_sel = i == selected[0]
-                prefix = "›" if is_sel else " "
+                prefix = ("›" if is_sel else " ") + (f" {i + 1}" if i < 9 else "  ")
                 clr = th.success if is_sel else th.text
                 buf.puts(cx, cy, f"{prefix} {option}"[:max(1, w - 6)], txt_color=clr, style='bold' if is_sel else None)
                 cy += 1

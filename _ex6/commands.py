@@ -1,5 +1,3 @@
-# Dependencies: pyperclip
-# Install: python -m pip install pyperclip
 
 
 from typing import Optional
@@ -8,7 +6,6 @@ import threading
 import json
 import math
 import textwrap
-import pyperclip
 import time
 import ex6
 
@@ -29,31 +26,6 @@ def purge(tui):
 
 
 @ex6.command
-def pop(tui, n: Optional[int]):
-    'Pop last N user messages and everything after each cutoff.'
-    ctx = tui.current
-    if not ctx or ctx.is_running(): return
-    if n is None: n = 1
-    if n <= 0: return
-    user_idxs = [i for i, m in enumerate(ctx.get_messages()) if m.role == "user"]
-    n = min(n, len(user_idxs))
-    if n == 0: return
-    ctx.truncate(user_idxs[-n])
-
-
-@ex6.command
-def yy(tui, n: Optional[int]):
-    'Copy the Nth-last user prompt to clipboard.'
-    ctx = tui.current
-    if not ctx: return
-    if n is None: n = 1
-    if n <= 0: return
-    user_messages = [m for m in ctx.get_messages() if m.role == "user"]
-    if n > len(user_messages): return
-    pyperclip.copy(user_messages[-n].get_msg(ctx))
-
-
-@ex6.command
 def del_context(tui, name: Optional[str]):
     'Delete a context.'
     ctx = tui.get_context(name) if name else tui.current
@@ -62,30 +34,6 @@ def del_context(tui, name: Optional[str]):
 
 del_context.__name__ = "del" # coz del is python keyword, and we want /del
 
-
-
-@ex6.command
-def fork(tui, name: Optional[str]):
-    'Fork current context.'
-    ctx = tui.current
-    if not ctx: return
-    tui.add_context(ctx.fork(name))
-
-
-@ex6.command
-def stop(tui):
-    'Stop running LLM.'
-    ctx = tui.current
-    if ctx and ctx.is_running():
-        ctx.stop_early = True
-
-
-@ex6.command
-def go(tui):
-    'Start LLM without adding a user message.'
-    ctx = tui.current
-    if ctx and not ctx.is_running():
-        ctx.invoke()
 
 
 @ex6.command
@@ -199,74 +147,6 @@ def _text_panel(tui, lines):
     tui.ui_panel_stack.append(draw)
 
 
-SMP = r'''
-Take a step back, and check for a simpler solution.
-If lot of code was added/changed, take a step back and evaluate the actual problem.
-If the new code seems hacky, look at callers/users of the system, and reason about the intention of the system; maybe something else can change, or the requirements can be relaxed.
-Otherwise, if the code is clean and minimal; that's fine, carry on.
-'''
-
-@ex6.command
-def smp(tui, additional_msg: Optional[str]):
-    'Simplify command. Invokes agent, asking it to attempt to simplify or shorten recent code'
-    ctx = tui.current
-    if not ctx: return
-    msg = SMP
-    if additional_msg:
-        msg += "\n\nAdditional user note:" + additional_msg
-    ctx.invoke(msg)
-
-
-
-SSOT_CHECK = r'''
-Evaluate the statefulness of the system/code you just worked on.
-(Bad state is one of the most common causes of bugs, and we want to avoid it.)
-Some guidelines, in order:
-- If it's possible to remove the state entirely via smarter code: REMOVE IT.
-- Otherwise, if the state can't be removed, try make it a single-source-of-truth (SSOT).
-- Otherwise, if state must be duplicated, then make sure the state is either short-lived or recomputed frequently.
-- Lastly, if the bad state can't be short-lived or recomputed, think about a way to invalidate it, or make the consumers aware of the duplication.
-Don't forget the bigger picture. 
-If the system/code is clean and minimal; that's fine, no changes needed.
-
-(Rule of thumb: If a goblin comes in and changes a bunch of memory/state randomly;
-the program should just change behaviour; nothing should ever become broken.)
-'''
-
-@ex6.command
-def ssot(tui, additional_msg: Optional[str]):
-    'State-check command. Invokes agent, asking it to attempt to remove fragile state'
-    ctx = tui.current
-    if not ctx: return
-    msg = SSOT_CHECK
-    if additional_msg:
-        msg += "\n\nAdditional user note:" + additional_msg
-    ctx.invoke(msg)
-
-
-
-SHORT = r'''
-Review the code you just worked on, and remove redundant code.
-Look for: dead/unused code, duplicated logic, unnecessary checks or error handling, needless variables/indirection, and comments that restate the code.
-Prefer concise forms, but keep it readable; no clever one-liners.
-Don't change behaviour too much.
-If the code is already short and clean; that's fine, no changes needed.
-'''
-
-@ex6.command
-def short(tui, additional_msg: Optional[str]):
-    'Shorten command. Invokes agent, asking it to remove redundant code'
-    ctx = tui.current
-    if not ctx: return
-    msg = SHORT
-    if additional_msg:
-        msg += "\n\nAdditional user note:" + additional_msg
-    ctx.invoke(msg)
-
-
-
-
-
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
@@ -361,12 +241,6 @@ def sync(tui):
 
 @ex6.command
 def help(tui):
-    lines = ["Commands:"]
-    for name, (fn, spec) in sorted(tui.app.iter_commands()):
-        args = " ".join(f"<{a}>" for a, _, _ in spec)
-        doc = " ".join((fn.__doc__ or "").split())
-        line = f"  /{name} {args}".rstrip()
-        lines.append(f"{line}  {doc}" if doc else line)
-    _text_panel(tui, lines)
-
-
+    'List keys and commands.'
+    from _ex6.keys import help_lines
+    _text_panel(tui, help_lines(tui.app))
