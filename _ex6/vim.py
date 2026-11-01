@@ -12,7 +12,7 @@ from _ex6.commands import _text_panel
 def _idle(tui):
     ctx = tui.current
     if ctx.is_running():
-        tui.echo("running (ctrl-x to stop)", error=True)
+        tui.echo("running (s to stop)", error=True)
         return None
     return ctx
 
@@ -136,7 +136,7 @@ def yolo(tui, n):
     ctx.yolo = not ctx.yolo
 
 
-@key("<C-x>")
+@key("s", "<C-x>")
 def stop(tui, n):
     'Stop the agent.'
     if tui.current.is_running(): tui.current.stop_early = True

@@ -35,6 +35,13 @@ def del_context(tui, name: Optional[str]):
 del_context.__name__ = "del" # coz del is python keyword, and we want /del
 
 
+@ex6.command
+def stop(tui, name: Optional[str]):
+    'Stop a running agent.'
+    ctx = tui.get_context(name) if name else tui.current
+    if ctx and ctx.is_running(): ctx.stop_early = True
+
+
 
 @ex6.command
 def crash(tui):

@@ -131,7 +131,7 @@ Tools / agents:
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/tool_summaries.py - bash/powershell rows show a cheap-model summary (`bash [!] running tests`; `!` = changes things, `?` = read-only), stored in ctx.data
-- _ex6/vim.py - normal-mode keymap: j k, space/a (prompt the selected agent), / (command), h (answer agent needing a human), g go, z yolo, w zoom, ctrl-u/d scroll, ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc, p dd da cc ca, ?. `?` and /help list them. Core handles leftover arrows, PgUp/PgDn, Enter (focus input).
+- _ex6/vim.py - normal-mode keymap: j k, space/a (prompt the selected agent), / (command), h (answer agent needing a human), g go, z yolo, w zoom, ctrl-u/d scroll, s/ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc, p dd da cc ca, ?. `?` and /help list them. Core handles leftover arrows, PgUp/PgDn, Enter (focus input).
 - _ex6/prompts.py - prompt files `_ex6/_prompts/*.md` (frontmatter); `;name` in a prompt pastes the body verbatim on Enter (transform_user_prompt handler), `;;name` = literal
 
 Providers / models:
