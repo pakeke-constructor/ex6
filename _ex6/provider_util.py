@@ -4,6 +4,7 @@ import json
 import hashlib
 import os
 import sqlite3
+from pathlib import Path
 import ex6
 
 
@@ -28,12 +29,23 @@ def _log_safe(value):
     return value
 
 
-LOG_INVOKES = False  # opt-in: set True from a user/project plugin's setup()
+LOG_INVOKES = False
+_DB_PATH = None
 _DB_LIMIT = 1_000_000_000  # bytes of live data in invokes.db; oldest invokes are culled past this
 
 
+def configure_invoke_logging(enabled: bool, *, path: str | os.PathLike | None = None):
+    """Configure process-wide logging without a TUI. Omitted path keeps the current location."""
+    global LOG_INVOKES, _DB_PATH
+    if path is not None:
+        _DB_PATH = Path(path).expanduser().resolve()
+    LOG_INVOKES = enabled
+
+
 def _db():
-    db = sqlite3.connect(ex6.get_folder("provider_util") / "invokes.db", timeout=30)
+    path = _DB_PATH if _DB_PATH is not None else ex6.get_folder("provider_util") / "invokes.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(path, timeout=30)
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript("""
         CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, data TEXT);

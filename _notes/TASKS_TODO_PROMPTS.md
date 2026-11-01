@@ -14,12 +14,14 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
-I wanna make ex6.debug_print way, way better.
-currently its kinda ass.
-I don't use it, (like ever,) and it sucks.
-Maybe we just remove it? idk?
 
-
+notice the way the `invokes.db` works.
+There is another project of mine that wants to customize the `invokes.db`.
+they have a few requirements:
+- 1: they wanna use it without the TUI
+- 2: they want control over where the invokes DB is
+- 3: they want to be able to toggle it on/off with code.
+plan and implement this please
 
 
 

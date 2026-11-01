@@ -28,7 +28,41 @@ All python files inside `_ex6` are loaded automatically.
 
 Dependencies include Pillow (`pip install Pillow`) for the `read_image` tool.
 
+## Invoke logging (headless or TUI)
+Logging is off by default. Configure it directly from Python; no TUI or plugin loading is required:
 
+```python
+from _ex6.provider_util import configure_invoke_logging
+
+configure_invoke_logging(True, path="./logs/invokes.db")
+# Run contexts/providers normally; their completed invokes are logged automatically.
+configure_invoke_logging(False)  # stop logging
+configure_invoke_logging(True)   # resume at the same path
+```
+
+Configuration is process-wide, shared by all contexts/providers. In a plugin, make the same calls from `setup(app)`. Changes apply to subsequent `log_invoke` calls; an already-started write may finish.
+
+`path` accepts a filename as a string or `Path`. Relative paths are resolved when configured; parent directories and the DB are created lazily on the first enabled write. Omitting `path` (or passing `None`) retains the chosen location. Without a custom path, the default is `ex6.get_folder("provider_util") / "invokes.db"`.
+
+Custom providers can call `log_invoke(ctx, provider, messages, tools, result, text="")` from `_ex6.provider_util` directly: `ctx` is an `ex6.Context`, `result` is an `ex6.LLMResult`, and messages/tools are the provider-format payload sent. No TUI is needed. Existing blob deduplication, base64 redaction, WAL transactions, and automatic culling above 1 GB are unchanged.
+
+
+
+
+## Debug logs
+
+Use `ctx.app.debug_print("label", value)` (or `app.debug_print(...)`) to dump values without touching the TUI. Dicts, lists, tuples, and sets are pretty-printed; `sep` and `end` are supported. Each call gets a timestamp and is written immediately as UTF-8.
+
+Logs live in `ex6.get_folder("logs")/<project>-<path-hash>/debug.log`, exposed as `app.debug_path`: `%APPDATA%/ex6/logs/` on Windows, `~/ex6/logs/` on Unix. Project identity is the resolved working directory when the App is created (not the Git root): its folder name plus the first 12 hex characters of SHA-256 of its absolute path, case-normalized on Windows. Same-named projects in different directories stay separate. Each session starts with the full startup directory in a header. `/dbg` shows a snapshot in the same full-screen panel as `/help`, with the log path at the top. Up/Down scroll; Esc closes. Reopen `/dbg` to refresh. Agents can use existing file-reading/search tools on this plain-text file; no special log tool is needed. Logs aren't injected into model context.
+
+Rotation keeps only two files per project:
+- `debug.log`: current output.
+- `debug.log.1`: previous chunk, not necessarily the previous session.
+- Before a write would exceed 5 MiB (5,242,880 bytes), a nonempty current log replaces `.1` and writing starts in a fresh file.
+- Creating an App also rotates a nonempty current log. An empty current log leaves `.1` intact.
+- Older `.1` content is discarded. Normally this retains at most 10 MiB per project; a single oversized entry is kept whole and can exceed the limit. There is no global cap or cleanup of inactive project folders.
+
+For live viewing, follow the filename across rotation (e.g. `tail -F <app.debug_path>`), not just the open file. Logs stay outside projects; no gitignore entries are needed. Dumps may contain sensitive values; review before sharing.
 
 
 # DISCLAIMER:

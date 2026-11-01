@@ -29,9 +29,9 @@ Plugins give absolute control over everything, from orchestration to tools.
 
 <architecture>
 - `ex6.py`: project file. EVERYTHING is laid out in this file.
-- Printing/debugging: never print to stdout (breaks the TUI). Use `app.debug_print()` (same signature as print), e.g. `ctx.app.debug_print(...)`.
+- Debugging: use `app.debug_print(...)`, never stdout. Logs: `ex6.get_folder("logs")/<project>-<path-hash>/debug.log`; `app.debug_path` or `/dbg` gives the exact path.
 
-ex6.py Classes:
+# ex6.py Classes:
 Core:
 - `App`: plugin registry (commands, overrides, handlers, context hooks), theme, budget. `app.call(name, ...)` dispatches overridables/handleables.
 

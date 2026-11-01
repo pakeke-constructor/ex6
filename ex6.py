@@ -4,7 +4,8 @@ import sys
 import json
 import hashlib
 from pathlib import Path
-from collections import deque
+import io
+from pprint import pformat
 from datetime import datetime
 import math
 import itertools
@@ -414,7 +415,17 @@ class App:
         self.plugin_data = {}
         self.diagnostics = {}
         self.budget = DailyBudget()
-        self.debug_buffer = deque(maxlen=1000)
+        root = Path.cwd().resolve()
+        project_path = os.path.normcase(str(root))
+        project_hash = hashlib.sha256(project_path.encode("utf-8")).hexdigest()[:12]
+        project_name = Path(project_path).name or "root"
+        self.debug_path = get_folder("logs") / f"{project_name}-{project_hash}" / "debug.log"
+        self.debug_path.parent.mkdir(exist_ok=True)
+        self._debug_lock = threading.Lock()
+        if self.debug_path.exists() and self.debug_path.stat().st_size:
+            self.debug_path.replace(self.debug_path.with_name("debug.log.1"))
+        self.debug_path.touch()
+        self.debug_print(f"[session] root={root}")
         self.fatal_error = None
         self.stdout = sys.stdout
         self.stderr = sys.stderr
@@ -424,10 +435,18 @@ class App:
         self._setup_modules = set()
         self.register_module(sys.modules[__name__])
 
-    def debug_print(self, *args, **kwargs):
-        ts = datetime.now().strftime("%H:%M:%S")
-        msg = " ".join(str(a) for a in args)
-        self.debug_buffer.append(f"[{ts}] {msg}")
+    def debug_print(self, *args, sep=" ", end="\n"):
+        values = [pformat(a, sort_dicts=False) if isinstance(a, (dict, list, tuple, set)) else str(a) for a in args]
+        output = io.StringIO()
+        print(*values, sep=sep, end=end, file=output)
+        with self._debug_lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            entry = f"[{ts}] {output.getvalue()}".encode("utf-8", errors="backslashreplace")
+            size = self.debug_path.stat().st_size
+            if size and size + len(entry) > 5 * 1024 * 1024:
+                self.debug_path.replace(self.debug_path.with_name("debug.log.1"))
+            with self.debug_path.open("ab") as f:
+                f.write(entry)
 
     def command(self, fn):
         params = list(inspect.signature(fn).parameters.values())[1:]

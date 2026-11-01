@@ -25,6 +25,7 @@ import time
 import zlib
 from contextlib import closing
 from datetime import datetime
+from unittest.mock import patch
 
 import ex6
 from _ex6 import provider_openrouter, provider_anthropic, provider_openai
@@ -213,14 +214,15 @@ def run_tests(names=("anthropic", "openai")):
     for p in names:
         cfg = PROVIDERS[p]
         print(f"\n== {p} ({cfg['model']})")
-        app.debug_buffer.clear()
         start, nums = len(checks), {}
-        for test in TESTS:
-            try:
-                test(p, cfg, nums)
-            except Exception as e:
-                check(p, f"{test.__name__}: crashed", False, repr(e))
-        hits = [line for line in app.debug_buffer if any(c in line.lower() for c in CANARIES)]
+        with patch.object(app, "debug_print", wraps=app.debug_print) as debug:
+            for test in TESTS:
+                try:
+                    test(p, cfg, nums)
+                except Exception as e:
+                    check(p, f"{test.__name__}: crashed", False, repr(e))
+        lines = [" ".join(str(a) for a in call.args) for call in debug.call_args_list]
+        hits = [line for line in lines if any(c in line.lower() for c in CANARIES)]
         check(p, "debug canaries", not hits, "\n      ".join([""] + hits[:20]))
         for ctx in list(provider_anthropic._processes):
             provider_anthropic._processes.pop(ctx).close()

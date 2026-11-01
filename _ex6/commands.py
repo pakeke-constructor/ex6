@@ -93,14 +93,11 @@ def format_context(ctx) -> str:
 
 @ex6.command
 def dbg(tui):
-    'Print the debug log to the real terminal (any key returns).'
-    tui.enter_scroll_mode()
-    print("=" * 30)
-    print("DEBUG LOG")
-    print("=" * 30)
-    print(f"({len(tui.app.debug_buffer)} entries)\n")
-    for line in tui.app.debug_buffer:
-        print(line)
+    'Show the debug log in a scrollable panel (Esc closes).'
+    app = tui.app
+    with app._debug_lock:
+        lines = app.debug_path.read_text(encoding="utf-8").splitlines()
+    ex6.text_panel(tui, [str(app.debug_path), "Up/Down: scroll | Esc: close | Reopen /dbg to refresh", "", *lines])
 
 
 @ex6.command
