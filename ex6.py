@@ -2704,13 +2704,8 @@ def key_yank_code(tui, n):
 
 @key("p")
 def key_pop(tui, n):
-    'Pop the last N messages.'
-    ctx = _idle(tui)
-    if not ctx: return
-    msgs = ctx.get_messages()
-    keep = max(len(msgs) - n, sum(1 for m in msgs if m.role == "system"))
-    ctx.truncate(keep)
-    tui.echo(f"popped {len(msgs) - keep} message(s)")
+    'Pop the last N user prompts and everything after them.'
+    _pop_prompts(tui, n)
 
 
 @key("dd")
