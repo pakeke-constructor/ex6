@@ -385,7 +385,7 @@ class Theme:
     error: Color = "red"
     running: Color = "bright_blue"
     invoking: Color = "bright_yellow"
-    mode_normal: Color = "green"  # dividers + status label: list focused
+    mode_normal: Color = "green"  # status label: list focused
     mode_insert: Color = "blue"  # dividers + status label: typing
     selection: Color = (48, 48, 54)  # selected row bg
     error_bg: Color = (80, 0, 0)
@@ -1980,7 +1980,7 @@ def render_list_row(tui, buf, ctx, x, y):
 def render_list(tui, buf, inpt, r):
     x, y, w, h = r
     th = tui.app.theme
-    buf.vline((x + w - 1, y, 1, h), txt_color=tui.mode_color())
+    buf.vline((x + w - 1, y, 1, h), txt_color=tui.divider_color())
 
     ctxs = tui.context_list()
     idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
@@ -2049,8 +2049,8 @@ def render_header(tui, buf, r):
     tools_str = f"{len(tools)} tools" + (f" ({native} native)" if native else "")
     buf.puts(x + w - len(tools_str) - 1, y + 1, tools_str, txt_color=th.muted)
 
-    buf.hline((x, y + 2, w, 1), txt_color=tui.mode_color())
-    buf.put(x - 1, y + 2, '├', txt_color=tui.mode_color())  # join left panel's divider
+    buf.hline((x, y + 2, w, 1), txt_color=tui.divider_color())
+    buf.put(x - 1, y + 2, '├', txt_color=tui.divider_color())  # join left panel's divider
 
 
 def _one_line(text):
@@ -2152,7 +2152,7 @@ def render_input(tui, buf, inpt, input_r, input_box):
     focused = tui.mode == "insert"
     if ctx.is_running():
         value = input_box(buf, inpt, input_r, txt_color=th.accent if focused else th.muted, cursor=focused)
-        spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
+        spin = " [" + "/—\\|"[int(time.time() * 5) % 4] + "] "
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         if ctx.pending_message and ctx.llm_output_type:
             toks = f"~{get_token_estimate(ctx.pending_message.content + ctx.llm_cot, ctx.model)}"
@@ -2163,19 +2163,19 @@ def render_input(tui, buf, inpt, input_r, input_box):
         else:
             label = "invoking..."
             stats = f" ({elapsed}) "
-        total_w = 4 + len(label) + len(stats)
+        total_w = len(spin) + len(label) + len(stats)
         x = input_r[0] + input_r[2] - total_w
-        y = input_r[1] - 1 if input_box.text else input_r[1]  # onto divider while typing
-        buf.puts(x, y, spin, txt_color=th.invoking); x += 4
+        y = input_r[1] - 1  # inline in the divider above the input
+        buf.puts(x, y, spin, txt_color=th.invoking); x += len(spin)
         buf.puts(x, y, label, txt_color=th.accent); x += len(label)
         buf.puts(x, y, stats, txt_color=th.muted)
         if ctx._pending_inputs:
             qtxt = ctx._pending_inputs[0].text.replace('\r', ' ').replace('\n', ' ')
             max_w = input_r[2] - total_w - 2
-            prefix = "queued: \""
+            prefix = " queued: \""
             if len(qtxt) > max_w - len(prefix) - 1:
                 qtxt = qtxt[:max(0, max_w - len(prefix) - 4)] + "..."
-            buf.puts(input_r[0] + 1, y, prefix + qtxt + "\"", txt_color=th.accent_alt)
+            buf.puts(input_r[0] + 1, y, prefix + qtxt + "\" ", txt_color=th.accent_alt)
         return value
     return input_box(buf, inpt, input_r, txt_color=th.text if focused else th.muted, cursor=focused)
 
@@ -2424,6 +2424,10 @@ class TUI:
         th = self.app.theme
         return th.mode_insert if self.mode == "insert" else th.mode_normal
 
+    def divider_color(self):
+        th = self.app.theme
+        return th.mode_insert if self.mode == "insert" else th.muted
+
     def keys_active(self):
         return self.mode == "normal" and self.current and not self.ui_panel_stack
 
@@ -2619,13 +2623,17 @@ def key_command(tui, n):
 
 @key("h")
 def key_human(tui, n):
-    'Answer the nearest agent that needs a human (? in the list).'
+    'Answer the nearest agent that needs a human (?), else jump to the nearest unseen reply (●).'
     ctxs = tui.context_list()
     i = ctxs.index(tui.current)
-    asks = sorted((c for c in ctxs if c.ui_stack), key=lambda c: abs(ctxs.index(c) - i))
-    if not asks: return tui.echo("nobody needs you")
-    tui.current = asks[0]
-    _open_input(tui)
+    near = lambda c: abs(ctxs.index(c) - i)
+    asks = sorted((c for c in ctxs if c.ui_stack), key=near)
+    if asks:
+        tui.current = asks[0]
+        return _open_input(tui)
+    unseen = sorted((c for c in ctxs if c is not tui.current and tui.is_unseen(c)), key=near)
+    if not unseen: return tui.echo("nobody needs you")
+    tui.current = unseen[0]
 
 
 @key("g")
@@ -2848,12 +2856,11 @@ def _tui_loop(tui: TUI):
     if left_w:
         tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, main_h - top))
     tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
-    div_color = th.invoking if ctx.is_running() else tui.mode_color()
-    buf.hline((x, div_y, w, 1), txt_color=div_color)
-    if left_w: buf.put(x - 1, div_y, '├', txt_color=div_color)
+    buf.hline((x, div_y, w, 1), txt_color=tui.divider_color())
+    if left_w: buf.put(x - 1, div_y, '├', txt_color=tui.divider_color())
     if insert_pad:
-        buf.hline((x, footer_r[1] - 2, w, 1), txt_color=tui.mode_color())
-        if left_w: buf.put(x - 1, footer_r[1] - 2, '├', txt_color=tui.mode_color())
+        buf.hline((x, footer_r[1] - 2, w, 1), txt_color=tui.divider_color())
+        if left_w: buf.put(x - 1, footer_r[1] - 2, '├', txt_color=tui.divider_color())
 
     if ctx.ui_stack:  # needs a human: answer in place of the transcript
         ctx.ui_stack[-1](buf, focus_inpt, transcript_r)
