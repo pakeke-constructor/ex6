@@ -3,8 +3,7 @@ import ex6
 from ex6 import handler
 
 
-SSOT = """\
-The user wants to remind you to consider the statefulness of the relevant system/code.
+SSOT = """The user wants to remind you to consider the statefulness of the relevant system/code.
 (Bad state is one of the most common causes of bugs, and we want to avoid it.)
 Some guidelines, in order:
 - If it's possible to remove the state entirely via smarter code: REMOVE IT.
@@ -17,12 +16,9 @@ If the system/code is clean and minimal; that's fine, no changes needed.
 (Rule of thumb: If a goblin comes in and changes a bunch of memory/state randomly;
 the program should just change behaviour; nothing should ever become broken.)"""
 
-GIT = """\
-Check the git working tree before editing,
-and check the resulting diff before finishing."""
+GIT = """Check the git working tree."""
 
-FAST = """\
-Move quickly via the smallest direct path.
+FAST = """User wants you to move quickly via the smallest direct path.
 Avoid broad exploration and optional work, but still verify."""
 
 SMP = """\
