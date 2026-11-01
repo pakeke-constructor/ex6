@@ -402,7 +402,7 @@ class Theme:
     error: Color = "red"
     running: Color = "bright_blue"
     invoking: Color = "bright_yellow"
-    selection: Color = (70, 20, 35)  # selected row bg
+    selection: Color = (48, 48, 54)  # selected row bg
     error_bg: Color = (80, 0, 0)
     diff_add_bg: Color = (18, 60, 18)
     diff_del_bg: Color = (60, 18, 18)
@@ -2004,7 +2004,8 @@ def render_agents_left(tui, buf, inpt, r):
         selected = (ctx is tui.current)
         row = y + 1 + i
         num = f"{i + 1 if selected else abs(i - idx):>{nw}} "  # relativenumber: `3j` at a glance
-        buf.puts(x + 1, row, num, txt_color=th.text if selected else th.muted, style='bold' if selected else None)
+        num_color = th.text if selected else th.error if abs(i - idx) == 4 else th.muted
+        buf.puts(x + 1, row, num, txt_color=num_color, style='bold' if selected else None)
         right = max(right, tui.app.call("render_agents_mode_context_name", tui, buf, ctx, x + 1 + len(num), row))
         if selected:
             buf.fill_bg(x + 1, row, w - 2, 1, th.selection)
