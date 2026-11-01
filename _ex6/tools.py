@@ -1440,12 +1440,9 @@ def _command_lines(command: str) -> list[str]:
     return command.replace('\r\n', '\n').replace('\r', '\n').split('\n')
 
 
-def _ask_human(ctx, title, preview=None, height=None):
-    """Human approval panel. ENTER=approve (True), text+ENTER=deny (reason). No TUI = approve.
+def _approval_panel(ctx, title, preview=None, height=None):
+    """Human approval panel draw fn. ENTER=approve (True), text+ENTER=deny (reason).
     preview: fn(buf, x, y, w, h). height: short panel at bottom of screen."""
-    if ctx.app.tui is None:
-        return True # No TUI; so just continue
-
     input_draw = ctx.app.call("make_input")
 
     def draw(buf, inpt, r):
@@ -1466,15 +1463,12 @@ def _ask_human(ctx, title, preview=None, height=None):
         if value := input_draw(buf, inpt, ex6.Region(content[0], content[1] + 2, content[2], 1), txt_color=th.warning):
             return value.text
 
-    verdict = ctx.ask_human(draw)
-    return "stopped" if verdict is None or ctx.stop_early else verdict
+    return draw
 
 
 def _approve(ctx, tool, args, title, preview=None, height=None) -> str | None:
-    """Approval chain, then human panel if no handler decided. Returns None if approved, else denial reason."""
-    verdict = ex6.request_approval(ctx, tool, args)
-    if verdict is None:
-        verdict = _ask_human(ctx, title, preview, height)
+    """Returns None if approved, else denial reason."""
+    verdict = ex6.request_approval(ctx, tool, args, _approval_panel(ctx, title, preview, height))
     return None if verdict is True else verdict
 
 

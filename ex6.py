@@ -438,7 +438,6 @@ class App:
         self._registered_modules = set()
         self._setup_modules = set()
         self._register_module(sys.modules[__name__])
-        self.handlers["approve_tool"].append((100, _approve_yolo))
 
     def debug_print(self, *args, **kwargs):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -2293,19 +2292,37 @@ def transform_user_prompt(text, ctx):
     return text
 
 
-def request_approval(ctx, tool, args):
-    """Run the approve_tool chain. True = approved, "reason" = denied, None = no handler decided."""
+def request_approval(ctx, tool, args, draw):
+    """Approve a tool call. Runs the approve_tool chain once; if no handler decides, asks the human
+    via the draw(buf, inpt, r) panel. yolo = auto approve if no handler decides.
+    Returns True (approved) or "reason" (denied)."""
     if ctx.stop_early:
         return "stopped"
-    return ctx.app.call("approve_tool", ctx, tool, args)
+    verdict = ctx.app.call("approve_tool", ctx, tool, args)
+    if verdict is not None:
+        return verdict
+    if ctx.yolo or ctx.app.tui is None:
+        return True
+    result = []
+    def panel(buf, inpt, r):
+        value = draw(buf, inpt, r)
+        if value is not None:
+            result.append(value)
+            ctx.ui_stack = [p for p in ctx.ui_stack if p is not panel]
+    ctx.ui_stack.append(panel)
+    while not result and not ctx.stop_early and not ctx.yolo and panel in ctx.ui_stack:
+        time.sleep(0.05)
+    ctx.ui_stack = [p for p in ctx.ui_stack if p is not panel]
+    if ctx.stop_early:
+        return "stopped"
+    if result:
+        return result[0]
+    return True if ctx.yolo else "stopped"
 
 @_handleable
 def approve_tool(ctx, tool, args):
-    """Handlers return True (allow), "reason" (deny), or None (abstain)."""
+    """Handlers return True (allow), "reason" (deny), or None (abstain). Runs once per call, so handlers may be slow (eg ask an LLM)."""
     return None
-
-def _approve_yolo(ctx, tool, args):
-    if ctx.yolo: return True
 
 @_handleable
 def render_work_mode_footer(tui, buf, r, ctx):
