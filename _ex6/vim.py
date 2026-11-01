@@ -116,7 +116,6 @@ def yolo(tui, n):
     'Toggle yolo (auto-approve tools).'
     ctx = tui.current
     ctx.yolo = not ctx.yolo
-    tui.echo(f"yolo {'ON' if ctx.yolo else 'off'}", error=ctx.yolo)
 
 
 @key("<C-x>")
@@ -185,12 +184,12 @@ def pop(tui, n):
 
 
 @key("dd")
-def delete_prompt(tui, n):
-    'Delete last N user prompts (and everything after). Copies the prompt.'
-    text = _pop_prompts(tui, n)
-    if text is not None:
-        pyperclip.copy(text)
-        tui.echo(f"popped {n} prompt(s), copied")
+def delete_context(tui, n):
+    'Delete the current context.'
+    ctx = tui.current
+    if not ctx: return
+    tui.remove_context(ctx)
+    tui.echo(f"deleted {ctx.name}")
 
 
 @key("da")

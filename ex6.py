@@ -2307,8 +2307,9 @@ def render_work_mode_footer(tui, buf, r, ctx):
     x, y, w, h = r
     th = tui.app.theme
     on = ctx.yolo
-    buf.puts(x, y, "  yolo ON" if on else "  yolo OFF",
-                txt_color=th.success if on else th.muted)
+    buf.puts(x, y, "  YOLO ON" if on else "  yolo OFF",
+             txt_color=th.error if on else th.muted,
+             style='bold' if on else None)
 
 def render_workmodefooter_and_commands(tui, buf, r, ctx):
     th = tui.app.theme
@@ -2362,7 +2363,7 @@ def render_status_line(tui, buf, inpt, r):
     buf.puts(x, y, label, txt_color="black", bg_color=bg, style='bold')
     cx = x + len(label) + 1
     if ctx:
-        info = f"{ctx.name} · {ctx.reasoning}" + (" · yolo" if ctx.yolo else "")
+        info = f"{ctx.name} · {ctx.reasoning}"
         buf.puts(cx, y, info, txt_color=th.muted)
         cx += len(info) + 2
     msg, t, err = tui.status
