@@ -1956,8 +1956,7 @@ def make_input(on_submit=None):
 def render_list_row(tui, buf, ctx, x, y):
     th = tui.app.theme
     selected = ctx is tui.current
-    approx = "~" if ctx.is_token_count_estimate() else ""
-    toks = f" ({approx}{ctx.token_count()//1000}k)"
+    toks = f" ~{ctx.token_count()//1000}k"
     spin = "/—\\|"[int(time.time() * 12) % 4]
     suffix = f" {spin}" if ctx.is_running() else ""
     if ctx.ui_stack: suffix += " ?"  # needs a human
