@@ -28,3 +28,5 @@ scripts
 .workspace/
 
 .ex6.history/
+
+.ex6.worktrees/

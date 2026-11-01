@@ -219,6 +219,7 @@ class _ClaudeProcess:
         self.system = _system_prompt(ctx)
         self.tools = _mcp_tools(ctx)
         self.native_tools = _native_tools(ctx)
+        self.cwd = ctx.cwd  # proc is spawned here; restart if ctx moves (eg worktrees.attach)
         # What this process has been sent + its replies (claude-code holds the real history), for log_invoke
         self.transcript = [{"role": "system", "content": self.system}]
         self.native_calls = {}  # tool_use_id -> record, until claude echoes its result (may be a later pump)
@@ -361,7 +362,7 @@ class _ClaudeProcess:
             return None
         if self.system != _system_prompt(self.ctx) or self.tools != _mcp_tools(self.ctx):
             return None
-        if self.native_tools != _native_tools(self.ctx):
+        if self.native_tools != _native_tools(self.ctx) or self.cwd != self.ctx.cwd:
             return None
         seen = self.seen
         if len(messages) <= len(seen) or any(a is not b for a, b in zip(seen, messages)):

@@ -24,14 +24,13 @@ API (for project plugins building agents):
 - Forks share the parent's worktree (cwd is copied by `_clone`). Want isolation -> call `attach(fork)` explicitly.
 - Must be called before first invoke. provider_anthropic's long-lived proc is spawned with cwd; add a small check there: if `ctx.cwd` != spawn cwd, restart proc.
 
-Agent awareness: WORKTREE_PROMPT, dynamic system Message (callable content):
-"You are working in a git worktree at {cwd}, branch ex6/<name>, based on <base>. The user's main checkout is elsewhere; don't touch it. Commit as you go. When the task is done and committed, call `merge_worktree`."
-Tool `merge_worktree(ctx)`:
-- refuse if worktree dirty (tell agent to commit).
-- in main repo: refuse if HEAD isn't on base, or main tree has dirty changes overlapping the diff (git refuses anyway; surface its message).
-- `git merge --no-ff ex6/<name>` in main repo. On conflict: `git merge --abort`, tell agent "run `git merge <base>` in your worktree, resolve conflicts, commit, retry".
-- goes through approve_tool, so the user gates merges unless yolo. That's the human checkpoint.
-- after success: worktree stays (agent may continue); cleanup handles it later.
+Agent awareness: WORKTREE_PROMPT, system Message. No merge tool (user: "avoid tool bloat"); agent merges via bash/powershell, which goes through approve_tool anyway (human checkpoint unless yolo).
+Prompt contents: worktree path, branch ex6/<name>, base, main checkout path. Steps:
+1. Commit as you go. Don't touch the main checkout except for the final merge.
+2. When done: `git merge <base>` in worktree, resolve conflicts there, commit.
+3. Check `git -C <main> branch --show-current` == <base>; if not, stop and ask the user.
+4. `git -C <main> merge --ff-only ex6/<name>`. ff-only can't conflict; on failure (user's dirty files overlap), stop and tell the user.
+- After merge: worktree stays (agent may continue); cleanup handles it later.
 
 Commands:
 - `/wt` - attach current ctx to new worktree (refuse if running / has assistant msgs, per anthropic proc note; or just restart proc).

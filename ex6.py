@@ -1125,8 +1125,10 @@ class Context:
 
     def purge_cache(self):
         with self._msg_lock:
-            for message in self._messages:
-                message._snapshot = None
+            for i, message in enumerate(self._messages):
+                if message._snapshot is not None:  # copy: forks share Message objects
+                    self._messages[i] = copy.copy(message)
+                    self._messages[i]._snapshot = None
 
     def token_count(self) -> int:
         with self._msg_lock:
@@ -2303,7 +2305,7 @@ def setup(app: ex6.App):
 '''
 
 def bootstrap():
-    """Create _ex6/my_project.py and pyrightconfig.json in cwd (existing files left alone); gitignore the context dump."""
+    """Create _ex6/my_project.py and pyrightconfig.json in cwd (existing files left alone); gitignore the context dump + worktrees."""
     Path("_ex6").mkdir(exist_ok=True)
     plugin, pyright, gitignore = Path("_ex6/my_project.py"), Path("pyrightconfig.json"), Path(".gitignore")
     if not plugin.exists():
@@ -2312,9 +2314,10 @@ def bootstrap():
     if not pyright.exists():
         pyright.write_text(json.dumps({"extraPaths": [_ex6_dir, os.path.join(_ex6_dir, "_ex6")]}, indent=4))
 
-    if gitignore.exists() and ".EX6_CONTEXT_DUMP.txt" not in gitignore.read_text(encoding="utf-8").splitlines():
-        with gitignore.open("a", newline="") as f:
-            f.write("\n.EX6_CONTEXT_DUMP.txt\n")
+    for entry in (".EX6_CONTEXT_DUMP.txt", ".ex6.worktrees/"):
+        if gitignore.exists() and entry not in gitignore.read_text(encoding="utf-8").splitlines():
+            with gitignore.open("a", newline="") as f:
+                f.write(f"\n{entry}\n")
 
 
 
