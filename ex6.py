@@ -94,7 +94,7 @@ def handler(fn=None, *, order=0):
 
 
 def key(*seqs):
-    """Bind fn(tui, count: int) to selection-mode key sequences, eg @ex6.key("dd", "<C-x>")."""
+    """Bind fn(tui, count: int) to agents-mode key sequences, eg @ex6.key("dd", "<C-x>")."""
     def mark(fn):
         fn._ex6_declaration = "key"
         fn._ex6_keys = seqs
@@ -639,11 +639,11 @@ class Message:
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
     native_calls: Optional[list] = None  # provider-run NativeTool calls ({id, name, args, result}); display/debug only, never sent back
-    overview: Optional[str] = None  # short label for display (e.g. in selection panel)
+    overview: Optional[str] = None  # short label for display (e.g. in agents panel)
     attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
     _current_tokens: Optional[int] = field(default=None, repr=False)
-    _token_estimate: Optional[tuple] = field(default=None, repr=False, compare=False)  # ((text, model), count): selection mode counts every frame
+    _token_estimate: Optional[tuple] = field(default=None, repr=False, compare=False)  # ((text, model), count): agents mode counts every frame
     _render_cache: Optional[tuple] = field(default=None, repr=False, compare=False)  # (text, theme, lines): output_renderer results
 
     def __post_init__(self):
@@ -1962,11 +1962,11 @@ def make_input(on_submit=None):
 
 
 
-# --- SELECTION MODE UI ---
+# --- AGENTS MODE UI ---
 
 
 @_overridable
-def render_selection_mode_context_name(tui, buf, ctx, x, y):
+def render_agents_mode_context_name(tui, buf, ctx, x, y):
     th = tui.app.theme
     selected = ctx is tui.current
     approx = "~" if ctx.is_token_count_estimate() else ""
@@ -1990,7 +1990,7 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
     return x + len(suffix)
 
 @_overridable
-def render_selection_left(tui, buf, inpt, r):
+def render_agents_left(tui, buf, inpt, r):
     x, y, w, h = r
     th = tui.app.theme
     buf.rect_line(r, txt_color=th.accent)
@@ -2005,7 +2005,7 @@ def render_selection_left(tui, buf, inpt, r):
         row = y + 1 + i
         num = f"{i + 1 if selected else abs(i - idx):>{nw}} "  # relativenumber: `3j` at a glance
         buf.puts(x + 1, row, num, txt_color=th.text if selected else th.muted, style='bold' if selected else None)
-        right = max(right, tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(num), row))
+        right = max(right, tui.app.call("render_agents_mode_context_name", tui, buf, ctx, x + 1 + len(num), row))
         if selected:
             buf.fill_bg(x + 1, row, w - 2, 1, th.selection)
     tui.sel_left_w = max(right - x + 2, 12)  # used next frame
@@ -2028,7 +2028,7 @@ def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
     buf.puts(x + bar_w + len(used), y, f" / {ctx.max_tokens//1000}k  {ratio:.0%}", txt_color=th.muted)
 
 @_overridable
-def render_selection_right(tui, buf, r):
+def render_agents_right(tui, buf, r):
     x, y, w, h = r
     th = tui.app.theme
     buf.rect_line(r, txt_color=th.accent)
@@ -2309,12 +2309,7 @@ def _approve_yolo(ctx, tool, args):
 
 @_handleable
 def render_work_mode_footer(tui, buf, r, ctx):
-    x, y, w, h = r
-    th = tui.app.theme
-    on = ctx.yolo
-    buf.puts(x, y, "  YOLO ON" if on else "  yolo OFF",
-             txt_color=th.error if on else th.muted,
-             style='bold' if on else None)
+    pass
 
 def render_workmodefooter_and_commands(tui, buf, r, ctx):
     th = tui.app.theme
@@ -2364,13 +2359,16 @@ def render_status_line(tui, buf, inpt, r):
     th = tui.app.theme
     buf.clear_line(y)
     ctx = tui.current
-    label, bg = (" AGENTS ", th.accent) if tui.mode == "selection" else (" WORK ", th.success)
+    label, bg = (" AGENTS ", th.accent) if tui.mode == "agents" else (" WORK ", th.success)
     buf.puts(x, y, label, txt_color="black", bg_color=bg, style='bold')
     cx = x + len(label) + 1
     if ctx:
         info = f"{ctx.name} · {ctx.reasoning}"
         buf.puts(cx, y, info, txt_color=th.muted)
         cx += len(info) + 2
+        yolo = "YOLO ON" if ctx.yolo else "yolo OFF"
+        buf.puts(cx, y, yolo, txt_color=th.error if ctx.yolo else th.muted, style='bold' if ctx.yolo else None)
+        cx += len(yolo) + 2
     msg, t, err = tui.status
     if msg and time.time() - t < 4:
         buf.puts(cx, y, _one_line(msg)[:max(0, w - cx - 12)], txt_color=th.error if err else th.text)
@@ -2482,12 +2480,12 @@ class TUI:
     app: App
     contexts: list[Context] = field(default_factory=list, init=False)
     current: Optional[Context] = field(default=None, init=False)
-    mode: Literal["selection", "work", "scroll"] = "selection"
-    prev_mode: Literal["selection", "work", "scroll"] = "selection"
+    mode: Literal["agents", "work", "scroll"] = "agents"
+    prev_mode: Literal["agents", "work", "scroll"] = "agents"
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
-    sel_input: bool = False  # selection mode: current's input box is open (space)
-    sel_left_w: int = 20  # selection mode: left panel width, measured last frame
+    sel_input: bool = False  # agents mode: current's input box is open (space)
+    sel_left_w: int = 20  # agents mode: left panel width, measured last frame
     pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
     status: tuple = ("", 0.0, False)  # (msg, time, is_error), see echo()
     favorite: Optional[Context] = None  # template for new agents (`n`)
@@ -2511,7 +2509,7 @@ class TUI:
         return next((c for c in self.contexts if c.name == name), None)
 
     def context_list(self):
-        """Contexts in display order (selection list, `j/k`)."""
+        """Contexts in display order (agents list, `j/k`)."""
         return sorted(self.contexts, key=lambda c: c.name)
 
     def is_unseen(self, ctx):
@@ -2522,7 +2520,7 @@ class TUI:
         self.status = (msg, time.time(), error)
 
     def keys_active(self):
-        return self.mode == "selection" and self.current and not self.sel_input and not self.ui_panel_stack
+        return self.mode == "agents" and self.current and not self.sel_input and not self.ui_panel_stack
 
     def _resolve_keys(self):
         """(fn, count) on a full match, "wait" on a prefix or count, None on no match."""
@@ -2689,16 +2687,16 @@ def _tui_loop(tui: TUI):
         buf.hline((0, input_r[1] + input_r[3], term.width, 1), txt_color=div_color)
         render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
         if inpt.consume('KEY_ESCAPE'):
-            tui.mode = "selection"
+            tui.mode = "agents"
         if inpt.consume('KEY_CTRL_X') and tui.current.is_running():
             tui.current.stop_early = True
-    elif tui.mode == "selection":
+    elif tui.mode == "agents":
         th = tui.app.theme
         left_w = min(tui.sel_left_w, main_r[2] - 12)
         left = Region(main_r[0], main_r[1], left_w, main_r[3])
         right = Region(main_r[0] + left_w, main_r[1], main_r[2] - left_w, main_r[3])
-        tui.app.call("render_selection_left", tui, buf, inpt, left)
-        tui.app.call("render_selection_right", tui, buf, right)
+        tui.app.call("render_agents_left", tui, buf, inpt, left)
+        tui.app.call("render_agents_right", tui, buf, right)
         if tui.sel_input and not tui.current.ui_stack:
             buf.rect_line(input_r, txt_color=th.invoking if tui.current.is_running() else th.accent)
             buf.puts(input_r[0] + 2, input_r[1], f" {tui.current.name} ", txt_color=th.accent_alt)
@@ -2710,11 +2708,11 @@ def _tui_loop(tui: TUI):
         if tui.ui_panel_stack:
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.ui_panel_stack[-1](buf, inpt, r)
-        elif tui.current.ui_stack and (tui.mode == "work" or tui.sel_input):  # selection mode: space/h to answer
+        elif tui.current.ui_stack and (tui.mode == "work" or tui.sel_input):  # agents mode: space/h to answer
             r = Region(3, 2, buf.w - 6, buf.h - 4)
             tui.current.ui_stack[-1](buf, inpt, r)
             if not tui.current.ui_stack: tui.sel_input = False
-        if tui.mode == "selection" and not tui.ui_panel_stack:  # leftover keys: bare ex6 stays navigable
+        if tui.mode == "agents" and not tui.ui_panel_stack:  # leftover keys: bare ex6 stays navigable
             ctxs = tui.context_list()
             idx = ctxs.index(tui.current)
             if not tui.sel_input and inpt.consume('KEY_UP'): tui.current = ctxs[max(0, idx - 1)]

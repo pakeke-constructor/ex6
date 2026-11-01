@@ -87,11 +87,6 @@ def render_work_mode_footer(tui, buf, r, ctx):
         return False
     x, y, w, h = r
     th = tui.app.theme
-    on = ctx.yolo
-    buf.puts(x, y, "  YOLO ON" if on else "  yolo OFF",
-             txt_color=th.error if on else th.muted,
-             style='bold' if on else None)
-
     usage = tui.app.plugin_data.get("anthropic:usage")
     if not usage or "utilization" not in usage:
         msg = "(unknown usage)"

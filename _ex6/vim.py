@@ -1,5 +1,5 @@
 # Dependencies: pyperclip
-# Selection-mode keys. Work mode is for typing prompts; selection mode is for keys.
+# Agents-mode keys. Work mode is for typing prompts; agents mode is for keys.
 # Keys act on tui.current. Leading digits are a count (`3dd`). `?` lists everything.
 
 import re
@@ -228,11 +228,11 @@ def help(tui):
 
 
 def help_lines(app):
-    lines = ["Keys  (selection mode; counts: 3j 2yy 3dd)", ""]
+    lines = ["Keys  (agents mode; counts: 3j 2yy 3dd)", ""]
     for toks, fn in app.keys.items():
         name = "".join(toks).replace(" ", "<space>")
         lines.append(f"  {name:<10} {(fn.__doc__ or '').strip()}")
-    lines += ["", "Commands  (/ in selection mode, or in work-mode input)", ""]
+    lines += ["", "Commands  (/ in agents mode, or in work-mode input)", ""]
     for name, (fn, spec) in sorted(app.iter_commands()):
         args = " ".join(f"<{a}>" for a, _, _ in spec)
         lines.append(f"  /{name} {args}".ljust(24) + " ".join((fn.__doc__ or "").split()))
