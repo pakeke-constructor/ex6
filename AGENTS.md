@@ -131,7 +131,7 @@ Tools / agents:
 - _ex6/agents_sound.py - Freesound SFX sourcing agent (search/download/listen/install + credits). No context by default; projects call `make_sound_agent(app, project, sfx_dir, credits_file, **context_kwargs)` (see `_plugin_examples/_example_sound.py`). Needs FREESOUND_API_KEY in project .env
 - _ex6/inline.py - inline file prompts: line ending in `;;;` launches an agent (watchfiles + git)
 - _ex6/tool_summaries.py - bash/powershell rows show a cheap-model summary (`bash [!] running tests`; `!` = changes things, `?` = read-only), stored in ctx.data
-- _ex6/prompts.py - prompt files `_ex6/_prompts/*.md` (frontmatter); `;name` in a prompt pastes the body verbatim on Enter (transform_user_prompt handler), `;;name` = literal
+- _ex6/sigils.py - `;ssot`, `;git`, `;fast`, etc. in a prompt expand to `<user_reminder>` blocks on Enter (transform_user_prompt handler)
 
 Providers / models:
 - _ex6/provider_util.py - shared provider helpers: `log_invoke` (opt-in via `LOG_INVOKES = True`; every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
