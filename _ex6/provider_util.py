@@ -10,11 +10,10 @@ import ex6
 @ex6.command
 def usage(tui):
     """Show today's spending."""
-    from _ex6.commands import _text_panel
     lines = [
         f"Today: ${tui.app.budget.get_cost():.4f} / ${tui.app.budget.get_limit():.2f}",
     ]
-    _text_panel(tui, lines)
+    ex6.text_panel(tui, lines)
 
 
 def _log_safe(value):

@@ -148,24 +148,6 @@ Be extremely concise, grammatical correctness is not important.
 """
 
 
-def _text_panel(tui, lines):
-    """Push a scrollable text panel. ESC to close."""
-    scroll = [0]
-    def draw(buf, inpt, r):
-        x, y, w, h = r
-        th = tui.app.theme
-        buf.fill(r, ' ')
-        buf.rect_line(r, txt_color=th.accent)
-        if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
-        if inpt.consume('KEY_DOWN'): scroll[0] += 1
-        visible = h - 2
-        max_scroll = max(0, len(lines) - visible)
-        if scroll[0] > max_scroll: scroll[0] = max_scroll
-        for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
-            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
-    tui.ui_panel_stack.append(draw)
-
-
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 

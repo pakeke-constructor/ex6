@@ -58,9 +58,8 @@ def log_native_calls(ctx):
 @ex6.command
 def toolstats(tui, month: Optional[str]):
     'Tool call counts and estimated tokens. Arg: YYYY-MM (default current month) or all.'
-    from _ex6.commands import _text_panel
     if not ENABLED:
-        _text_panel(tui, ["Tool stats disabled. Opt in: set _ex6.tool_stats.ENABLED = True in a plugin setup()."])
+        ex6.text_panel(tui, ["Tool stats disabled. Opt in: set _ex6.tool_stats.ENABLED = True in a plugin setup()."])
         return
     folder = ex6.get_folder("toolstats")
     pattern = "*.jsonl" if month == "all" else f"{month or time.strftime('%Y-%m')}.jsonl"
@@ -73,4 +72,4 @@ def toolstats(tui, month: Optional[str]):
             result_tok[row["tool"]] += row.get("result_tokens", 0)
     lines = [f"{pattern}: {sum(counts.values())} calls", "", f"{'calls':>7}  {'args_tok':>9}  {'result_tok':>10}  tool"]
     lines += [f"{n:>7}  {args_tok[name]:>9}  {result_tok[name]:>10}  {name}" for name, n in counts.most_common()]
-    _text_panel(tui, lines)
+    ex6.text_panel(tui, lines)

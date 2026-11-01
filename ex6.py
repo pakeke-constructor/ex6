@@ -437,9 +437,10 @@ class App:
         return fn
 
     def bind(self, seq, fn):
-        """Bind a key sequence. Raises if it's a prefix of (or prefixed by) another binding: there are no timeouts."""
+        """Bind a key sequence; an exact existing binding is replaced. Raises if it's a prefix of (or prefixed by) another binding: there are no timeouts."""
         toks = split_keys(seq)
         for other in self.keys:
+            if other == toks: continue
             n = min(len(other), len(toks))
             if other[:n] == toks[:n]:
                 raise RuntimeError(f"key {seq!r} conflicts with {''.join(other)!r}")
@@ -1088,6 +1089,7 @@ class Context:
     pending_tools: list[PendingTool] | None = field(default=None, init=False, repr=False)
     _clear_pending: bool = field(default=False, init=False, repr=False)
     _scroll_up: int = 0
+    _zoom: bool = False  # hide the agent list (`w`), per agent
     _input_box: Optional['InputBox'] = None
     _scheduled: Optional[tuple] = field(default=None, init=False, repr=False)
     _pending_inputs: list = field(default_factory=list, init=False, repr=False)
@@ -1417,6 +1419,7 @@ class Context:
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
+        cpy._zoom = False
         cpy.name = new_name
         cpy.parent = self.name
         return cpy
@@ -2019,7 +2022,7 @@ def render_header(tui, buf, r):
     th = tui.app.theme
     ctx = tui.current
 
-    if tui.zoom:
+    if ctx._zoom:
         label = f"{ctx.name}  {ctx.model or ''}"
         buf.puts(x, y, label, txt_color=th.text)
         tui.app.call("render_context_window_bar", tui, buf, ctx, x + len(label) + 2, y, min(w - len(label) - 22, 30))
@@ -2259,7 +2262,7 @@ def render_status_line(tui, buf, inpt, r):
     buf.clear_line(y)
     ctx = tui.current
     label = " NORMAL " if tui.mode == "normal" else " INSERT "
-    if tui.zoom: label += "ZOOM "
+    if ctx and ctx._zoom: label += "ZOOM "
     buf.puts(x, y, label, txt_color="black", bg_color=tui.mode_color(), style='bold')
     cx = x + len(label) + 1
     if ctx:
@@ -2384,7 +2387,6 @@ class TUI:
     prev_mode: Literal["normal", "insert", "scroll"] = "normal"
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
-    zoom: bool = False  # hide the agent list (`w`)
     list_w: int = 20  # left panel width, measured last frame
     transcript_r: Any = Region()  # transcript area, last frame (for scroll keys)
     pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
@@ -2491,6 +2493,268 @@ class TUI:
         self.app.stdout.flush()
 
 
+# --- Normal-mode keymap (agent list focused). Insert mode (input box focused) is for typing. ---
+# Keys act on tui.current. Leading digits are a count (`3dd`). `?` lists everything.
+# Plugins rebind with @ex6.key: binding an existing sequence replaces it.
+
+def text_panel(tui, lines):
+    """Push a scrollable text panel. ESC to close."""
+    scroll = [0]
+    def draw(buf, inpt, r):
+        x, y, w, h = r
+        th = tui.app.theme
+        buf.fill(r, ' ')
+        buf.rect_line(r, txt_color=th.accent)
+        if inpt.consume('KEY_UP') and scroll[0] > 0: scroll[0] -= 1
+        if inpt.consume('KEY_DOWN'): scroll[0] += 1
+        visible = h - 2
+        max_scroll = max(0, len(lines) - visible)
+        if scroll[0] > max_scroll: scroll[0] = max_scroll
+        for i, line in enumerate(lines[scroll[0]:scroll[0] + visible]):
+            buf.puts(x + 2, y + 1 + i, line[:w - 4], txt_color=th.text)
+    tui.ui_panel_stack.append(draw)
+
+
+def _idle(tui):
+    ctx = tui.current
+    if ctx.is_running():
+        tui.echo("running (s to stop)", error=True)
+        return None
+    return ctx
+
+
+def _texts(ctx, role):
+    msgs = [m for m in ctx.get_messages() if m.role == role]
+    return [t for t in (tool_result_text(m.get_msg(ctx)) for m in msgs) if t.strip()]
+
+
+def _nth_last(items, n):
+    return items[-n] if 0 < n <= len(items) else None
+
+
+def _yank(tui, text, what):
+    if text is None: return tui.echo(f"no {what}", error=True)
+    import copykitten
+    copykitten.copy(text)
+    n = text.count("\n") + 1
+    tui.echo(f"yanked {what} ({n} line{'s' * (n > 1)})")
+
+
+def _unique_name(tui, base):
+    base = re.sub(r"\.\d+$", "", base)
+    n = 2
+    while tui.get_context(f"{base}.{n}"): n += 1
+    return f"{base}.{n}"
+
+
+def _add(tui, ctx):
+    tui.add_context(ctx)
+    tui.current = ctx
+    return ctx
+
+
+def _open_input(tui, text=None):
+    if text is not None: tui.current.get_input_box().set_text(text)
+    tui.mode = "insert"
+
+
+def _pop_prompts(tui, n):
+    """Truncate to the Nth-last user prompt. Returns its text, or None."""
+    ctx = _idle(tui)
+    if not ctx: return None
+    msgs = ctx.get_messages()
+    users = [i for i, m in enumerate(msgs) if m.role == "user"]
+    if not users:
+        tui.echo("no prompts", error=True)
+        return None
+    cut = users[-min(n, len(users))]
+    text = tool_result_text(msgs[cut].get_msg(ctx))
+    ctx.truncate(cut)
+    return text
+
+
+@key("j")
+def key_down(tui, n):
+    'Next agent.'
+    ctxs = tui.context_list()
+    tui.current = ctxs[min(len(ctxs) - 1, ctxs.index(tui.current) + n)]
+
+
+@key("k")
+def key_up(tui, n):
+    'Prev agent.'
+    ctxs = tui.context_list()
+    tui.current = ctxs[max(0, ctxs.index(tui.current) - n)]
+
+
+@key(" ", "a")
+def key_prompt(tui, n):
+    'Type a prompt for the agent (or answer its question). Esc back to the list.'
+    _open_input(tui)
+
+
+@key("w")
+def key_zoom(tui, n):
+    'Zoom this agent: hide the agent list (clean copy, long lines).'
+    tui.current._zoom = not tui.current._zoom
+
+
+@key("<C-u>")
+def key_scroll_up(tui, n):
+    'Scroll transcript up half a page.'
+    tui.current._scroll_up += n * max(1, tui.transcript_r[3] // 2)
+
+
+@key("<C-d>")
+def key_scroll_down(tui, n):
+    'Scroll transcript down half a page.'
+    tui.current._scroll_up = max(0, tui.current._scroll_up - n * max(1, tui.transcript_r[3] // 2))
+
+
+@key("/")
+def key_command(tui, n):
+    'Run a /command.'
+    _open_input(tui, "/")
+
+
+@key("h")
+def key_human(tui, n):
+    'Answer the nearest agent that needs a human (? in the list).'
+    ctxs = tui.context_list()
+    i = ctxs.index(tui.current)
+    asks = sorted((c for c in ctxs if c.ui_stack), key=lambda c: abs(ctxs.index(c) - i))
+    if not asks: return tui.echo("nobody needs you")
+    tui.current = asks[0]
+    _open_input(tui)
+
+
+@key("g")
+def key_go(tui, n):
+    'Go: run the agent without a new message.'
+    if ctx := _idle(tui): ctx.invoke()
+
+
+@key("z")
+def key_yolo(tui, n):
+    'Toggle yolo (auto-approve tools).'
+    ctx = tui.current
+    ctx.yolo = not ctx.yolo
+
+
+@key("s", "<C-x>")
+def key_stop(tui, n):
+    'Stop the agent.'
+    if tui.current.is_running(): tui.current.stop_early = True
+
+
+@key("f")
+def key_fork(tui, n):
+    'Fork the agent.'
+    ctx = tui.current
+    _add(tui, ctx.fork(_unique_name(tui, ctx.name)))
+
+
+@key("o")
+def key_fork_prompt(tui, n):
+    'Fork the agent and type a prompt for the fork.'
+    key_fork(tui, n)
+    _open_input(tui)
+
+
+@key("n")
+def key_new(tui, n):
+    'New agent from tui.favorite, type a prompt.'
+    fav = tui.favorite or tui.current
+    ctx = fav.fork(_unique_name(tui, fav.name))
+    ctx.clear()
+    _add(tui, ctx)
+    _open_input(tui, "")
+
+
+@key("yy")
+def key_yank_prompt(tui, n):
+    'Yank Nth-last user prompt.'
+    _yank(tui, _nth_last(_texts(tui.current, "user"), n), "prompt")
+
+
+@key("yr")
+def key_yank_response(tui, n):
+    "Yank agent's Nth-last response."
+    _yank(tui, _nth_last(_texts(tui.current, "assistant"), n), "response")
+
+
+@key("yc")
+def key_yank_code(tui, n):
+    "Yank agent's Nth-last code block."
+    blocks = [m.group(1).rstrip("\n") for t in _texts(tui.current, "assistant")
+              for m in re.finditer(r"```[^\n]*\n(.*?)```", t, re.S)]
+    _yank(tui, _nth_last(blocks, n), "code block")
+
+
+@key("p")
+def key_pop(tui, n):
+    'Pop the last N messages.'
+    ctx = _idle(tui)
+    if not ctx: return
+    msgs = ctx.get_messages()
+    keep = max(len(msgs) - n, sum(1 for m in msgs if m.role == "system"))
+    ctx.truncate(keep)
+    tui.echo(f"popped {len(msgs) - keep} message(s)")
+
+
+@key("dd")
+def key_delete(tui, n):
+    'Delete the current agent.'
+    ctx = tui.current
+    tui.remove_context(ctx)
+    tui.echo(f"deleted {ctx.name}")
+
+
+@key("da")
+def key_delete_spawned(tui, n):
+    "Delete all spawned agents (forks, subagents)."
+    spawned = [c for c in tui.contexts if c.parent is not None]
+    for c in spawned: tui.remove_context(c)
+    tui.echo(f"deleted {len(spawned)} agent(s)")
+
+
+@key("cc")
+def key_change(tui, n):
+    'Pop last user prompt, type a new one.'
+    if _pop_prompts(tui, n) is not None: _open_input(tui, "")
+
+
+@key("ca")
+def key_change_append(tui, n):
+    'Pop last user prompt, edit it.'
+    text = _pop_prompts(tui, n)
+    if text is not None: _open_input(tui, text)
+
+
+@key("?")
+def key_help(tui, n):
+    'Keys and commands.'
+    text_panel(tui, help_lines(tui.app))
+
+
+@command
+def help(tui):
+    'List keys and commands.'
+    text_panel(tui, help_lines(tui.app))
+
+
+def help_lines(app):
+    lines = ["Keys  (normal mode; counts: 3j 2yy 3dd; arrows/PgUp/PgDn scroll)", ""]
+    for toks, fn in app.keys.items():
+        name = "".join(toks).replace(" ", "<space>")
+        lines.append(f"  {name:<10} {(fn.__doc__ or '').strip()}")
+    lines += ["", "Commands  (/ in normal mode, or type /name in the input)", ""]
+    for name, (fn, spec) in sorted(app.iter_commands()):
+        args = " ".join(f"<{a}>" for a, _, _ in spec)
+        lines.append(f"  /{name} {args}".ljust(24) + " ".join((fn.__doc__ or "").split()))
+    return lines
+
+
 def _tui_loop(tui: TUI):
     buf = tui.buf
     _sink = tui.stdout_sink
@@ -2563,11 +2827,11 @@ def _tui_loop(tui: TUI):
 
     th = tui.app.theme
     main_h = term.height - 1  # last row: status line
-    left_w = 0 if tui.zoom else min(tui.list_w, term.width - 12)
-    pad = 0 if tui.zoom else 1
+    left_w = 0 if ctx._zoom else min(tui.list_w, term.width - 12)
+    pad = 0 if ctx._zoom else 1
     x, w = left_w, term.width - left_w
-    top = 0 if tui.zoom else 1  # blank row above the list
-    header_h = 1 if tui.zoom else 3
+    top = 0 if ctx._zoom else 1  # blank row above the list
+    header_h = 1 if ctx._zoom else 3
     input_h = max(1, min(input_box.get_height(w - 2 * pad), main_h // 3))
     footer_r = Region(x, main_h - 1, w, 1)
     insert_pad = 2 if tui.mode == "insert" else 0  # divider + blank row under the prompt
@@ -2605,15 +2869,11 @@ def _tui_loop(tui: TUI):
         page = max(1, transcript_r[3] // 2)
         if inpt.consume('KEY_PGUP'): ctx._scroll_up += page
         if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - page)
+        if inpt.consume('KEY_UP'): ctx._scroll_up += ARROW_SCROLL_SPEED
+        if inpt.consume('KEY_DOWN'): ctx._scroll_up = max(0, ctx._scroll_up - ARROW_SCROLL_SPEED)
         if tui.mode == "insert":
-            if inpt.consume('KEY_UP'): ctx._scroll_up += ARROW_SCROLL_SPEED
-            if inpt.consume('KEY_DOWN'): ctx._scroll_up = max(0, ctx._scroll_up - ARROW_SCROLL_SPEED)
             if inpt.consume('KEY_CTRL_X') and ctx.is_running(): ctx.stop_early = True
         else:
-            ctxs = tui.context_list()
-            idx = ctxs.index(tui.current)
-            if inpt.consume('KEY_UP'): tui.current = ctxs[max(0, idx - 1)]
-            if inpt.consume('KEY_DOWN'): tui.current = ctxs[min(len(ctxs) - 1, idx + 1)]
             if inpt.consume('KEY_ENTER'): tui.mode = "insert"
     if tui.mode != "scroll":  # a command may have left fullscreen this frame
         buf.flush(term, tui.app.stdout)
