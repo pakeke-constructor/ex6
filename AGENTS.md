@@ -88,7 +88,7 @@ Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
 - `@ex6.key("dd", "<C-x>")`: normal-mode (list focused) key binding, `fn(tui, count: int)` (count from leading digits, default 1). No timeouts, so a binding can't be a prefix of another (`app.bind` raises). `tui.echo(msg)` shows a status-line message.
 - `@ex6.override`: replace an overridable fn (call_tools, make_input, render_* fns).
-- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_work_mode_footer, render_tool_call): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn. It runs on input box Enter; a changed prompt is shown first, next Enter sends (`ctx.invoke(text)` sends raw).
+- `@ex6.handler(order=0)`: add a handler to a handleable chain (invoke_llm, approve_tool, supports_audio, render_footer, render_tool_call): first truthy result wins, else default. `transform_user_prompt` is a pipeline instead: each handler transforms the text in turn. It runs on input box Enter; a changed prompt is shown first, next Enter sends (`ctx.invoke(text)` sends raw).
 - `@ex6.output_renderer`: `fn(lines, msg, ctx)` mutates rendered lines in place.
 - `@ex6.after_tool_calls` / `@ex6.after_llm_turn` / `@ex6.context_removed`: context lifecycle hooks.
 </architecture>

@@ -132,23 +132,6 @@ def _coerce_arg(value: str, typ):
         return value
     return typ(value)
 
-@command
-def dbg(tui):
-    tui.enter_scroll_mode()
-    print("="*30)
-    print("DEBUG LOG")
-    print("="*30)
-    print(f"({len(tui.app.debug_buffer)} entries)\n")
-    for line in tui.app.debug_buffer:
-        print(line)
-
-@command
-def yolo(tui):
-    'Toggle auto-approve tools.'
-    ctx = tui.current
-    if not ctx: return
-    ctx.yolo = not ctx.yolo
-
 
 def get_folder(owner: Optional[str] = None) -> Path:
     """Returns app data folder namespaced by owner (plugin id): %APPDATA%/ex6/<owner> on Windows, ~/ex6/<owner> on Unix."""
@@ -638,7 +621,7 @@ class Message:
     tool_calls: Optional[list] = None  # for assistant msgs with tool calls
     tool_call_id: Optional[str] = None  # for tool result msgs
     native_calls: Optional[list] = None  # provider-run NativeTool calls ({id, name, args, result}); display/debug only, never sent back
-    overview: Optional[str] = None  # short label for display (e.g. in agents panel)
+    overview: Optional[str] = None  # short label (system prompt previews)
     attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
     _current_tokens: Optional[int] = field(default=None, repr=False)
@@ -1961,11 +1944,11 @@ def make_input(on_submit=None):
 
 
 
-# --- AGENTS UI ---
+# --- UI ---
 
 
 @_overridable
-def render_agents_mode_context_name(tui, buf, ctx, x, y):
+def render_list_row(tui, buf, ctx, x, y):
     th = tui.app.theme
     selected = ctx is tui.current
     approx = "~" if ctx.is_token_count_estimate() else ""
@@ -1989,7 +1972,7 @@ def render_agents_mode_context_name(tui, buf, ctx, x, y):
     return x + len(suffix)
 
 @_overridable
-def render_agents_left(tui, buf, inpt, r):
+def render_list(tui, buf, inpt, r):
     x, y, w, h = r
     th = tui.app.theme
     buf.vline((x + w - 1, y, 1, h), txt_color=th.muted)
@@ -2005,10 +1988,10 @@ def render_agents_left(tui, buf, inpt, r):
         num = f"{i + 1 if selected else abs(i - idx):>{nw}} "  # relativenumber: `3j` at a glance
         num_color = th.error if selected else th.muted
         buf.puts(x + 1, row, num, txt_color=num_color, style='bold' if selected else None)
-        right = max(right, tui.app.call("render_agents_mode_context_name", tui, buf, ctx, x + 1 + len(num), row))
+        right = max(right, tui.app.call("render_list_row", tui, buf, ctx, x + 1 + len(num), row))
         if selected:
             buf.fill_bg(x + 1, row, w - 2, 1, th.selection)
-    tui.sel_left_w = max(right - x + 2, 12)  # used next frame
+    tui.list_w = max(right - x + 2, 12)  # used next frame
 
 @_overridable
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
@@ -2028,7 +2011,7 @@ def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
     buf.puts(x + bar_w + len(used), y, f" / {ctx.max_tokens//1000}k  {ratio:.0%}", txt_color=th.muted)
 
 @_overridable
-def render_agents_right(tui, buf, r):
+def render_header(tui, buf, r):
     """Header above the transcript: 1 row when zoomed, else 2 rows + divider."""
     x, y, w, h = r
     th = tui.app.theme
@@ -2079,7 +2062,7 @@ def _tool_row(ctx, tc, result):
 
 
 @_overridable
-def render_work_mode(tui, buf, inpt, r):
+def render_transcript(tui, buf, inpt, r):
     x, y, w, h = r
     ctx = tui.current
     th = tui.app.theme
@@ -2098,7 +2081,7 @@ def render_work_mode(tui, buf, inpt, r):
             continue
         text = tool_result_text(msg.get_msg(ctx))
         if msg is pending_assistant and ctx.is_running() and not ctx.llm_suspended and ctx.llm_result is None:
-            cot = ctx.llm_cot if tui.show_cot else ""
+            cot = ctx.llm_cot
             if cot:
                 message_outputs.append(('cot', (cot + ("" if text else "█")).split('\n'), False))
             if cot and not text: continue
@@ -2157,7 +2140,7 @@ def render_work_mode(tui, buf, inpt, r):
 
 
 @_overridable
-def render_work_mode_input(tui, buf, inpt, input_r, input_box):
+def render_input(tui, buf, inpt, input_r, input_box):
     """Returns the submitted InputValue, if any."""
     ctx = tui.current
     th = tui.app.theme
@@ -2233,24 +2216,15 @@ def approve_tool(ctx, tool, args):
     return None
 
 @_handleable
-def render_work_mode_footer(tui, buf, r, ctx):
+def render_footer(tui, buf, r, ctx):
     pass
 
-def render_workmodefooter_and_commands(tui, buf, r, ctx):
+def render_footer_and_commands(tui, buf, r, ctx):
     th = tui.app.theme
     x, y, w, h = r
     text = ctx.get_input_box().get_text()
-    """
-    todo: in future, instead of just "yolo ON" and "yolo OFF",
-    we should have actual 'modes' here.
-    Like, displaying auxiliary information about maybe like, task confidence,
-    or some other stuff, maybe like `plan-mode ON`, or even some other shit.
-
-    Do some thinking; we can do a lot more than this besides just yolo ON/OFF.
-    """
-
     if not text.startswith("/"):
-        tui.app.call("render_work_mode_footer", tui, buf, r, ctx)
+        tui.app.call("render_footer", tui, buf, r, ctx)
         return
 
     query = text[1:].split(" ")[0].lower()
@@ -2409,16 +2383,14 @@ class TUI:
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
     zoom: bool = False  # hide the agent list (`w`)
-    sel_left_w: int = 20  # left panel width, measured last frame
+    list_w: int = 20  # left panel width, measured last frame
     transcript_r: Any = Region()  # transcript area, last frame (for scroll keys)
     pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
     status: tuple = ("", 0.0, False)  # (msg, time, is_error), see echo()
     favorite: Optional[Context] = None  # template for new agents (`n`)
     buf: Any = None
     keyls: list = field(default_factory=list)
-    input_box: Any = None  # per-context; resolved each frame
     stdout_sink: Any = None
-    show_cot: bool = True
     log_keys: bool = False
 
     def add_context(self, ctx):
@@ -2572,7 +2544,7 @@ def _tui_loop(tui: TUI):
         tui.feed_keys(inpt)
     ctx = tui.current
     ctx.last_seen = time.time()
-    input_box = tui.input_box = ctx.get_input_box()  # a key may have switched agent
+    input_box = ctx.get_input_box()  # a key may have switched agent
 
     if tui.mode == "scroll":
         if inpt._keys:
@@ -2585,7 +2557,7 @@ def _tui_loop(tui: TUI):
 
     th = tui.app.theme
     main_h = term.height - 1  # last row: status line
-    left_w = 0 if tui.zoom else min(tui.sel_left_w, term.width - 12)
+    left_w = 0 if tui.zoom else min(tui.list_w, term.width - 12)
     pad = 0 if tui.zoom else 1
     x, w = left_w, term.width - left_w
     top = 0 if tui.zoom else 1  # blank row above the list
@@ -2599,21 +2571,21 @@ def _tui_loop(tui: TUI):
     focus_inpt = inpt if focused else InputPass([])  # unfocused: read-only
 
     # Transcript first; it doesn't clip, so blank what it spilled into above/below.
-    tui.app.call("render_work_mode", tui, buf, focus_inpt, transcript_r)
+    tui.app.call("render_transcript", tui, buf, focus_inpt, transcript_r)
     buf.fill(Region(x, 0, w, top + header_h), ' ')
     buf.fill(Region(x, div_y, w, main_h - div_y), ' ')
     if left_w:
-        tui.app.call("render_agents_left", tui, buf, inpt, Region(0, top, left_w, main_h - top))
-    tui.app.call("render_agents_right", tui, buf, Region(x, top, w, header_h))
+        tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, main_h - top))
+    tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
     buf.hline((x, div_y, w, 1), txt_color=th.invoking if ctx.is_running() else th.muted)
     if left_w: buf.put(x - 1, div_y, '├', txt_color=th.muted)
 
     if ctx.ui_stack:  # needs a human: answer in place of the transcript
         ctx.ui_stack[-1](buf, focus_inpt, transcript_r)
         if focused and not ctx.ui_stack and tui.mode == "insert": tui.mode = "normal"
-    elif tui.app.call("render_work_mode_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
+    elif tui.app.call("render_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
         tui.mode = "normal"
-    render_workmodefooter_and_commands(tui, buf, footer_r, ctx)
+    render_footer_and_commands(tui, buf, footer_r, ctx)
     tui.app.call("render_status_line", tui, buf, inpt, Region(0, main_h, term.width, 1))
 
     if tui.ui_panel_stack:

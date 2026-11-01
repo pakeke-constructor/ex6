@@ -92,6 +92,18 @@ def format_context(ctx) -> str:
 
 
 @ex6.command
+def dbg(tui):
+    'Print the debug log to the real terminal (any key returns).'
+    tui.enter_scroll_mode()
+    print("=" * 30)
+    print("DEBUG LOG")
+    print("=" * 30)
+    print(f"({len(tui.app.debug_buffer)} entries)\n")
+    for line in tui.app.debug_buffer:
+        print(line)
+
+
+@ex6.command
 def dbg_keys(tui):
     'Toggle key debug logging.'
     tui.log_keys = not tui.log_keys

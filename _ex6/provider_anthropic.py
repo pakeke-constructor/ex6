@@ -82,7 +82,7 @@ def _fmt_reset(secs):
 
 
 @ex6.handler
-def render_work_mode_footer(tui, buf, r, ctx):
+def render_footer(tui, buf, r, ctx):
     if ctx.get_invoker() is not invoke_anthropic:
         return False
     x, y, w, h = r

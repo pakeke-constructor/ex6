@@ -48,8 +48,8 @@ def draw_cube(buf, cx, cy, size, t, bg='black'):
 
 
 @ex6.override
-def render_work_mode(tui, buf, inpt, r):
-    tui.app.get_implementation('render_work_mode', default=True)(tui, buf, inpt, r)
+def render_transcript(tui, buf, inpt, r):
+    tui.app.get_implementation('render_transcript', default=True)(tui, buf, inpt, r)
     ctx = tui.current
     if not ctx.is_running():
         return
