@@ -254,7 +254,7 @@ def custom_setup(app: ex6.App, messages: list):
         add_native_webtools(ctx)
         ctx.after_tool_calls(context_usage_reminder)
         tui.add_context(ctx)
-    tui.current = tui.get_context(SOL["name"])
+    tui.current = tui.get_context(OPUS["name"])
     tui.favorite = tui.current
 
 
