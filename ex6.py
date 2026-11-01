@@ -1993,16 +1993,16 @@ def render_agents_mode_context_name(tui, buf, ctx, x, y):
 def render_agents_left(tui, buf, inpt, r):
     x, y, w, h = r
     th = tui.app.theme
-    buf.rect_line(r, txt_color=th.accent)
+    buf.vline((x + w - 1, y, 1, h), txt_color=th.muted)
 
     ctxs = tui.context_list()
     idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
 
     right, nw = 0, len(str(len(ctxs)))
     for i, ctx in enumerate(ctxs):
-        if i >= h - 2: break
+        if i >= h: break
         selected = (ctx is tui.current)
-        row = y + 1 + i
+        row = y + i
         num = f"{i + 1 if selected else abs(i - idx):>{nw}} "  # relativenumber: `3j` at a glance
         num_color = th.text if selected else th.error if abs(i - idx) == 4 else th.muted
         buf.puts(x + 1, row, num, txt_color=num_color, style='bold' if selected else None)
@@ -2032,47 +2032,47 @@ def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
 def render_agents_right(tui, buf, r):
     x, y, w, h = r
     th = tui.app.theme
-    buf.rect_line(r, txt_color=th.accent)
 
     ctx = tui.current
-    buf.puts(x + 2, y + 1, ctx.name, txt_color=th.accent_alt, style='bold')
-    model_x = x + 2 + len(ctx.name) + 2
+    buf.puts(x + 1, y, ctx.name, txt_color=th.accent_alt, style='bold')
+    model_x = x + 1 + len(ctx.name) + 2
     try: via = ctx.get_invoker().__module__.rsplit(".", 1)[-1]
     except RuntimeError: via = "no provider"
     model = ctx.model or ""
-    buf.puts(model_x, y + 1, model, txt_color=th.text)
-    buf.puts(model_x + len(model), y + 1, f"  · {via}", txt_color=th.muted)
+    buf.puts(model_x, y, model, txt_color=th.text)
+    buf.puts(model_x + len(model), y, f"  · {via}", txt_color=th.muted)
     budget = tui.app.budget
     cost_str = f"${budget.get_cost():.2f}"
     limit_str = f" / ${budget.get_limit():.2f}"
-    budget_x = x + w - len(cost_str) - len(limit_str) - 2
-    buf.puts(budget_x, y + 1, cost_str, txt_color=th.error if budget.is_over() else th.success)
-    buf.puts(budget_x + len(cost_str), y + 1, limit_str, txt_color=th.muted)
+    budget_x = x + w - len(cost_str) - len(limit_str) - 1
+    buf.puts(budget_x, y, cost_str, txt_color=th.error if budget.is_over() else th.success)
+    buf.puts(budget_x + len(cost_str), y, limit_str, txt_color=th.muted)
 
     bar_w = min(w - 4, 20)
-    tui.app.call("render_context_window_bar", tui, buf, ctx, x + 2, y + 2, bar_w)
+    tui.app.call("render_context_window_bar", tui, buf, ctx, x + 1, y + 1, bar_w)
 
-    buf.hline((x + 1, y + 3, w - 2, 1), txt_color=th.accent)
+    buf.hline((x, y + 2, w, 1), txt_color=th.muted)
+    buf.put(x - 1, y + 2, '├', txt_color=th.muted)  # join left panel's divider
 
-    msgs_end_x = x + w - 2
+    msgs_end_x = x + w - 1
     tools = [f"{name} (native)" if isinstance(fn, NativeTool) else name for name, fn in ctx.get_tools().items()]
     if tools:
         msgs_end_x = _render_tools_column(buf, r, tools, th)
 
     groups = _group_agent_turns(ctx.get_messages())
     if not groups:
-        buf.puts(x + 2, y + 4, "(no messages)", style='dim')
+        buf.puts(x + 1, y + 3, "(no messages)", style='dim')
         return
 
     rows = []
     for group in groups:
         rows.extend(_overview_rows(group, th))
 
-    last_row_y = y + h - 2
-    for row_y, (segments, bg) in enumerate(rows, start=y + 4):
+    last_row_y = y + h - 1
+    for row_y, (segments, bg) in enumerate(rows, start=y + 3):
         if row_y > last_row_y: break
-        buf.puts(x + 1, row_y, " " * (msgs_end_x - x - 1), bg_color=bg)
-        seg_x = x + 2
+        buf.puts(x, row_y, " " * (msgs_end_x - x), bg_color=bg)
+        seg_x = x + 1
         for text, color in segments:
             text = text[:max(0, msgs_end_x - seg_x)]
             buf.puts(seg_x, row_y, text, txt_color=color, bg_color=bg)
@@ -2083,13 +2083,12 @@ def _render_tools_column(buf, r, tools, th):
     """Draw tool names on the right edge, behind a vertical separator. Returns the x where messages must stop."""
     x, y, w, h = r
     names_w = min(max(len(t) for t in tools), (w - 4) // 3)
-    names_x = x + w - 2 - names_w
+    names_x = x + w - 1 - names_w
     sep_x = names_x - 2
-    buf.vline((sep_x, y + 4, 1, h - 5), txt_color=th.accent)
-    buf.put(sep_x, y + 3, '┬', txt_color=th.accent)
-    buf.put(sep_x, y + h - 1, '┴', txt_color=th.accent)
-    for i, name in enumerate(tools[:h - 5]):
-        buf.puts(names_x, y + 4 + i, name[:names_w], txt_color=th.accent_alt, style='bold')
+    buf.vline((sep_x, y + 3, 1, h - 3), txt_color=th.muted)
+    buf.put(sep_x, y + 2, '┬', txt_color=th.muted)
+    for i, name in enumerate(tools[:h - 3]):
+        buf.puts(names_x, y + 3 + i, name[:names_w], txt_color=th.accent_alt, style='bold')
     return sep_x - 1
 
 
@@ -2694,8 +2693,9 @@ def _tui_loop(tui: TUI):
     elif tui.mode == "agents":
         th = tui.app.theme
         left_w = min(tui.sel_left_w, main_r[2] - 12)
-        left = Region(main_r[0], main_r[1], left_w, main_r[3])
-        right = Region(main_r[0] + left_w, main_r[1], main_r[2] - left_w, main_r[3])
+        top, h = main_r[1] + 1, main_r[3] - 1  # 1 row padding at top
+        left = Region(main_r[0], top, left_w, h)
+        right = Region(main_r[0] + left_w, top, main_r[2] - left_w, h)
         tui.app.call("render_agents_left", tui, buf, inpt, left)
         tui.app.call("render_agents_right", tui, buf, right)
         if tui.sel_input and not tui.current.ui_stack:
