@@ -402,7 +402,7 @@ class Theme:
     error: Color = "red"
     running: Color = "bright_blue"
     invoking: Color = "bright_yellow"
-    selection: Color = "red"
+    selection: Color = (70, 20, 35)  # selected row bg
     error_bg: Color = (80, 0, 0)
     diff_add_bg: Color = (18, 60, 18)
     diff_del_bg: Color = (60, 18, 18)
@@ -1987,6 +1987,7 @@ def render_selection_mode_context_name(tui, buf, ctx, x, y):
     buf.puts(x, y, toks, txt_color=th.muted)
     x += len(toks)
     buf.puts(x, y, suffix, txt_color=th.warning)
+    return x + len(suffix)
 
 @_overridable
 def render_selection_left(tui, buf, inpt, r):
@@ -1997,13 +1998,17 @@ def render_selection_left(tui, buf, inpt, r):
     ctxs = tui.context_list()
     idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
 
+    right, nw = 0, len(str(len(ctxs)))
     for i, ctx in enumerate(ctxs):
         if i >= h - 2: break
         selected = (ctx is tui.current)
         row = y + 1 + i
-        num = f"{i + 1:>3} " if selected else f"{abs(i - idx):>3} "  # relativenumber: `3j` at a glance
-        buf.puts(x + 1, row, num, txt_color=th.selection if selected else th.muted, style='bold' if selected else None)
-        tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(num), row)
+        num = f"{i + 1 if selected else abs(i - idx):>{nw}} "  # relativenumber: `3j` at a glance
+        buf.puts(x + 1, row, num, txt_color=th.text if selected else th.muted, style='bold' if selected else None)
+        right = max(right, tui.app.call("render_selection_mode_context_name", tui, buf, ctx, x + 1 + len(num), row))
+        if selected:
+            buf.fill_bg(x + 1, row, w - 2, 1, th.selection)
+    tui.sel_left_w = max(right - x + 2, 12)  # used next frame
 
 @_overridable
 def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
@@ -2482,6 +2487,7 @@ class TUI:
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
     sel_input: bool = False  # selection mode: current's input box is open (space)
+    sel_left_w: int = 20  # selection mode: left panel width, measured last frame
     pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
     status: tuple = ("", 0.0, False)  # (msg, time, is_error), see echo()
     favorite: Optional[Context] = None  # template for new agents (`n`)
@@ -2688,7 +2694,9 @@ def _tui_loop(tui: TUI):
             tui.current.stop_early = True
     elif tui.mode == "selection":
         th = tui.app.theme
-        left, right = main_r.split_horizontal(1, 3)
+        left_w = min(tui.sel_left_w, main_r[2] - 12)
+        left = Region(main_r[0], main_r[1], left_w, main_r[3])
+        right = Region(main_r[0] + left_w, main_r[1], main_r[2] - left_w, main_r[3])
         tui.app.call("render_selection_left", tui, buf, inpt, left)
         tui.app.call("render_selection_right", tui, buf, right)
         if tui.sel_input and not tui.current.ui_stack:
