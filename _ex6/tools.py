@@ -1698,7 +1698,7 @@ Ignore your old task; your new task is this:
 <task>
 {task}
 </task>
-(There are {peer_count} other agents running in the same directory as you.)
+(There's {peer_count} other agent(s) running in the same directory as you.)
 """
 
 SUBAGENT_PROMPT = """\
@@ -1706,7 +1706,7 @@ You are a subagent, who has been given the following task:
 <task>
 {task}
 </task>
-(There are {peer_count} other agents running in the same directory as you.)
+(There's {peer_count} other agent(s) running in the same directory as you.)
 """
 
 def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
