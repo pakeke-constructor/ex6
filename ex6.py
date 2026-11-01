@@ -2744,6 +2744,12 @@ def key_delete_spawned(tui, n):
 
 
 @key("cc")
+def key_clear(tui, n):
+    'Clear context messages, keeping the system prompt.'
+    tui.current.clear()
+
+
+@key("cp")
 def key_change(tui, n):
     'Pop last user prompt, type a new one.'
     if _pop_prompts(tui, n) is not None: _open_input(tui, "")

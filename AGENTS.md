@@ -163,7 +163,7 @@ Left panel - list of named contexts (agents); select one to work in.
 Right panel - The chat window. Contains the selected agent: header (name, model, provider, budget, ctx bar, tool count), its full transcript (scrollable), and its input box + footer (/command autocomplete).
 
 Follows a vim-like style:
-NORMAL = list focused, keys active. Core keymap: j k, space/a (prompt the selected agent), / (command), h (answer agent needing a human), g go, z yolo, w zoom, ctrl-u/d scroll, s/ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc (yank), p dd da cc ca, ?. `?` and /help list them (`ex6.text_panel`).
+NORMAL = list focused, keys active. Core keymap: j k, space/a (prompt the selected agent), / (command), h (answer agent needing a human), g go, z yolo, w zoom, ctrl-u/d scroll, s/ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc (yank), p dd da cc cp ca, ?. `?` and /help list them (`ex6.text_panel`).
 INSERT = typing in the selected agent's input box. `space`/`a`/Enter focus the input; Esc (or submitting) returns to the list.
 
 Arrows and PgUp/PgDn always scroll the transcript (any mode); `<C-u>`/`<C-d>` in NORMAL. Only j/k switch agents.
