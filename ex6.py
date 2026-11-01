@@ -2004,7 +2004,7 @@ def render_agents_left(tui, buf, inpt, r):
         selected = (ctx is tui.current)
         row = y + i
         num = f"{i + 1 if selected else abs(i - idx):>{nw}} "  # relativenumber: `3j` at a glance
-        num_color = th.text if selected else th.error if abs(i - idx) == 4 else th.muted
+        num_color = th.error if selected else th.muted
         buf.puts(x + 1, row, num, txt_color=num_color, style='bold' if selected else None)
         right = max(right, tui.app.call("render_agents_mode_context_name", tui, buf, ctx, x + 1 + len(num), row))
         if selected:
