@@ -5,11 +5,11 @@ import os
 import re
 import secrets
 import shutil
-import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Optional
+from git import Repo, GitCommandError
 import ex6
 
 CLEANUP_MB = 500
@@ -17,13 +17,9 @@ STALE_DAYS = 7
 WORKTREE_COPY = [".env"]  # untracked files copied into new worktrees
 
 
-def _git(cwd, *args):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-
-
 def _root():
     """Main checkout root (from the process cwd, not a ctx)."""
-    return Path(_git(os.getcwd(), "rev-parse", "--show-toplevel").stdout.strip())
+    return Path(Repo(os.getcwd(), search_parent_directories=True).working_tree_dir)
 
 
 def _wt_dir():
@@ -44,16 +40,15 @@ Commit as you go. When the task is done:
 def attach(ctx: ex6.Context, base=None) -> str:
     """Give ctx a new worktree + branch. Call before invoking (or on an idle ctx)."""
     root = _root()
-    base = base or _git(root, "branch", "--show-current").stdout.strip()
+    repo = Repo(root)
+    base = base or repo.git.branch("--show-current").strip()
     if not base:
         raise RuntimeError("main checkout has no current branch; pass base=")
     slug = re.sub(r"[^\w-]+", "-", ctx.name).strip("-").lower() or "agent"
     name = f"{slug}-{secrets.token_hex(2)}"
     branch = f"ex6/{name}"
     path = root / ".ex6.worktrees" / name
-    r = _git(root, "worktree", "add", "-b", branch, str(path), base)
-    if r.returncode:
-        raise RuntimeError(r.stderr.strip())
+    repo.git.worktree("add", "-b", branch, str(path), base)
     for f in WORKTREE_COPY:
         if (root / f).is_file():
             shutil.copy2(root / f, path / f)
@@ -88,9 +83,9 @@ def _info(path):
     name = path.name
     marker = path.parent / f"{name}.used"
     base = marker.read_text(encoding="utf-8").strip() if marker.exists() else ""
-    root = _root()
-    merged = bool(base) and _git(root, "merge-base", "--is-ancestor", f"ex6/{name}", base).returncode == 0
-    dirty = bool(_git(path, "status", "--porcelain").stdout.strip())
+    repo = Repo(path)
+    merged = bool(base) and repo.is_ancestor(f"ex6/{name}", base)
+    dirty = repo.is_dirty(untracked_files=True)
     used = marker.stat().st_mtime if marker.exists() else path.stat().st_mtime
     return {"name": name, "base": base, "merged": merged, "dirty": dirty, "used": used}
 
@@ -106,19 +101,26 @@ def _size(path):
     return total
 
 
-def _remove(path, info, app):
-    root = _root()
-    if info["dirty"]:
-        _git(path, "add", "-A")
-        _git(path, "commit", "-m", "ex6: wip (auto-cleanup)")
-    r = _git(root, "worktree", "remove", "--force", str(path))
-    if r.returncode:
-        app.debug_print(f"[worktrees] remove {path.name} failed: {r.stderr.strip()}")
-        return
-    if info["merged"]:  # unmerged branches stay: work is recoverable
-        _git(root, "branch", "-D", f"ex6/{path.name}")
+def _remove(path, app):
+    repo = Repo(path)
+    main = Repo(_root())
+    try:
+        if repo.is_dirty(untracked_files=True):
+            repo.git.add("-A")
+            repo.git.commit("-m", "ex6: wip (auto-cleanup)")
+        info = _info(path)
+        if info["dirty"]:
+            app.debug_print(f"[worktrees] {path.name} still dirty after auto-commit; keeping it")
+            return False
+        main.git.worktree("remove", "--force", str(path))
+        if info["merged"]:  # unmerged branches stay: work is recoverable
+            main.git.branch("-D", f"ex6/{path.name}")
+    except GitCommandError as e:
+        app.debug_print(f"[worktrees] cleanup {path.name} failed: {e}")
+        return False
     (path.parent / f"{path.name}.used").unlink(missing_ok=True)
     app.debug_print(f"[worktrees] removed {path.name}")
+    return True
 
 
 def cleanup(app):
@@ -126,7 +128,7 @@ def cleanup(app):
     folder = _wt_dir()
     if not folder.is_dir():
         return
-    _git(_root(), "worktree", "prune")
+    Repo(_root()).git.worktree("prune")
     paths = [p for p in folder.iterdir() if p.is_dir()]
     sizes = {p: _size(p) for p in paths}
     total = sum(sizes.values())
@@ -138,8 +140,8 @@ def cleanup(app):
         p = info["path"]
         if time.time() - info["used"] < STALE_DAYS * 86400 or _norm(p) in live:
             continue
-        _remove(p, info, app)
-        total -= sizes[p]
+        if _remove(p, app):
+            total -= sizes[p]
 
 
 @ex6.after_llm_turn
@@ -159,7 +161,7 @@ def _on_removed(ctx):
         return
     info = _info(path)
     if info["merged"] and not info["dirty"]:
-        _remove(path, info, ctx.app)
+        _remove(path, ctx.app)
 
 
 @ex6.command

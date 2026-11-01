@@ -2752,6 +2752,7 @@ def key_delete_spawned(tui, n):
 def key_clear(tui, n):
     'Clear context messages, keeping the system prompt.'
     tui.current.clear()
+    _open_input(tui)
 
 
 @key("cp")
