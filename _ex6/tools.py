@@ -1684,9 +1684,13 @@ def git_working_tree(ctx: ex6.Context) -> str:
     )
 
 
-def _count_peers(cwd):
-    # counts how many running agents there are with the same `cwd` as this
-    return N
+def _count_peers(ctx):
+    contexts = ctx.app.tui.contexts if ctx.app.tui else [ctx]
+    cwd = os.path.normcase(os.path.abspath(ctx.resolve(".")))
+    return sum(
+        c.is_running() and os.path.normcase(os.path.abspath(c.resolve("."))) == cwd
+        for c in contexts
+    )
 
 SUBAGENT_PROMPT_FORK = """\
 You have been forked as a subagent by the parent agent.
@@ -1709,6 +1713,7 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
     """
     Runs an agent (identical to you in every way) and returns its final response.
     Subagents cannot spawn subagents, but they can run tools, and do everything the same as you.
+    Use it to delegate tasks in a context-efficient way.
 
     fork=True keeps conversation history and cached prompts for related work. 
     - I.e. the subagent is a direct copy of you, knows everything that you know.
@@ -1716,7 +1721,7 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
 
     fork=False keeps system prompts but starts fresh for an unrelated task.
     - Use fork=False when the task is completely unrelated to your task.
-    - Also use fork if the task will be quite long/tedious (ie a big websearch, or a broad exploration question)
+    - Also use fork=False if the task will be quite long/tedious (ie a big websearch, or a broad exploration question)
     """
     if "tools:subagent_depth" in ctx.data:
         raise RuntimeError("Subagents cannot create subagents")
@@ -1727,7 +1732,8 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
         sub.clear()
     sub.data["tools:subagent_depth"] = 1
     sub.ephemeral = True
-    sub.invoke(msg)
+    prompt = SUBAGENT_PROMPT_FORK if fork else SUBAGENT_PROMPT
+    sub.invoke(prompt.format(task=msg, peer_count=_count_peers(ctx)))
     if ctx.app.tui:
         ctx.app.tui.add_context(sub)
 

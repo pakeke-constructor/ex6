@@ -82,6 +82,29 @@ Guidelines for executing a plan:
 - Plans are usually not final; if you find a smarter/more robust way to do something, do it.
 - When done, delete/remove the plan file.
 </plans>
+
+<subagents>
+Subagents are very useful delegation tools.
+
+Rule of thumb:
+You should use use a subagent when the result is more important than the process.
+
+Examples of good subagent usages:
+- A YES/NO question, "Let me check, are entries automatically cleaned up? explore `ingestion/` service." => Answer=Yes: good, no worries. Answer=No: time to explore further.
+- A deep domain question, "Who provides access to data about foobar? Compare some providers"
+- Tests and checks; "Smoke test the stuff we just made. If there are bugs, keep the smoke_test file and fill me in."
+- Use it when you have a small self-contained tasks that you want to execute in parallel.
+- "I feel like `xyz` system I just wrote is too complex, can step back and look for simplifications / better ideas?" <-- EXCELLENT USAGE; Allows an agent to focus entirely on one thing.
+
+Examples of bad subagent usages:
+- "Is `auth.sign_key()` used anywhere?" BAD: just search yourself.
+- "Read this function and paste it back." BAD: just read yourself.
+- Giving 2 subagents overlapping tasks. BAD.
+
+Common idiom:
+Getting a `fork=True` subagent to implement something complex/ill-defined for you, and then checking the git diff.
+You will save a lot of tokens if you use subagents well.
+</subagents>
 </agent_tactics>
 
 <output_rules>
@@ -114,7 +137,8 @@ GOOD: "Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:"
 # SMART_MODEL = "openai/gpt-5.2-codex"
 # SMART_MODEL  "openai/gpt-5.1-codex-mini"
 # SMART_MODEL = M.SONNET_46.id
-SMART_MODEL = M.OPUS_46.id
+SMART_MODEL = M.OPUS_46.idx
+
 ANALYTICAL_MODEL = M.GPT_52_CODEX.id
 
 
@@ -139,7 +163,7 @@ ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, rea
 READ = [read_file, read_image, glob, search, read_headers, read_body]
 WRITE = [write_file, edit_file]
 SHELL = [COMMANDLINE_TOOL, git_working_tree]
-SUBAGENTS = [explore_agent, subagent]
+SUBAGENTS = [subagent]
 ASK = [ask_user_question]
 
 MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + ASK + [handoff, load_skill]
