@@ -1,5 +1,5 @@
 # Dependencies: pyperclip
-# Agents-mode keys. Work mode is for typing prompts; agents mode is for keys.
+# Normal-mode keys (agent list focused). Insert mode (input box focused) is for typing.
 # Keys act on tui.current. Leading digits are a count (`3dd`). `?` lists everything.
 
 import re
@@ -48,7 +48,7 @@ def _add(tui, ctx):
 
 def _open_input(tui, text=None):
     if text is not None: tui.current.get_input_box().set_text(text)
-    tui.sel_input = True
+    tui.mode = "insert"
 
 
 def _pop_prompts(tui, n):
@@ -84,8 +84,26 @@ def up(tui, n):
 
 @key(" ", "a")
 def prompt(tui, n):
-    'Type a prompt for the agent (or answer its question), without leaving the list. Enter on empty = work mode.'
+    'Type a prompt for the agent (or answer its question). Esc back to the list.'
     _open_input(tui)
+
+
+@key("w")
+def zoom(tui, n):
+    'Zoom: hide the agent list (clean copy, long lines).'
+    tui.zoom = not tui.zoom
+
+
+@key("<C-u>")
+def scroll_up(tui, n):
+    'Scroll transcript up half a page.'
+    tui.current._scroll_up += n * max(1, tui.transcript_r[3] // 2)
+
+
+@key("<C-d>")
+def scroll_down(tui, n):
+    'Scroll transcript down half a page.'
+    tui.current._scroll_up = max(0, tui.current._scroll_up - n * max(1, tui.transcript_r[3] // 2))
 
 
 @key("/")
@@ -228,11 +246,11 @@ def help(tui):
 
 
 def help_lines(app):
-    lines = ["Keys  (agents mode; counts: 3j 2yy 3dd)", ""]
+    lines = ["Keys  (normal mode; counts: 3j 2yy 3dd)", ""]
     for toks, fn in app.keys.items():
         name = "".join(toks).replace(" ", "<space>")
         lines.append(f"  {name:<10} {(fn.__doc__ or '').strip()}")
-    lines += ["", "Commands  (/ in agents mode, or in work-mode input)", ""]
+    lines += ["", "Commands  (/ in normal mode, or type /name in the input)", ""]
     for name, (fn, spec) in sorted(app.iter_commands()):
         args = " ".join(f"<{a}>" for a, _, _ in spec)
         lines.append(f"  /{name} {args}".ljust(24) + " ".join((fn.__doc__ or "").split()))

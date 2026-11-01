@@ -4,7 +4,7 @@ import sys
 import json
 import hashlib
 from pathlib import Path
-from collections import deque, Counter
+from collections import deque
 from datetime import datetime
 import math
 import itertools
@@ -94,7 +94,7 @@ def handler(fn=None, *, order=0):
 
 
 def key(*seqs):
-    """Bind fn(tui, count: int) to agents-mode key sequences, eg @ex6.key("dd", "<C-x>")."""
+    """Bind fn(tui, count: int) to agent-list (normal mode) key sequences, eg @ex6.key("dd", "<C-x>")."""
     def mark(fn):
         fn._ex6_declaration = "key"
         fn._ex6_keys = seqs
@@ -642,7 +642,7 @@ class Message:
     attachments: dict[str, Attachment] = field(default_factory=dict)
     _snapshot: Optional[str] = field(default=None, repr=False) # Snapshot ensures caching holds when we have callable messages with dynamic content
     _current_tokens: Optional[int] = field(default=None, repr=False)
-    _token_estimate: Optional[tuple] = field(default=None, repr=False, compare=False)  # ((text, model), count): agents mode counts every frame
+    _token_estimate: Optional[tuple] = field(default=None, repr=False, compare=False)  # ((text, model), count): agent list counts every frame
     _render_cache: Optional[tuple] = field(default=None, repr=False, compare=False)  # (text, theme, lines): output_renderer results
 
     def __post_init__(self):
@@ -1079,7 +1079,7 @@ class Context:
     llm_output_type: str = ""
     last_invoke_time_end: float = 0
     last_invoke_time_start: float = 0
-    last_seen: float = 0  # last frame the user had this context open in work mode
+    last_seen: float = 0  # last frame this context was selected
     llm_result: Optional[LLMResult] = None
     ui_stack: list = field(default_factory=list)
     llm_suspended: bool = False
@@ -1961,7 +1961,7 @@ def make_input(on_submit=None):
 
 
 
-# --- AGENTS MODE UI ---
+# --- AGENTS UI ---
 
 
 @_overridable
@@ -2029,10 +2029,17 @@ def render_context_window_bar(tui, buf, ctx, x, y, bar_w):
 
 @_overridable
 def render_agents_right(tui, buf, r):
+    """Header above the transcript: 1 row when zoomed, else 2 rows + divider."""
     x, y, w, h = r
     th = tui.app.theme
-
     ctx = tui.current
+
+    if tui.zoom:
+        label = f"{ctx.name}  {ctx.model or ''}"
+        buf.puts(x, y, label, txt_color=th.text)
+        tui.app.call("render_context_window_bar", tui, buf, ctx, x + len(label) + 2, y, min(w - len(label) - 22, 30))
+        return
+
     buf.puts(x + 1, y, ctx.name, txt_color=th.accent_alt, style='bold')
     model_x = x + 1 + len(ctx.name) + 2
     try: via = ctx.get_invoker().__module__.rsplit(".", 1)[-1]
@@ -2049,109 +2056,17 @@ def render_agents_right(tui, buf, r):
 
     bar_w = min(w - 4, 20)
     tui.app.call("render_context_window_bar", tui, buf, ctx, x + 1, y + 1, bar_w)
+    tools = ctx.get_tools()
+    native = sum(isinstance(fn, NativeTool) for fn in tools.values())
+    tools_str = f"{len(tools)} tools" + (f" ({native} native)" if native else "")
+    buf.puts(x + w - len(tools_str) - 1, y + 1, tools_str, txt_color=th.muted)
 
     buf.hline((x, y + 2, w, 1), txt_color=th.muted)
     buf.put(x - 1, y + 2, '├', txt_color=th.muted)  # join left panel's divider
 
-    msgs_end_x = x + w - 1
-    tools = [f"{name} (native)" if isinstance(fn, NativeTool) else name for name, fn in ctx.get_tools().items()]
-    if tools:
-        msgs_end_x = _render_tools_column(buf, r, tools, th)
-
-    groups = _group_agent_turns(ctx.get_messages())
-    if not groups:
-        buf.puts(x + 1, y + 3, "(no messages)", style='dim')
-        return
-
-    rows = []
-    for group in groups:
-        rows.extend(_overview_rows(group, th))
-
-    last_row_y = y + h - 1
-    for row_y, (segments, bg) in enumerate(rows, start=y + 3):
-        if row_y > last_row_y: break
-        buf.puts(x, row_y, " " * (msgs_end_x - x), bg_color=bg)
-        seg_x = x + 1
-        for text, color in segments:
-            text = text[:max(0, msgs_end_x - seg_x)]
-            buf.puts(seg_x, row_y, text, txt_color=color, bg_color=bg)
-            seg_x += len(text)
-
-
-def _render_tools_column(buf, r, tools, th):
-    """Draw tool names on the right edge, behind a vertical separator. Returns the x where messages must stop."""
-    x, y, w, h = r
-    names_w = min(max(len(t) for t in tools), (w - 4) // 3)
-    names_x = x + w - 1 - names_w
-    sep_x = names_x - 2
-    buf.vline((sep_x, y + 3, 1, h - 3), txt_color=th.muted)
-    buf.put(sep_x, y + 2, '┬', txt_color=th.muted)
-    for i, name in enumerate(tools[:h - 3]):
-        buf.puts(names_x, y + 3 + i, name[:names_w], txt_color=th.accent_alt, style='bold')
-    return sep_x - 1
-
-
-def _group_agent_turns(msgs):
-    """Collapse runs of consecutive assistant/tool messages into lists; other messages stay as-is."""
-    groups = []
-    for msg in msgs:
-        is_agent_msg = msg.role in ("assistant", "tool")
-        if not is_agent_msg:
-            groups.append(msg)
-        elif groups and isinstance(groups[-1], list):
-            groups[-1].append(msg)
-        else:
-            groups.append([msg])
-    return groups
-
-
-def _overview_rows(group, th):
-    """Rows of (segments, bg) for one group; each segment is (text, color)."""
-    if isinstance(group, list):
-        return _agent_turn_rows(group, th)
-    if group.role == "user":
-        return [([("  " + _one_line(_msg_text(group)), th.muted)], th.user_background)]
-    label = group.overview or group.role
-    return [([(label, th.accent), (" " + _tokstr([group]), th.muted)], None)]
-
-
-def _agent_turn_rows(msgs, th):
-    turns = sum(m.role == "assistant" for m in msgs)
-    label = f"assistant ×{turns}" if turns > 1 else "assistant"
-
-    call_counts = Counter(tc["name"] for m in msgs for tc in m.tool_calls or [])
-    calls_str = " ".join(f"{name}×{n}" if n > 1 else name for name, n in call_counts.items())
-
-    summary = [(label, th.success), (" " + _tokstr(msgs), th.muted), ("  " + calls_str, th.muted)]
-    rows = [(summary, None)]
-
-    last = msgs[-1]
-    if last.role != "assistant":
-        return rows
-    final_text = _one_line(_msg_text(last))
-    if final_text:
-        rows.append(([(">" + final_text, th.text)], None))
-    return rows
-
 
 def _one_line(text):
     return " ".join((text or "").split())
-
-
-def _msg_text(msg):
-    """Message text without evaluating callables; None if not yet snapshotted."""
-    if callable(msg.content):
-        return msg._snapshot
-    return tool_result_text(msg.content)
-
-
-def _tokstr(msgs):
-    texts = [_msg_text(m) for m in msgs]
-    if all(t is None for t in texts):
-        return "(func)"
-    toks = sum(get_token_estimate(t) for t in texts if t is not None)
-    return f"(~{toks//1000}K)" if toks > 999 else f"(~{toks})"
-
 
 
 def _tool_row(ctx, tc, result):
@@ -2203,11 +2118,11 @@ def render_work_mode(tui, buf, inpt, r):
         message_outputs.append((msg.role, lines, bool(msg.tool_calls)))
 
 
-    available = h - 1
+    available = h
     ctx._scroll_up = min(ctx._scroll_up, max(0, ctx._prev_height - available))
 
     scroll_offset = max(0, ctx._prev_height - available) - ctx._scroll_up
-    row = (y + 1) - scroll_offset
+    row = y - scroll_offset
     prev_role = None
     for role, lines, has_tool_calls in message_outputs:
         if role == 'user' or prev_role == 'user': row += 1
@@ -2236,26 +2151,19 @@ def render_work_mode(tui, buf, inpt, r):
     if ctx._scroll_up > 0 and ctx._prev_height > available:
         total = ctx._prev_height
         bar_h = max(1, available * available // total)
-        bar_top = (y + 1) + (available - bar_h) * (total - available - ctx._scroll_up) // (total - available)
+        bar_top = y + (available - bar_h) * (total - available - ctx._scroll_up) // (total - available)
         for sy in range(bar_top, bar_top + bar_h):
             buf.put(x + w - 1, sy, '█', txt_color=th.muted)
-
-    buf.clear_line(y)
-    label = f"{ctx.name}  {ctx.model or ''}"
-    label_w = len(label) + 2
-    bar_w = min(w - label_w - 20, 30)
-    buf.puts(x, y, label, txt_color=th.text)
-    tui.app.call("render_context_window_bar", tui, buf, ctx, x + label_w, y, bar_w)
 
 
 @_overridable
 def render_work_mode_input(tui, buf, inpt, input_r, input_box):
+    """Returns the submitted InputValue, if any."""
     ctx = tui.current
     th = tui.app.theme
-    for y in range(input_r[1], input_r[1] + input_r[3]):
-        buf.clear_line(y)
+    focused = tui.mode == "insert"
     if ctx.is_running():
-        input_box(buf, inpt, input_r, txt_color=th.accent)
+        value = input_box(buf, inpt, input_r, txt_color=th.accent if focused else th.muted)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         if ctx.pending_message and ctx.llm_output_type:
@@ -2280,8 +2188,8 @@ def render_work_mode_input(tui, buf, inpt, input_r, input_box):
             if len(qtxt) > max_w - len(prefix) - 1:
                 qtxt = qtxt[:max(0, max_w - len(prefix) - 4)] + "..."
             buf.puts(input_r[0] + 1, y, prefix + qtxt + "\"", txt_color=th.accent_alt)
-    else:
-        input_box(buf, inpt, input_r)
+        return value
+    return input_box(buf, inpt, input_r, txt_color=th.text if focused else th.muted)
 
 
 
@@ -2331,8 +2239,6 @@ def render_work_mode_footer(tui, buf, r, ctx):
 def render_workmodefooter_and_commands(tui, buf, r, ctx):
     th = tui.app.theme
     x, y, w, h = r
-    for row in range(y, y + h):
-        buf.clear_line(row)
     text = ctx.get_input_box().get_text()
     """
     todo: in future, instead of just "yolo ON" and "yolo OFF",
@@ -2376,7 +2282,8 @@ def render_status_line(tui, buf, inpt, r):
     th = tui.app.theme
     buf.clear_line(y)
     ctx = tui.current
-    label, bg = (" AGENTS ", th.accent) if tui.mode == "agents" else (" WORK ", th.success)
+    label, bg = (" NORMAL ", th.accent) if tui.mode == "normal" else (" INSERT ", th.success)
+    if tui.zoom: label += "ZOOM "
     buf.puts(x, y, label, txt_color="black", bg_color=bg, style='bold')
     cx = x + len(label) + 1
     if ctx:
@@ -2497,12 +2404,13 @@ class TUI:
     app: App
     contexts: list[Context] = field(default_factory=list, init=False)
     current: Optional[Context] = field(default=None, init=False)
-    mode: Literal["agents", "work", "scroll"] = "agents"
-    prev_mode: Literal["agents", "work", "scroll"] = "agents"
+    mode: Literal["normal", "insert", "scroll"] = "normal"  # normal: list keys; insert: typing in current's input box
+    prev_mode: Literal["normal", "insert", "scroll"] = "normal"
     term: Any = None
     ui_panel_stack: list = field(default_factory=list)
-    sel_input: bool = False  # agents mode: current's input box is open (space)
-    sel_left_w: int = 20  # agents mode: left panel width, measured last frame
+    zoom: bool = False  # hide the agent list (`w`)
+    sel_left_w: int = 20  # left panel width, measured last frame
+    transcript_r: Any = Region()  # transcript area, last frame (for scroll keys)
     pending_keys: list = field(default_factory=list)  # tokens typed so far for a multi-key binding
     status: tuple = ("", 0.0, False)  # (msg, time, is_error), see echo()
     favorite: Optional[Context] = None  # template for new agents (`n`)
@@ -2537,7 +2445,7 @@ class TUI:
         self.status = (msg, time.time(), error)
 
     def keys_active(self):
-        return self.mode == "agents" and self.current and not self.sel_input and not self.ui_panel_stack
+        return self.mode == "normal" and self.current and not self.ui_panel_stack
 
     def _resolve_keys(self):
         """(fn, count) on a full match, "wait" on a prefix or count, None on no match."""
@@ -2650,9 +2558,6 @@ def _tui_loop(tui: TUI):
 
     if tui.current not in tui.contexts:
         tui.current = tui.contexts[0]
-    input_box = tui.input_box = tui.current.get_input_box()
-
-    prev_mode = tui.mode
 
     # Clipboard cleaning: collapse consecutive non-indentation spaces every frame.
     # See CLIPBOARD_CLEANING and _try_clean_clipboard() for details.
@@ -2661,31 +2566,13 @@ def _tui_loop(tui: TUI):
 
     if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
         tui.ui_panel_stack.pop()
-    if tui.sel_input and inpt.consume('KEY_ESCAPE'):
-        tui.sel_input = False
+    if tui.mode == "insert" and inpt.consume('KEY_ESCAPE'):
+        tui.mode = "normal"
     if tui.keys_active():
         tui.feed_keys(inpt)
-    input_box = tui.input_box = tui.current.get_input_box()  # a key may have switched agent
-
-    footer_r = Region()
-    status_r = Region(0, term.height - 1, term.width, 1)
-
-    if tui.mode == "work":
-        tui.current.last_seen = time.time()
-        input_h = max(1, min(input_box.get_height(term.width), term.height // 2))
-        space_below_input = 2
-        reserved_h = 1 + input_h + 1 + space_below_input
-        main_h = max(0, term.height - reserved_h)
-        main_r = Region(0, 0, term.width, main_h)
-        input_r = Region(0, main_r[1] + main_r[3] + 1, term.width, input_h)
-        footer_r = Region(0, input_r[1] + input_r[3] + 1, term.width, space_below_input - 1)
-    elif tui.sel_input:
-        input_h = max(1, min(input_box.get_height(term.width - 2), term.height // 3))
-        footer_r = Region(0, term.height - 2, term.width, 1)
-        input_r = Region(0, footer_r[1] - input_h - 2, term.width, input_h + 2)
-        main_r = Region(0, 0, term.width, input_r[1])
-    else:
-        main_r = Region(0, 0, term.width, term.height - 1)
+    ctx = tui.current
+    ctx.last_seen = time.time()
+    input_box = tui.input_box = ctx.get_input_box()  # a key may have switched agent
 
     if tui.mode == "scroll":
         if inpt._keys:
@@ -2694,56 +2581,58 @@ def _tui_loop(tui: TUI):
             tui.app.stdout.flush()
             sys.stdout, sys.stderr = _sink, _sink
             buf.invalidate()
-    elif tui.mode == "work":
-        th = tui.app.theme
-        tui.app.call("render_work_mode", tui, buf, inpt, main_r)
-        div_color = th.invoking if tui.current.is_running() else th.muted
-        buf.hline((0, main_r[1] + main_r[3], term.width, 1), txt_color=div_color)
-        if not tui.current.ui_stack and not tui.ui_panel_stack:
-            tui.app.call("render_work_mode_input", tui, buf, inpt, input_r, input_box)
-        buf.hline((0, input_r[1] + input_r[3], term.width, 1), txt_color=div_color)
-        render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
-        if inpt.consume('KEY_ESCAPE'):
-            tui.mode = "agents"
-        if inpt.consume('KEY_CTRL_X') and tui.current.is_running():
-            tui.current.stop_early = True
-    elif tui.mode == "agents":
-        th = tui.app.theme
-        left_w = min(tui.sel_left_w, main_r[2] - 12)
-        top, h = main_r[1] + 1, main_r[3] - 1  # 1 row padding at top
-        left = Region(main_r[0], top, left_w, h)
-        right = Region(main_r[0] + left_w, top, main_r[2] - left_w, h)
-        tui.app.call("render_agents_left", tui, buf, inpt, left)
-        tui.app.call("render_agents_right", tui, buf, right)
-        if tui.sel_input and not tui.current.ui_stack:
-            buf.rect_line(input_r, txt_color=th.invoking if tui.current.is_running() else th.accent)
-            buf.puts(input_r[0] + 2, input_r[1], f" {tui.current.name} ", txt_color=th.accent_alt)
-            if input_box(buf, inpt, input_r.shrink(1), txt_color=th.text): tui.sel_input = False
-            render_workmodefooter_and_commands(tui, buf, footer_r, tui.current)
+        return
 
-    if tui.mode != "scroll":
-        tui.app.call("render_status_line", tui, buf, inpt, status_r)
-        if tui.ui_panel_stack:
-            r = Region(3, 2, buf.w - 6, buf.h - 4)
-            tui.ui_panel_stack[-1](buf, inpt, r)
-        elif tui.current.ui_stack and (tui.mode == "work" or tui.sel_input):  # agents mode: space/h to answer
-            r = Region(3, 2, buf.w - 6, buf.h - 4)
-            tui.current.ui_stack[-1](buf, inpt, r)
-            if not tui.current.ui_stack: tui.sel_input = False
-        if tui.mode == "agents" and not tui.ui_panel_stack:  # leftover keys: bare ex6 stays navigable
+    th = tui.app.theme
+    main_h = term.height - 1  # last row: status line
+    left_w = 0 if tui.zoom else min(tui.sel_left_w, term.width - 12)
+    pad = 0 if tui.zoom else 1
+    x, w = left_w, term.width - left_w
+    top = 0 if tui.zoom else 1  # blank row above the list
+    header_h = 1 if tui.zoom else 3
+    input_h = max(1, min(input_box.get_height(w - 2 * pad), main_h // 3))
+    footer_r = Region(x, main_h - 1, w, 1)
+    input_r = Region(x + pad, footer_r[1] - input_h, w - 2 * pad, input_h)
+    div_y = input_r[1] - 1
+    transcript_r = tui.transcript_r = Region(x + pad, top + header_h, w - pad, max(0, div_y - top - header_h))
+    focused = tui.mode == "insert" and not tui.ui_panel_stack
+    focus_inpt = inpt if focused else InputPass([])  # unfocused: read-only
+
+    # Transcript first; it doesn't clip, so blank what it spilled into above/below.
+    tui.app.call("render_work_mode", tui, buf, focus_inpt, transcript_r)
+    buf.fill(Region(x, 0, w, top + header_h), ' ')
+    buf.fill(Region(x, div_y, w, main_h - div_y), ' ')
+    if left_w:
+        tui.app.call("render_agents_left", tui, buf, inpt, Region(0, top, left_w, main_h - top))
+    tui.app.call("render_agents_right", tui, buf, Region(x, top, w, header_h))
+    buf.hline((x, div_y, w, 1), txt_color=th.invoking if ctx.is_running() else th.muted)
+    if left_w: buf.put(x - 1, div_y, '├', txt_color=th.muted)
+
+    if ctx.ui_stack:  # needs a human: answer in place of the transcript
+        ctx.ui_stack[-1](buf, focus_inpt, transcript_r)
+        if focused and not ctx.ui_stack and tui.mode == "insert": tui.mode = "normal"
+    elif tui.app.call("render_work_mode_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
+        tui.mode = "normal"
+    render_workmodefooter_and_commands(tui, buf, footer_r, ctx)
+    tui.app.call("render_status_line", tui, buf, inpt, Region(0, main_h, term.width, 1))
+
+    if tui.ui_panel_stack:
+        tui.ui_panel_stack[-1](buf, inpt, Region(3, 2, buf.w - 6, buf.h - 4))
+    else:  # leftover keys: bare ex6 stays usable
+        page = max(1, transcript_r[3] // 2)
+        if inpt.consume('KEY_PGUP'): ctx._scroll_up += page
+        if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - page)
+        if tui.mode == "insert":
+            if inpt.consume('KEY_UP'): ctx._scroll_up += ARROW_SCROLL_SPEED
+            if inpt.consume('KEY_DOWN'): ctx._scroll_up = max(0, ctx._scroll_up - ARROW_SCROLL_SPEED)
+            if inpt.consume('KEY_CTRL_X') and ctx.is_running(): ctx.stop_early = True
+        else:
             ctxs = tui.context_list()
             idx = ctxs.index(tui.current)
-            if not tui.sel_input and inpt.consume('KEY_UP'): tui.current = ctxs[max(0, idx - 1)]
-            if not tui.sel_input and inpt.consume('KEY_DOWN'): tui.current = ctxs[min(len(ctxs) - 1, idx + 1)]
-            if inpt.consume('KEY_ENTER'): tui.mode, tui.sel_input = "work", False
-        if tui.mode == "work":
-            available = main_r[3] - 1
-            if inpt.consume('KEY_PGUP'): tui.current._scroll_up += available // 2
-            if inpt.consume('KEY_PGDOWN'): tui.current._scroll_up = max(0, tui.current._scroll_up - available // 2)
-            if inpt.consume('KEY_UP'): tui.current._scroll_up += ARROW_SCROLL_SPEED
-            if inpt.consume('KEY_DOWN'): tui.current._scroll_up = max(0, tui.current._scroll_up - ARROW_SCROLL_SPEED)
-        if tui.mode != prev_mode:
-            buf.invalidate()
+            if inpt.consume('KEY_UP'): tui.current = ctxs[max(0, idx - 1)]
+            if inpt.consume('KEY_DOWN'): tui.current = ctxs[min(len(ctxs) - 1, idx + 1)]
+            if inpt.consume('KEY_ENTER'): tui.mode = "insert"
+    if tui.mode != "scroll":  # a command may have left fullscreen this frame
         buf.flush(term, tui.app.stdout)
 
 
