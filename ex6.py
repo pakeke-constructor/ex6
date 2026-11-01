@@ -422,7 +422,7 @@ class App:
         self.long_horizon = False # True when no human is watching; (tools must not block for user input)
         self._registered_modules = set()
         self._setup_modules = set()
-        self._register_module(sys.modules[__name__])
+        self.register_module(sys.modules[__name__])
 
     def debug_print(self, *args, **kwargs):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -531,7 +531,7 @@ class App:
         parsed = [_coerce_arg(args[i], typ) if i < len(args) else default for i, (_, typ, default) in enumerate(spec)]
         return fn(tui, *parsed)
 
-    def _register_module(self, module):
+    def register_module(self, module):
         if module.__name__ in self._registered_modules:
             return
         self._registered_modules.add(module.__name__)
@@ -2375,7 +2375,7 @@ def _load_plugins(app):
                     modules.append(module)
 
     for module in modules:
-        app._register_module(module)
+        app.register_module(module)
     for module in modules:
         app.setup_module(module)
 

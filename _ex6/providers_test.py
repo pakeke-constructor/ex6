@@ -208,7 +208,7 @@ def run_tests(names=("anthropic", "openai")):
     global app
     app = ex6.App()
     for mod in (provider, provider_anthropic, provider_openai):
-        app._register_module(mod)
+        app.register_module(mod)
     checks.clear()
     for p in names:
         cfg = PROVIDERS[p]
