@@ -2766,6 +2766,29 @@ def help_lines(app):
     return lines
 
 
+def _input_layout(tui, input_box, x, w, pad, main_h):
+    """Returns (input_r, box_r). Insert: full-width bordered box (box_r). Else: compact input in the right panel (box_r None)."""
+    if tui.mode == "insert" and not tui.current.ui_stack:
+        input_h = max(3, min(input_box.get_height(tui.term.width - 4), main_h // 3))
+        box_r = Region(0, main_h - 3 - input_h, tui.term.width, input_h + 2)
+        return box_r.shrink(2, 1), box_r
+    input_h = max(1, min(input_box.get_height(w - 2 * pad), main_h // 3))
+    return Region(x + pad, main_h - 1 - input_h, w - 2 * pad, input_h), None
+
+
+def _draw_input_frame(tui, buf, box_r, x, w, div_y):
+    """Big box: border + agent name. Compact: divider above the input. x > 0: join the list's divider."""
+    th = tui.app.theme
+    if box_r:
+        color = th.invoking if tui.current.is_running() else tui.divider_color()
+        buf.rect_line(box_r, txt_color=color)
+        buf.puts(2, box_r[1] + box_r[3] - 1, f" {tui.current.name} ", txt_color=th.accent_alt, style='bold')
+        if x: buf.put(x - 1, div_y, '┴', txt_color=color)
+    else:
+        buf.hline((x, div_y, w, 1), txt_color=tui.divider_color())
+        if x: buf.put(x - 1, div_y, '├', txt_color=tui.divider_color())
+
+
 def _tui_loop(tui: TUI):
     buf = tui.buf
     _sink = tui.stdout_sink
@@ -2836,17 +2859,15 @@ def _tui_loop(tui: TUI):
             buf.invalidate()
         return
 
-    th = tui.app.theme
     main_h = term.height - 1  # last row: status line
     left_w = 0 if ctx._zoom else min(tui.list_w, term.width - 12)
     pad = 0 if ctx._zoom else 1
     x, w = left_w, term.width - left_w
     top = 0 if ctx._zoom else 1  # blank row above the list
     header_h = 1 if ctx._zoom else 3
-    input_h = max(1, min(input_box.get_height(w - 2 * pad), main_h // 3))
-    footer_r = Region(x, main_h - 1, w, 1)
-    insert_pad = 2 if tui.mode == "insert" else 0  # divider + blank row under the prompt
-    input_r = Region(x + pad, footer_r[1] - insert_pad - input_h, w - 2 * pad, input_h)
+    input_r, box_r = _input_layout(tui, input_box, x, w, pad, main_h)
+    bx, bw = (0, term.width) if box_r else (x, w)  # big box: input + footer span the screen
+    footer_r = Region(bx, main_h - 1, bw, 1)
     div_y = input_r[1] - 1
     transcript_r = tui.transcript_r = Region(x + pad, top + header_h, w - pad, max(0, div_y - top - header_h))
     focused = tui.mode == "insert" and not tui.ui_panel_stack
@@ -2855,15 +2876,12 @@ def _tui_loop(tui: TUI):
     # Transcript first; it doesn't clip, so blank what it spilled into above/below.
     tui.app.call("render_transcript", tui, buf, focus_inpt, transcript_r)
     buf.fill(Region(x, 0, w, top + header_h), ' ')
-    buf.fill(Region(x, div_y, w, main_h - div_y), ' ')
+    buf.fill(Region(bx, div_y, bw, main_h - div_y), ' ')
     if left_w:
-        tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, main_h - top))
+        list_h = (div_y if box_r else main_h) - top  # big box cuts the list short
+        tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, list_h))
     tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
-    buf.hline((x, div_y, w, 1), txt_color=tui.divider_color())
-    if left_w: buf.put(x - 1, div_y, '├', txt_color=tui.divider_color())
-    if insert_pad:
-        buf.hline((x, footer_r[1] - 2, w, 1), txt_color=tui.divider_color())
-        if left_w: buf.put(x - 1, footer_r[1] - 2, '├', txt_color=tui.divider_color())
+    _draw_input_frame(tui, buf, box_r, x, w, div_y)
 
     if ctx.ui_stack:  # needs a human: answer in place of the transcript
         ctx.ui_stack[-1](buf, focus_inpt, transcript_r)
