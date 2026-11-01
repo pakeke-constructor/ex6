@@ -1090,6 +1090,7 @@ class Context:
     llm_suspended: bool = False
     stop_early: bool = False
     parent: Optional[str] = None # name of parent context (for subagents)
+    ephemeral: bool = False
 
     cwd: Optional[str] = None
     yolo: bool = False
@@ -1348,6 +1349,9 @@ class Context:
                     if should_loop and not self.stop_early:
                         app.run_context_hooks("after_tool_calls", self)
                     self.llm_suspended = False
+            except Exception as e:
+                self.llm_result = LLMResult(error=str(e))
+                raise
             finally:
                 with self._msg_lock:
                     self.llm_is_running = False
@@ -1440,6 +1444,7 @@ class Context:
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
+        cpy.last_invoke_time_start = cpy.last_invoke_time_end = cpy.last_seen = 0
         cpy._zoom = False
         cpy.name = new_name
         cpy.parent = self.name
@@ -2842,6 +2847,10 @@ def _tui_loop(tui: TUI):
     tui.keyls = []
 
     buf.clear()
+
+    for ctx in list(tui.contexts):
+        if ctx.ephemeral and ctx.last_invoke_time_end and not ctx.is_running():
+            tui.remove_context(ctx)
 
     if not tui.contexts:
         th = tui.app.theme

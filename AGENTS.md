@@ -155,6 +155,9 @@ Not loaded (underscore-prefixed):
 - _ex6/_plugin_examples/ - example plugins (commands, output_renderer, loading_cube, horizon)
 </core-plugins>
 
+<coding-style>
+
+</coding-style>
 
 <ui-ux>
 ## UI layout / UX:

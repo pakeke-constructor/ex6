@@ -7,7 +7,7 @@
 
 from _ex6 import provider_openai, provider_anthropic
 from _ex6.models import M
-from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, AGENTS_MD, ENV_PROMPT, edit_file
+from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, subagent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
 import ex6
@@ -139,7 +139,7 @@ ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, rea
 READ = [read_file, read_image, glob, search, read_headers, read_body]
 WRITE = [write_file, edit_file]
 SHELL = [COMMANDLINE_TOOL, git_working_tree]
-SUBAGENTS = [explore_agent]
+SUBAGENTS = [explore_agent, subagent]
 ASK = [ask_user_question]
 
 MAIN_TOOLS = READ + WRITE + SHELL + SUBAGENTS + ASK + [handoff, load_skill]

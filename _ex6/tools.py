@@ -44,6 +44,7 @@ import functools
 import io
 import locale
 import tempfile
+import uuid
 from PIL import Image, ImageOps, UnidentifiedImageError
 from _ex6.models import M
 from ex6 import Context, Message
@@ -1683,6 +1684,69 @@ def git_working_tree(ctx: ex6.Context) -> str:
     )
 
 
+def _count_peers(cwd):
+    # counts how many running agents there are with the same `cwd` as this
+    return N
+
+SUBAGENT_PROMPT_FORK = """\
+You have been forked as a subagent by the parent agent.
+Ignore your old task; your new task is this:
+<task>
+{task}
+</task>
+(There are {peer_count} other agents running in the same directory as you.)
+"""
+
+SUBAGENT_PROMPT = """\
+You are a subagent, who has been given the following task:
+<task>
+{task}
+</task>
+(There are {peer_count} other agents running in the same directory as you.)
+"""
+
+def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
+    """
+    Runs an agent (identical to you in every way) and returns its final response.
+    Subagents cannot spawn subagents, but they can run tools, and do everything the same as you.
+
+    fork=True keeps conversation history and cached prompts for related work. 
+    - I.e. the subagent is a direct copy of you, knows everything that you know.
+    - Use fork=True when the task you are giving requires knowing stuff that you know.
+
+    fork=False keeps system prompts but starts fresh for an unrelated task.
+    - Use fork=False when the task is completely unrelated to your task.
+    - Also use fork if the task will be quite long/tedious (ie a big websearch, or a broad exploration question)
+    """
+    if "tools:subagent_depth" in ctx.data:
+        raise RuntimeError("Subagents cannot create subagents")
+
+    sub = ctx.fork(f"{ctx.name}.sub{uuid.uuid4().hex[:6]}")
+    if not fork:
+        sub.tools = list(ctx.get_tools().values())
+        sub.clear()
+    sub.data["tools:subagent_depth"] = 1
+    sub.ephemeral = True
+    sub.invoke(msg)
+    if ctx.app.tui:
+        ctx.app.tui.add_context(sub)
+
+    def cancel():
+        sub.stop_early = True
+
+    def poll(wait):
+        if sub.is_running():
+            time.sleep(wait)
+        if sub.is_running():
+            return None
+        if sub.llm_result and sub.llm_result.error:
+            raise RuntimeError(f"subagent failed: {sub.llm_result.error}")
+        if sub.stop_early:
+            return "Subagent stopped."
+        messages = sub.get_messages()
+        return ex6.tool_result_text(messages[-1].content) if messages else ""
+
+    return ex6.Operation(cancel=cancel, poll=poll)
 
 
 EXPLORE_MODEL = M.GEMINI3_FLASH.id
@@ -1741,23 +1805,19 @@ def explore_agent(ctx: ex6.Context, prompt: str, files: list = None) -> str:
         prompt = "\n".join(parts) + "\n\n" + prompt
 
     sub_name = f"explore_{int(time.time() * 1000)}"
-    sub = Context(ctx.app, sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT])
+    sub = Context(ctx.app, sub_name, model=EXPLORE_MODEL, reasoning="none", cwd=ctx.cwd, messages=[EXPLORE_SYSTEM_PROMPT], ephemeral=True)
     add_tool_repetition_guard(sub, [read_file, read_headers, read_body, search, glob])
     sub.parent = ctx.name
     tui = ctx.app.tui
+    sub.invoke(prompt)
     if tui:
         tui.add_context(sub)
-    try:
-        sub.invoke(prompt)
-        while sub.llm_is_running:
-            time.sleep(0.05)
-        if sub.llm_result and sub.llm_result.error:
-            raise RuntimeError(f"explore_agent failed: {sub.llm_result.error}")
-        messages = sub.get_messages()
-        return messages[-1].content if messages else ""
-    finally:
-        if tui:
-            tui.remove_context(sub)
+    while sub.llm_is_running:
+        time.sleep(0.05)
+    if sub.llm_result and sub.llm_result.error:
+        raise RuntimeError(f"explore_agent failed: {sub.llm_result.error}")
+    messages = sub.get_messages()
+    return messages[-1].content if messages else ""
 
 
 def _normalize_guard_value(v):
