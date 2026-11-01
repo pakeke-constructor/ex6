@@ -385,6 +385,8 @@ class Theme:
     error: Color = "red"
     running: Color = "bright_blue"
     invoking: Color = "bright_yellow"
+    mode_normal: Color = "green"  # dividers + status label: list focused
+    mode_insert: Color = "blue"  # dividers + status label: typing
     selection: Color = (48, 48, 54)  # selected row bg
     error_bg: Color = (80, 0, 0)
     diff_add_bg: Color = (18, 60, 18)
@@ -1852,10 +1854,10 @@ class InputBox:
         if not lines: return 0, 0
         return len(lines) - 1, len(lines[-1])
 
-    def __call__(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
-        return self.draw(buf, inpt, r, txt_color=txt_color)
+    def __call__(self, buf: ScreenBuffer, inpt, r, txt_color='white', cursor=True):
+        return self.draw(buf, inpt, r, txt_color=txt_color, cursor=cursor)
 
-    def draw(self, buf: ScreenBuffer, inpt, r, txt_color='white'):
+    def draw(self, buf: ScreenBuffer, inpt, r, txt_color='white', cursor=True):
         """Returns the InputValue submitted this frame (also passed to on_submit), else None."""
         inner_w = r[2]
         if inner_w < 1: return None
@@ -1911,7 +1913,7 @@ class InputBox:
             if self.on_submit: self.on_submit(value)
             return value
 
-        cursor_char = "█"
+        cursor_char = "█" if cursor else ""
         cy, cx = self._cursor_visual(inner_w)
         visual_lines = self._wrap(self.text, inner_w)
         if not visual_lines: visual_lines = ['']
@@ -1975,7 +1977,7 @@ def render_list_row(tui, buf, ctx, x, y):
 def render_list(tui, buf, inpt, r):
     x, y, w, h = r
     th = tui.app.theme
-    buf.vline((x + w - 1, y, 1, h), txt_color=th.muted)
+    buf.vline((x + w - 1, y, 1, h), txt_color=tui.mode_color())
 
     ctxs = tui.context_list()
     idx = next((i for i, c in enumerate(ctxs) if c is tui.current), 0)
@@ -2044,8 +2046,8 @@ def render_header(tui, buf, r):
     tools_str = f"{len(tools)} tools" + (f" ({native} native)" if native else "")
     buf.puts(x + w - len(tools_str) - 1, y + 1, tools_str, txt_color=th.muted)
 
-    buf.hline((x, y + 2, w, 1), txt_color=th.muted)
-    buf.put(x - 1, y + 2, '├', txt_color=th.muted)  # join left panel's divider
+    buf.hline((x, y + 2, w, 1), txt_color=tui.mode_color())
+    buf.put(x - 1, y + 2, '├', txt_color=tui.mode_color())  # join left panel's divider
 
 
 def _one_line(text):
@@ -2146,7 +2148,7 @@ def render_input(tui, buf, inpt, input_r, input_box):
     th = tui.app.theme
     focused = tui.mode == "insert"
     if ctx.is_running():
-        value = input_box(buf, inpt, input_r, txt_color=th.accent if focused else th.muted)
+        value = input_box(buf, inpt, input_r, txt_color=th.accent if focused else th.muted, cursor=focused)
         spin = "[" + "/—\\|"[int(time.time() * 5) % 4] + "]"
         elapsed = f"{time.time() - ctx.last_invoke_time_start:.1f}s"
         if ctx.pending_message and ctx.llm_output_type:
@@ -2172,7 +2174,7 @@ def render_input(tui, buf, inpt, input_r, input_box):
                 qtxt = qtxt[:max(0, max_w - len(prefix) - 4)] + "..."
             buf.puts(input_r[0] + 1, y, prefix + qtxt + "\"", txt_color=th.accent_alt)
         return value
-    return input_box(buf, inpt, input_r, txt_color=th.text if focused else th.muted)
+    return input_box(buf, inpt, input_r, txt_color=th.text if focused else th.muted, cursor=focused)
 
 
 
@@ -2256,9 +2258,9 @@ def render_status_line(tui, buf, inpt, r):
     th = tui.app.theme
     buf.clear_line(y)
     ctx = tui.current
-    label, bg = (" NORMAL ", th.accent) if tui.mode == "normal" else (" INSERT ", th.success)
+    label = " NORMAL " if tui.mode == "normal" else " INSERT "
     if tui.zoom: label += "ZOOM "
-    buf.puts(x, y, label, txt_color="black", bg_color=bg, style='bold')
+    buf.puts(x, y, label, txt_color="black", bg_color=tui.mode_color(), style='bold')
     cx = x + len(label) + 1
     if ctx:
         info = f"{ctx.name} · {ctx.reasoning}"
@@ -2416,6 +2418,10 @@ class TUI:
         """Show a message in the status line for a few seconds."""
         self.status = (msg, time.time(), error)
 
+    def mode_color(self):
+        th = self.app.theme
+        return th.mode_insert if self.mode == "insert" else th.mode_normal
+
     def keys_active(self):
         return self.mode == "normal" and self.current and not self.ui_panel_stack
 
@@ -2564,7 +2570,8 @@ def _tui_loop(tui: TUI):
     header_h = 1 if tui.zoom else 3
     input_h = max(1, min(input_box.get_height(w - 2 * pad), main_h // 3))
     footer_r = Region(x, main_h - 1, w, 1)
-    input_r = Region(x + pad, footer_r[1] - input_h, w - 2 * pad, input_h)
+    insert_pad = 2 if tui.mode == "insert" else 0  # divider + blank row under the prompt
+    input_r = Region(x + pad, footer_r[1] - insert_pad - input_h, w - 2 * pad, input_h)
     div_y = input_r[1] - 1
     transcript_r = tui.transcript_r = Region(x + pad, top + header_h, w - pad, max(0, div_y - top - header_h))
     focused = tui.mode == "insert" and not tui.ui_panel_stack
@@ -2577,8 +2584,12 @@ def _tui_loop(tui: TUI):
     if left_w:
         tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, main_h - top))
     tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
-    buf.hline((x, div_y, w, 1), txt_color=th.invoking if ctx.is_running() else th.muted)
-    if left_w: buf.put(x - 1, div_y, '├', txt_color=th.muted)
+    div_color = th.invoking if ctx.is_running() else tui.mode_color()
+    buf.hline((x, div_y, w, 1), txt_color=div_color)
+    if left_w: buf.put(x - 1, div_y, '├', txt_color=div_color)
+    if insert_pad:
+        buf.hline((x, footer_r[1] - 2, w, 1), txt_color=tui.mode_color())
+        if left_w: buf.put(x - 1, footer_r[1] - 2, '├', txt_color=tui.mode_color())
 
     if ctx.ui_stack:  # needs a human: answer in place of the transcript
         ctx.ui_stack[-1](buf, focus_inpt, transcript_r)

@@ -52,6 +52,8 @@ THEMES = {
         md_link=oklch(0.72, 0.12, 200),
         md_italic=oklch(0.77, 0.15, 110),
         md_bold=oklch(0.98, 0.005, 85),
+        mode_normal=oklch(0.74, 0.19, 145),
+        mode_insert=oklch(0.66, 0.19, 255),
     ),
 
     "blue": ex6.Theme(
@@ -76,6 +78,8 @@ THEMES = {
         md_link=oklch(0.70, 0.18, 250),
         md_italic=oklch(0.73, 0.20, 320),
         md_bold=oklch(0.98, 0.005, 250),
+        mode_normal=oklch(0.74, 0.19, 145),
+        mode_insert=oklch(0.66, 0.19, 255),
     ),
 
     "red": ex6.Theme(
@@ -100,6 +104,8 @@ THEMES = {
         md_link=oklch(0.70, 0.21, 335),
         md_italic=oklch(0.73, 0.20, 325),
         md_bold=oklch(0.98, 0.005, 65),
+        mode_normal=oklch(0.74, 0.19, 145),
+        mode_insert=oklch(0.66, 0.19, 255),
     ),
 }
 
