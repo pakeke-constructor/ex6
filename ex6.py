@@ -2164,18 +2164,19 @@ def render_input(tui, buf, inpt, input_r, input_box):
             label = "invoking..."
             stats = f" ({elapsed}) "
         total_w = len(spin) + len(label) + len(stats)
-        x = input_r[0] + input_r[2] - total_w
+        x = input_r[0] + 1
         y = input_r[1] - 1  # inline in the divider above the input
         buf.puts(x, y, spin, txt_color=th.invoking); x += len(spin)
         buf.puts(x, y, label, txt_color=th.accent); x += len(label)
         buf.puts(x, y, stats, txt_color=th.muted)
         if ctx._pending_inputs:
             qtxt = ctx._pending_inputs[0].text.replace('\r', ' ').replace('\n', ' ')
-            max_w = input_r[2] - total_w - 2
+            max_w = input_r[2] - total_w - 3
             prefix = " queued: \""
             if len(qtxt) > max_w - len(prefix) - 1:
                 qtxt = qtxt[:max(0, max_w - len(prefix) - 4)] + "..."
-            buf.puts(input_r[0] + 1, y, prefix + qtxt + "\" ", txt_color=th.accent_alt)
+            queued = prefix + qtxt + "\" "
+            buf.puts(input_r[0] + input_r[2] - len(queued) - 1, y, queued, txt_color=th.accent_alt)
         return value
     return input_box(buf, inpt, input_r, txt_color=th.text if focused else th.muted, cursor=focused)
 
