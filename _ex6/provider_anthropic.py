@@ -508,7 +508,8 @@ class _ClaudeProcess:
         if self.closed:
             return
         self.closed = True
-        for step in (self._kill, self.tmp.cleanup):
+        for step in (self._kill, self.proc.stdin.close, self.proc.stdout.close,
+                     self.proc.stderr.close, self.tmp.cleanup):
             try:
                 step()
             except Exception as e:

@@ -2621,7 +2621,11 @@ def _nth_last(items, n):
 def _yank(tui, text, what):
     if text is None: return tui.echo(f"no {what}", error=True)
     import copykitten
-    copykitten.copy(text)
+    try:
+        copykitten.copy(text)
+    except copykitten.CopykittenError as e:
+        tui.app.debug_print(f"clipboard copy failed: {e}")
+        return tui.echo("clipboard copy failed; try again", error=True)
     n = text.count("\n") + 1
     tui.echo(f"yanked {what} ({n} line{'s' * (n > 1)})")
 
