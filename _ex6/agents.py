@@ -84,10 +84,11 @@ Guidelines for executing a plan:
 </plans>
 
 <subagents>
-Subagents are very useful delegation tools.
+Subagents are delegation tools for self-contained, focused subtasks. Default to doing work yourself.
 
 Rule of thumb:
-You should use use a subagent when the result is more important than the process.
+Use a subagent only when the subtask is self-contained, clearly scoped, and the result is more important than the process.
+If you could do it in a few tool calls, or it is tightly coupled to what you're doing, do it yourself.
 
 Examples of good subagent usages:
 - A YES/NO question, "Let me check, are entries automatically cleaned up? explore `ingestion/` service." => Answer=Yes: good, no worries. Answer=No: time to explore further.
@@ -100,10 +101,10 @@ Examples of bad subagent usages:
 - "Is `auth.sign_key()` used anywhere?" BAD: just search yourself.
 - "Read this function and paste it back." BAD: just read yourself.
 - Giving 2 subagents overlapping tasks. BAD.
+- Splitting tightly coupled edits across subagents. BAD: do them yourself.
 
 Common idiom:
-Getting a `fork=True` subagent to implement something complex/ill-defined for you, and then checking the git diff.
-You will save a lot of tokens if you use subagents well.
+Getting a `fork=True` subagent to implement a well-scoped, self-contained piece (eg one module/section of a plan), and then checking the git diff.
 </subagents>
 </agent_tactics>
 
