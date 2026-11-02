@@ -43,6 +43,7 @@ class M:
     GPT_51_CODEX_MINI = ModelInfo("openai/gpt-5.1-codex-mini",          400_000, 0.25, 2,  0.025)
     CODEX_MINI       = ModelInfo("openai/codex-mini",                 200_000, 1.5,  6,    0.375)
     O4_MINI          = ModelInfo("openai/o4-mini",                    200_000, 1.1,  4.4,  0.275)
+    GEMINI4_ARGON    = ModelInfo("google/gemini-4-argon",           1_048_576, 2,    10,   0.1, 0.1875)
     GEMINI3_PRO      = ModelInfo("google/gemini-3-pro-preview",     1_048_576, 2,    12,   0.2)
     GEMINI3_FLASH    = ModelInfo("google/gemini-3-flash-preview",   1_048_576, 0.5,  3,    0.05)
     GEMINI35_FLASH    = ModelInfo("google/gemini-3.5-flash",   1_048_576, 1.5,  9,    0.05)
@@ -88,7 +89,7 @@ M.GPT_SOL_LATEST = M.GPT_61_SOL
 M.GPT_TERRA_LATEST = M.GPT_56_TERRA
 M.GPT_LUNA_LATEST = M.GPT_6_LUNA
 M.CODEX_LATEST = M.GPT_53_CODEX
-M.GEMINI_LATEST = M.GEMINI35_FLASH
+M.GEMINI_LATEST = M.GEMINI4_ARGON
 M.KIMI_LATEST = M.KIMI_K3
 M.DEEPSEEK_LATEST = M.DEEPSEEK_V4_PRO
 M.GLM_LATEST = M.GLM_52
