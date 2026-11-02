@@ -27,6 +27,7 @@ import os
 import re
 import json
 import difflib
+import textwrap
 import glob as _glob
 import importlib
 import tree_sitter
@@ -1197,6 +1198,7 @@ class _HumanPanel:
         if approval: self.editor_label = "denial reason"
         self.scroll, self.page = 0, 1
         self.selection_changed = False
+        self.selected_row = 0
 
     def action(self, name, reply):
         if name == "activate":
@@ -1259,34 +1261,50 @@ class _HumanPanel:
         self.selection_changed = True
 
     def draw_content(self, buf, r):
-        import textwrap
         th = self.ctx.app.theme
         buf.fill(r, ' ')
-        x, y, w, h = r
-        if w < 4 or h < 3: return
-        rows = []
-        for line in [self.title, "", *self.lines]:
-            rows.extend(textwrap.wrap(line, w - 2, replace_whitespace=False, drop_whitespace=False) or [""])
-        choice_start = len(rows)
-        selected_row = choice_start
-        for i, option in enumerate(self.options):
-            if i == self.selected: selected_row = len(rows)
-            rows.extend(textwrap.wrap(("› " if i == self.selected else "  ") + option, w - 2,
-                                      subsequent_indent="  ") or [""])
-        visible = h - 1
-        if self.selection_changed:
-            self.scroll = min(self.scroll, selected_row)
-            self.scroll = max(self.scroll, selected_row - visible + 1)
-            self.selection_changed = False
-        self.scroll = max(0, min(self.scroll, len(rows) - visible))
-        shown = rows[self.scroll:self.scroll + visible]
+        if r[2] < 12 or r[3] < 5: return
+        box = r.shrink(0, 0, 1, 0)
+        inner = box.shrink(3, 1)  # border + padding
+        rows = self.rows(inner[2], th)
+        box = box.shrink(0, max(0, inner[3] - 2 - len(rows)), 0, 0)  # fit content, anchored above the input
+        inner = box.shrink(3, 1)
+        body = inner.shrink(0, 2, 0, 0)  # below title + blank line
+        self.scroll_to_selection(len(rows), body[3])
+        shown = rows[self.scroll:self.scroll + body[3]]
+
+        buf.rect_line(box, txt_color=th.warning if self.approval else th.accent)
+        buf.puts(inner[0], inner[1], self.title[:inner[2]], txt_color=th.accent_alt, style='bold')
         if self.filename:
-            _render_diff(self.ctx, buf, shown, x, y, w - 2, visible, self.filename)
+            _render_diff(self.ctx, buf, [row for row, _, _ in shown], *body, self.filename)
         else:
-            for i, line in enumerate(shown):
-                color = th.accent_alt if i + self.scroll < choice_start else th.text
-                buf.puts(x, y + i, line, txt_color=color)
-        buf.puts(x, y + h - 1, f"PgUp/PgDn scroll · {self.scroll + 1}-{self.scroll + len(shown)}/{len(rows)}"[:w], txt_color=th.muted)
+            for i, (row, color, style) in enumerate(shown):
+                buf.puts(body[0], body[1] + i, row, txt_color=color, style=style)
+        if len(rows) > body[3]:
+            status = f" PgUp/PgDn · {self.scroll + 1}-{self.scroll + len(shown)}/{len(rows)} "
+            buf.puts(inner[0], box[1] + box[3] - 1, status[:inner[2]], txt_color=th.muted)
+
+    def rows(self, w, th):
+        """Wrapped (text, color, style) rows for the body; tracks the selected option's row."""
+        rows = []
+        body_color = th.text if self.filename else th.warning
+        for line in self.lines:
+            for row in textwrap.wrap(line, w, replace_whitespace=False, drop_whitespace=False) or [""]:
+                rows.append((row, body_color, None))
+        if self.options: rows.append(("", th.text, None))
+        for i, option in enumerate(self.options):
+            sel = i == self.selected
+            if sel: self.selected_row = len(rows)
+            for row in textwrap.wrap(("› " if sel else "  ") + option, w, subsequent_indent="  ") or [""]:
+                rows.append((row, th.success if sel else th.text, 'bold' if sel else None))
+        return rows
+
+    def scroll_to_selection(self, total, visible):
+        if self.selection_changed:
+            self.scroll = min(self.scroll, self.selected_row)
+            self.scroll = max(self.scroll, self.selected_row - visible + 1)
+            self.selection_changed = False
+        self.scroll = max(0, min(self.scroll, total - visible))
 
 
 def ask_user(ctx: ex6.Context, question: str) -> str:
