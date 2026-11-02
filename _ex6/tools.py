@@ -291,7 +291,7 @@ def write_file(ctx: ex6.Context, file: str, content: str) -> str:
         else:
             old, newline = "", "\n"
         diff = _make_diff(old, content)
-        denial = _approve(ctx, "write_file", {"file": file, "content": content}, f"Write file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        denial = _approve(ctx, "write_file", {"file": file, "content": content}, f"Write file: {file}", lines=diff, filename=file)
         if denial: raise ValueError(f"User denied your write-file request, with reason: {denial}")
         d = os.path.dirname(p)
         if d: os.makedirs(d, exist_ok=True)
@@ -404,7 +404,7 @@ def patch_file(ctx: ex6.Context, file: str, patch: str) -> str:
             old = f.read()
         updated = _apply_file_patch(old, patch)
         diff = _make_diff(old, updated)
-        denial = _approve(ctx, "patch_file", {"file": file, "patch": patch}, f"Patch file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        denial = _approve(ctx, "patch_file", {"file": file, "patch": patch}, f"Patch file: {file}", lines=diff, filename=file)
         if denial:
             raise ValueError(f"User denied your patch_file request, with reason: {denial}")
         with open(p, "w", encoding="utf-8", newline="") as f:
@@ -439,7 +439,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
         def do_edit(original):
             new_content = content.replace(original, replace, 1)
             diff = _make_diff(original, replace)
-            denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+            denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", lines=diff, filename=file)
             if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
             _write_text(p, new_content, newline)
             ctx.mark_file_read(file)
@@ -562,7 +562,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
         old_text = "".join(lines)
         new_text = "".join(new_lines)
         diff = _make_diff(old_text, new_text)
-        denial = _approve(ctx, "edit_file_lines", {"file": file, "start": start, "end": end, "content": content}, f"Edit file: {file} (lines {start}-{end})", preview=lambda buf, x, y, w, h: _render_diff(ctx, buf, diff, x, y, w, h, file))
+        denial = _approve(ctx, "edit_file_lines", {"file": file, "start": start, "end": end, "content": content}, f"Edit file: {file} (lines {start}-{end})", lines=diff, filename=file)
         if denial: raise ValueError(f"The user denied your edit request, with reason: {denial}")
         _write_text(p, new_text, newline)
         ctx.mark_file_read(file)
@@ -1187,113 +1187,119 @@ def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
 
 
 
-def ask_user(ctx: ex6.Context, question: str) -> str: 
-    """Ask user a question and wait for their response. Blocks until answered."""
-    input_draw = ctx.app.call("make_input")
+class _HumanPanel:
+    def __init__(self, ctx, title, lines, options=(), approval=False, filename=None):
+        self.ctx, self.title, self.lines = ctx, title, lines
+        self.editor = ctx.app.call("make_input")
+        self.options, self.selected = options, 0
+        self.approval, self.filename = approval, filename
+        self.editor_label = "custom answer" if options else "answer"
+        if approval: self.editor_label = "denial reason"
+        self.scroll, self.page = 0, 1
+        self.selection_changed = False
 
-    def draw(buf: ex6.ScreenBuffer, inpt, r):
+    def action(self, name, reply):
+        if name == "activate":
+            text = self.editor.get_text()
+            if text: reply.complete(text)
+            elif self.approval: reply.complete(True)
+            elif self.options: reply.complete(self.options[self.selected])
+            else: reply.focus(self.editor_label)
+        elif name == "edit":
+            reply.focus(self.editor_label)
+        elif name in ("up", "down"):
+            self.select(-1 if name == "up" else 1)
+        elif name in ("page_up", "page_down"):
+            self.scroll = max(0, self.scroll + (-self.page if name == "page_up" else self.page))
+
+    def input(self, inpt, r, reply):
+        if inpt.consume("KEY_ENTER"):
+            self.action("activate", reply)
+        elif inpt.consume("KEY_PGUP"):
+            self.action("page_up", reply)
+        elif inpt.consume("KEY_PGDOWN"):
+            self.action("page_down", reply)
+        else:
+            input_r, _, _ = self.layout(r, True)
+            self.editor.handle(inpt, max(1, input_r[2]))
+
+    def layout(self, r, focused):
         x, y, w, h = r
-        th = ctx.app.theme
-        buf.puts(x, y, f"? {question}", txt_color=th.warning)
-        if value := input_draw(buf, inpt, (x + 2, y + 1, w - 2, 1)): return value.text
+        pad = 0 if self.ctx._zoom else 1
+        input_r, box_r = ex6._input_layout(self.editor, x, w, pad, y + h, x + w, focused)
+        content_r = ex6.Region(x + pad, y, w - pad, input_r[1] - 1 - y)
+        return input_r, box_r, content_r
 
-    return ctx.ask_human(draw) or ""
+    def draw(self, buf, r, focused):
+        th = self.ctx.app.theme
+        input_r, box_r, content_r = self.layout(r, focused)
+        self.page = max(1, content_r[3] // 2)
+        x, y, w, h = r
+        bx, bw = (0, buf.w) if box_r else (x, w)
+        div_y = input_r[1] - 1
+        buf.fill(ex6.Region(bx, div_y, bw, y + h - div_y), ' ')
+        ex6._draw_input_frame(self.ctx, buf, box_r, x, w, div_y)
+        self.draw_content(buf, content_r)
+        self.editor.render(buf, input_r, txt_color=th.warning, cursor=focused)
+        buf.puts(input_r[0], div_y, f" {self.editor_label} ", txt_color=th.accent_alt)
+        hint = self.hint() + (" · Esc keep draft" if focused else "")
+        buf.puts(bx, y + h - 1, hint[:bw], txt_color=th.accent_alt)
 
+    def hint(self):
+        if self.approval:
+            return "Enter deny · i edit reason" if self.editor.get_text() else "Enter approve · i deny"
+        if self.editor.get_text(): return "Enter submit · i edit answer"
+        return "↑/↓ select · Enter answer · i custom answer" if self.options else "Enter / i answer"
+
+    def select(self, delta):
+        if not self.options:
+            self.scroll = max(0, self.scroll + delta)
+            return
+        self.selected = (self.selected + delta) % len(self.options)
+        self.selection_changed = True
+
+    def draw_content(self, buf, r):
+        import textwrap
+        th = self.ctx.app.theme
+        buf.fill(r, ' ')
+        x, y, w, h = r
+        if w < 4 or h < 3: return
+        rows = []
+        for line in [self.title, "", *self.lines]:
+            rows.extend(textwrap.wrap(line, w - 2, replace_whitespace=False, drop_whitespace=False) or [""])
+        choice_start = len(rows)
+        selected_row = choice_start
+        for i, option in enumerate(self.options):
+            if i == self.selected: selected_row = len(rows)
+            rows.extend(textwrap.wrap(("› " if i == self.selected else "  ") + option, w - 2,
+                                      subsequent_indent="  ") or [""])
+        visible = h - 1
+        if self.selection_changed:
+            self.scroll = min(self.scroll, selected_row)
+            self.scroll = max(self.scroll, selected_row - visible + 1)
+            self.selection_changed = False
+        self.scroll = max(0, min(self.scroll, len(rows) - visible))
+        shown = rows[self.scroll:self.scroll + visible]
+        if self.filename:
+            _render_diff(self.ctx, buf, shown, x, y, w - 2, visible, self.filename)
+        else:
+            for i, line in enumerate(shown):
+                color = th.accent_alt if i + self.scroll < choice_start else th.text
+                buf.puts(x, y + i, line, txt_color=color)
+        buf.puts(x, y + h - 1, f"PgUp/PgDn scroll · {self.scroll + 1}-{self.scroll + len(shown)}/{len(rows)}"[:w], txt_color=th.muted)
+
+
+def ask_user(ctx: ex6.Context, question: str) -> str:
+    """Ask user a question and wait for their response. Blocks until answered."""
+    return ctx.ask_human(_HumanPanel(ctx, "AGENT QUESTION", question.splitlines())) or ""
 
 
 def ask_user_question(ctx: ex6.Context, question: str, opt: Optional[list[str]] = None) -> str:
-    """
-    Ask user a question with optional selectable answers.
-    Returns: Q: <question>\nA: <answer>
-    """
+    """Ask user a question with optional selectable answers. Returns Q: <question>\nA: <answer>."""
     if ctx.app.long_horizon:
         raise RuntimeError("No human available (long-horizon run). Make your best judgement and state your assumption.")
-    options = [str(o) for o in (opt or [])]
-    selected = [0]
-    typed_mode = [len(options) == 0]
-    input_draw = ctx.app.call("make_input")
-
-    def _wrap_words(text: str, width: int) -> list[str]:
-        if width < 1:
-            return [""]
-        out = []
-        for part in (text or "").split("\n"):
-            words = part.split()
-            if not words:
-                out.append("")
-                continue
-            line = ""
-            for word in words:
-                if not line:
-                    line = word
-                elif len(line) + 1 + len(word) <= width:
-                    line += " " + word
-                else:
-                    out.append(line)
-                    line = word
-            if line:
-                out.append(line)
-        return out or [""]
-
-    def draw(buf: ex6.ScreenBuffer, inpt, r):
-        x, y, w, h = r
-        th = ctx.app.theme
-
-        show_options = bool(options) and not typed_mode[0]
-        q_lines = _wrap_words(question, max(1, w - 8))
-        base_h = 6 + len(q_lines) + (len(options) + 2 if show_options else 3)
-        box_h = min(h, max(h // 2, base_h))
-        box = ex6.Region(x, y, w, box_h)
-
-        buf.fill(box, char=' ', bg_color=None)
-        buf.rect_line(box, txt_color=th.accent)
-
-        cx = x + 3
-        cy = y + 1
-        buf.puts(cx, cy, "AGENT QUESTION", txt_color=th.accent_alt, style='bold')
-        cy += 2
-
-        for line in q_lines:
-            if cy >= y + box_h - 2:
-                break
-            buf.puts(cx, cy, line[:max(1, w - 6)], txt_color=th.warning)
-            cy += 1
-
-        cy += 1
-
-        if show_options:
-            if inpt.consume('KEY_UP'):
-                selected[0] = (selected[0] - 1) % len(options)
-            if inpt.consume('KEY_DOWN'):
-                selected[0] = (selected[0] + 1) % len(options)
-            for i in range(min(9, len(options))):  # tap a number to answer. TODO: `1` as first char of a custom answer picks option 1
-                if inpt.consume(str(i + 1)): return options[i]
-            if inpt.consume('KEY_ENTER'): return options[selected[0]]
-            if inpt._keys:
-                typed_mode[0] = True
-                show_options = False
-
-        if show_options:
-            buf.puts(cx, cy, "1-9 answer | UP/DOWN + ENTER | type custom answer", txt_color=th.text)
-            cy += 1
-            for i, option in enumerate(options):
-                if cy >= y + box_h - 1:
-                    break
-                is_sel = i == selected[0]
-                prefix = ("›" if is_sel else " ") + (f" {i + 1}" if i < 9 else "  ")
-                clr = th.success if is_sel else th.text
-                buf.puts(cx, cy, f"{prefix} {option}"[:max(1, w - 6)], txt_color=clr, style='bold' if is_sel else None)
-                cy += 1
-            return
-
-        buf.puts(cx, cy, "Type custom answer, ENTER submit", txt_color=th.text)
-        cy += 1
-        input_h = max(1, y + box_h - 1 - cy)
-        if value := input_draw(buf, inpt, (cx, cy, max(1, w - 6), input_h)): return value.text
-        if options and input_draw.text == "":
-            typed_mode[0] = False
-
-    answer = ctx.ask_human(draw) or ""
+    request = _HumanPanel(ctx, "AGENT QUESTION", question.splitlines(), options=[str(o) for o in (opt or [])])
+    answer = ctx.ask_human(request) or ""
     return f"Q: {question}\nA: {answer}"
 
 
@@ -1311,37 +1317,8 @@ def escalate(ctx: ex6.Context, reason: str, severity: int = 1) -> str:
     severity: 1=informational, 2=blocking, 3=critical."""
     if ctx.parent:
         raise EscalationError(reason, severity)
-    input_draw = ctx.app.call("make_input")
-    sev_labels = {1: "INFO", 2: "BLOCKING", 3: "CRITICAL"}
-    label = sev_labels.get(severity, f"SEV-{severity}")
-
-    def draw(buf: ex6.ScreenBuffer, inpt, r):
-        x, y, w, h = r
-        th = ctx.app.theme
-        buf.fill(r, char=' ', bg_color=None)
-        buf.rect(r, txt_color=th.muted)
-        cx = x + 3
-        cy = y + 1
-        buf.puts(cx, cy, f"[{label}] ESCALATION", txt_color=th.error, bg_color=None)
-        words = reason.split()
-        lines, line = [], ""
-        for word in words:
-            if line and len(line) + 1 + len(word) > w - 6:
-                lines.append(line)
-                line = word
-            else:
-                line = (line + " " + word).strip()
-        if line:
-            lines.append(line)
-        for i, l in enumerate(lines):
-            if cy + 1 + i >= y + h - 2:
-                break
-            buf.puts(cx, cy + 1 + i, l, txt_color=th.warning, bg_color=None)
-        prompt_y = cy + 1 + len(lines) + 1
-        buf.puts(cx, prompt_y - 1, "Respond to agent:", txt_color=th.text, bg_color=None)
-        if value := input_draw(buf, inpt, (cx, prompt_y, w - 6, 1)): return value.text
-
-    return ctx.ask_human(draw) or ""
+    label = {1: "INFO", 2: "BLOCKING", 3: "CRITICAL"}.get(severity, f"SEV-{severity}")
+    return ctx.ask_human(_HumanPanel(ctx, f"[{label}] ESCALATION", reason.splitlines())) or ""
 
 
 def _make_diff(old: str, new: str) -> list:
@@ -1441,51 +1418,15 @@ def _command_lines(command: str) -> list[str]:
     return command.replace('\r\n', '\n').replace('\r', '\n').split('\n')
 
 
-def _approval_panel(ctx, title, preview=None, height=None):
-    """Human approval panel draw fn. ENTER=approve (True), text+ENTER=deny (reason).
-    preview: fn(buf, x, y, w, h). height: short panel at bottom of screen."""
-    input_draw = ctx.app.call("make_input")
-
-    def draw(buf, inpt, r):
-        th = ctx.app.theme
-        panel = ex6.Region(*r)
-        if height is not None:
-            panel_h = min(panel[3], height)
-            panel = ex6.Region(panel[0], panel[1] + panel[3] - panel_h, panel[2], panel_h)
-        content = panel.shrink(3, 1)
-        buf.fill(panel, char=' ', bg_color=None)
-        buf.rect_line(panel, txt_color=th.accent)
-        buf.puts(content[0], content[1], title[:content[2]], txt_color=th.accent_alt, style='bold')
-        buf.puts(content[0], content[1] + 1, "ENTER approve | type reason + ENTER to deny"[:content[2]], txt_color=th.muted)
-        preview_r = ex6.Region(content[0], content[1] + 4, content[2], max(0, content[3] - 4))
-        if preview and preview_r[3] > 0:
-            preview(buf, *preview_r)
-        if (not input_draw.get_text()) and inpt.consume('KEY_ENTER'): return True
-        if value := input_draw(buf, inpt, ex6.Region(content[0], content[1] + 2, content[2], 1), txt_color=th.warning):
-            return value.text
-
-    return draw
-
-
-def _approve(ctx, tool, args, title, preview=None, height=None) -> str | None:
+def _approve(ctx, tool, args, title, lines=(), filename=None) -> str | None:
     """Returns None if approved, else denial reason."""
-    verdict = ex6.request_approval(ctx, tool, args, _approval_panel(ctx, title, preview, height))
+    request = _HumanPanel(ctx, title, lines, approval=True, filename=filename)
+    verdict = ex6.request_approval(ctx, tool, args, request)
     return None if verdict is True else verdict
 
 
 def _approve_command(ctx: ex6.Context, tool: str, args: dict) -> str | None:
-    command_lines = _command_lines(args["command"])
-
-    def render_command(buf, x, y, w, h):
-        th = ctx.app.theme
-        area = ex6.Region(x, y, w, h)
-        label_r, command_r = area.split_vertical(1, max(2, len(command_lines) + 2))
-        buf.puts(label_r[0], label_r[1], "COMMAND", txt_color=th.muted, style='bold')
-        command_r = ex6.Region(command_r[0], command_r[1], command_r[2], min(command_r[3], len(command_lines) + 2))
-        buf.rect_line(command_r, txt_color=th.warning)
-        buf.print_contained('\n'.join(command_lines), command_r.shrink(2, 1), txt_color=th.warning, wrap=False)
-
-    return _approve(ctx, tool, args, f"{tool.upper()} APPROVAL", preview=render_command, height=len(command_lines) + 9)
+    return _approve(ctx, tool, args, f"{tool.upper()} APPROVAL", lines=_command_lines(args["command"]))
 
 
 # matches ANSI color/cursor codes (CSI) and terminal title/hyperlink codes (OSC)
@@ -1722,11 +1663,19 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
     fork=False keeps system prompts but starts fresh for an unrelated task.
     - Use fork=False when the task is completely unrelated to your task.
     - Also use fork=False if the task will be quite long/tedious (ie a big websearch, or a broad exploration question)
+
+    Keep delegation short: task, ownership boundaries, and any NEW constraints. Aim for 1-3 sentences.
+    With fork=True, your agent is identically smart as you, so you shouldn't feel the need to instruct it.
+    Delegate the outcome, not every implementation step.
+    <example>
+    BAD: "Implement checkpointing from .plans/deploy.md. Runtime must be isolated; begin_run must require ... ... (400 tokens wasted) ..."
+    GOOD: "Implement the checkpoint/publication/run-boundary section of .plans/deploy.md."
+    </example>
     """
     if "tools:subagent_depth" in ctx.data:
         raise RuntimeError("Subagents cannot create subagents")
 
-    sub = ctx.fork(f"{ctx.name}.sub{uuid.uuid4().hex[:6]}")
+    sub = ctx.fork(f"{ctx.name}.{uuid.uuid4().hex[:5]}")
     if not fork:
         sub.tools = list(ctx.get_tools().values())
         sub.clear()

@@ -1454,20 +1454,16 @@ class Context:
         messages = copy.deepcopy(self.get_messages())
         return self._clone(new_name or self.name, list(messages))
 
-    def ask_human(self, draw):
-        """Show a panel until draw(buf, inpt, r) returns a value (returned here). Blocks the calling (tool) thread.
-        Returns None if the agent is stopped first."""
-        result = []
-        def panel(buf, inpt, r):
-            value = draw(buf, inpt, r)
-            if value is not None:
-                result.append(value)
-                self.ui_stack = [p for p in self.ui_stack if p is not panel]
-        self.ui_stack.append(panel)
-        while not result and not self.stop_early and panel in self.ui_stack:
-            time.sleep(0.05)
-        self.ui_stack = [p for p in self.ui_stack if p is not panel]
-        return result[0] if result else None
+    def ask_human(self, panel, cancel=None):
+        """Wait for panel completion; None on stop/removal or when cancel() is true."""
+        reply = _HumanReply(self, panel, cancel)
+        self.ui_stack.append(reply)
+        try:
+            while reply.pending():
+                time.sleep(0.05)
+            return reply.result if reply.done else None
+        finally:
+            self.ui_stack = [p for p in self.ui_stack if p is not reply]
 
 
 
@@ -1482,6 +1478,34 @@ class Context:
 
 Rect = Tuple[int, int, int, int]  # (x, y, w, h)
 RegionLike = Union['Region', Rect]
+
+
+class _HumanReply:
+    def __init__(self, ctx, panel, cancel=None):
+        self.ctx, self.panel, self.cancel = ctx, panel, cancel
+        self.done, self.result = False, None
+        self.label = "panel"
+
+    def pending(self):
+        return (not self.done and self in self.ctx.ui_stack and not self.ctx.stop_early
+                and not (self.cancel and self.cancel()))
+
+    def focus(self, label="panel"):
+        tui = self.ctx.app.tui
+        if self.pending() and tui.current is self.ctx and tui.request() is self:
+            self.label = label
+            _open_input(tui, request=self)
+
+    def blur(self):
+        tui = self.ctx.app.tui
+        if tui and tui.editing == (self.ctx, self):
+            tui.leave_editor()
+
+    def complete(self, value):
+        if not self.pending(): return
+        self.result, self.done = value, True
+        self.ctx.ui_stack = [p for p in self.ctx.ui_stack if p is not self]
+        self.blur()
 
 
 class ScreenBuffer:
@@ -1890,7 +1914,11 @@ class InputBox:
         """Returns the InputValue submitted this frame (also passed to on_submit), else None."""
         inner_w = r[2]
         if inner_w < 1: return None
+        value = self.handle(inpt, inner_w)
+        if value is not None: return value
+        self.render(buf, r, txt_color, cursor)
 
+    def handle(self, inpt, inner_w):
         if self.allow_images and inpt.consume('KEY_ALT_V'):
             attachment = clipboard_image_attachment()
             if attachment:
@@ -1942,6 +1970,9 @@ class InputBox:
             if self.on_submit: self.on_submit(value)
             return value
 
+    def render(self, buf, r, txt_color='white', cursor=True):
+        inner_w = r[2]
+        if inner_w < 1: return
         cursor_char = "█" if cursor else ""
         cy, cx = self._cursor_visual(inner_w)
         visual_lines = self._wrap(self.text, inner_w)
@@ -2214,10 +2245,8 @@ def transform_user_prompt(text, ctx):
     return text
 
 
-def request_approval(ctx, tool, args, draw):
-    """Approve a tool call. Runs the approve_tool chain once; if no handler decides, asks the human
-    via the draw(buf, inpt, r) panel. yolo = auto approve if no handler decides.
-    Returns True (approved) or "reason" (denied)."""
+def request_approval(ctx, tool, args, panel):
+    """Run approval policy, then wait for a panel. Returns True or a denial reason."""
     if ctx.stop_early:
         return "stopped"
     verdict = ctx.app.call("approve_tool", ctx, tool, args)
@@ -2225,20 +2254,11 @@ def request_approval(ctx, tool, args, draw):
         return verdict
     if ctx.yolo or ctx.app.tui is None:
         return True
-    result = []
-    def panel(buf, inpt, r):
-        value = draw(buf, inpt, r)
-        if value is not None:
-            result.append(value)
-            ctx.ui_stack = [p for p in ctx.ui_stack if p is not panel]
-    ctx.ui_stack.append(panel)
-    while not result and not ctx.stop_early and not ctx.yolo and panel in ctx.ui_stack:
-        time.sleep(0.05)
-    ctx.ui_stack = [p for p in ctx.ui_stack if p is not panel]
+    result = ctx.ask_human(panel, cancel=lambda: ctx.yolo)
     if ctx.stop_early:
         return "stopped"
-    if result:
-        return result[0]
+    if result is not None:
+        return result
     return True if ctx.yolo else "stopped"
 
 @_handleable
@@ -2292,7 +2312,13 @@ def render_status_line(tui, buf, inpt, r):
     buf.puts(x, y, label, txt_color="black", bg_color=tui.mode_color(), style='bold')
     cx = x + len(label) + 1
     if ctx:
-        info = f"{ctx.name} · {ctx.reasoning}"
+        owner = ""
+        if tui.editing:
+            request = tui.editing[1]
+            owner = "command" if ctx.get_input_box().get_text().startswith("/") else "prompt"
+            if request: owner = request.label
+        info = f"{ctx.name} · {owner or ctx.reasoning}"
+        if ctx.ui_stack and tui.editing and tui.editing[1] is None: info += " · request waiting"
         buf.puts(cx, y, info, txt_color=th.muted)
         cx += len(info) + 2
         yolo = "YOLO ON" if ctx.yolo else "yolo OFF"
@@ -2423,6 +2449,7 @@ class TUI:
     keyls: list = field(default_factory=list)
     stdout_sink: Any = None
     log_keys: bool = False
+    editing: Any = None  # (context, request or None for prompt/command)
 
     def add_context(self, ctx):
         if ctx.app is not self.app:
@@ -2455,6 +2482,23 @@ class TUI:
         th = self.app.theme
         return th.mode_insert if self.mode == "insert" else th.muted
 
+    def request(self):
+        if self.mode == "insert" and self.editing:
+            return self.editing[1]
+        if self.current.ui_stack:
+            request = self.current.ui_stack[-1]
+            if request.pending(): return request
+
+    def leave_editor(self):
+        self.mode, self.editing = "normal", None
+
+    def panel_action(self, name, count=1):
+        request = self.request()
+        if request and request.pending():
+            for _ in range(count):
+                request.panel.action(name, request)
+                if not request.pending(): break
+
     def keys_active(self):
         return self.mode == "normal" and self.current and not self.ui_panel_stack
 
@@ -2486,14 +2530,25 @@ class TUI:
             self.pending_keys.append(key_token(k))
             r = self._resolve_keys()
             if r == "wait": continue
-            if r is None and len(self.pending_keys) == 1: inpt._keys.append(k)
+            request = self.request()
+            if r is None and len(self.pending_keys) == 1:
+                action = {"<UP>": "up", "<DOWN>": "down", "<PGUP>": "page_up", "<PGDOWN>": "page_down"}.get(key_token(k))
+                if request and action:
+                    self.panel_action(action)
+                else:
+                    inpt._keys.append(k)
             self.pending_keys = []
             if r: r[0](self, r[1])
+            if request and not request.pending():
+                request.blur()
+                inpt._keys.clear()
+                return
 
     def remove_context(self, ctx):
         if ctx not in self.contexts:
             return
         self.contexts.remove(ctx)
+        ctx.ui_stack.clear()
         if self.current is ctx:
             self.current = self.contexts[0] if self.contexts else None
         self.app.run_context_hooks("context_removed", ctx)
@@ -2584,8 +2639,10 @@ def _add(tui, ctx):
     return ctx
 
 
-def _open_input(tui, text=None):
+def _open_input(tui, text=None, request=None):
     if text is not None: tui.current.get_input_box().set_text(text)
+    tui.editing = (tui.current, request)
+    tui.pending_keys = []
     tui.mode = "insert"
 
 
@@ -2618,10 +2675,18 @@ def key_up(tui, n):
     tui.current = ctxs[max(0, ctxs.index(tui.current) - n)]
 
 
-@key(" ", "a")
+@key(" ", "a", "i")
 def key_prompt(tui, n):
-    'Type a prompt for the agent (or answer its question). Esc back to the list.'
-    _open_input(tui)
+    'Edit the request or prompt. Esc keeps the draft and returns to NORMAL.'
+    if tui.request(): tui.panel_action("edit")
+    else: _open_input(tui)
+
+
+@key("<CR>")
+def key_submit(tui, n):
+    'Submit the request, or edit the prompt if none is waiting.'
+    if tui.request(): tui.panel_action("activate")
+    else: _open_input(tui)
 
 
 @key("w")
@@ -2633,13 +2698,15 @@ def key_zoom(tui, n):
 @key("<C-u>")
 def key_scroll_up(tui, n):
     'Scroll transcript up half a page.'
-    tui.current._scroll_up += n * max(1, tui.transcript_r[3] // 2)
+    if tui.request(): tui.panel_action("page_up", n)
+    else: tui.current._scroll_up += n * max(1, tui.transcript_r[3] // 2)
 
 
 @key("<C-d>")
 def key_scroll_down(tui, n):
     'Scroll transcript down half a page.'
-    tui.current._scroll_up = max(0, tui.current._scroll_up - n * max(1, tui.transcript_r[3] // 2))
+    if tui.request(): tui.panel_action("page_down", n)
+    else: tui.current._scroll_up = max(0, tui.current._scroll_up - n * max(1, tui.transcript_r[3] // 2))
 
 
 @key("/")
@@ -2650,14 +2717,14 @@ def key_command(tui, n):
 
 @key("h")
 def key_human(tui, n):
-    'Answer the nearest agent that needs a human (?), else jump to the nearest unseen reply (●).'
+    'Visit the nearest waiting request (?) in NORMAL, else the nearest unseen reply (●).'
     ctxs = tui.context_list()
     i = ctxs.index(tui.current)
     near = lambda c: abs(ctxs.index(c) - i)
     asks = sorted((c for c in ctxs if c.ui_stack), key=near)
     if asks:
         tui.current = asks[0]
-        return _open_input(tui)
+        return
     unseen = sorted((c for c in ctxs if c is not tui.current and tui.is_unseen(c)), key=near)
     if not unseen: return tui.echo("nobody needs you")
     tui.current = unseen[0]
@@ -2792,27 +2859,28 @@ def help_lines(app):
     return lines
 
 
-def _input_layout(tui, input_box, x, w, pad, main_h):
-    """Returns (input_r, box_r). Insert: full-width bordered box (box_r). Else: compact input in the right panel (box_r None)."""
-    if tui.mode == "insert" and not tui.current.ui_stack:
-        input_h = max(3, min(input_box.get_height(tui.term.width - 4), main_h // 3))
-        box_r = Region(0, main_h - 3 - input_h, tui.term.width, input_h + 2)
+def _input_layout(input_box, x, w, pad, main_h, screen_w, focused):
+    """Returns (input_r, box_r): full-width bordered editor when focused, compact otherwise."""
+    if focused:
+        input_h = max(3, min(input_box.get_height(screen_w - 4), main_h // 3))
+        box_r = Region(0, main_h - 3 - input_h, screen_w, input_h + 2)
         return box_r.shrink(2, 1), box_r
     input_h = max(1, min(input_box.get_height(w - 2 * pad), main_h // 3))
     return Region(x + pad, main_h - 1 - input_h, w - 2 * pad, input_h), None
 
 
-def _draw_input_frame(tui, buf, box_r, x, w, div_y):
+def _draw_input_frame(ctx, buf, box_r, x, w, div_y):
     """Big box: border + agent name. Compact: divider above the input. x > 0: join the list's divider."""
-    th = tui.app.theme
+    th = ctx.app.theme
+    color = th.mode_insert if box_r else th.muted
     if box_r:
-        color = th.invoking if tui.current.is_running() else tui.divider_color()
+        if ctx.is_running(): color = th.invoking
         buf.rect_line(box_r, txt_color=color)
-        buf.puts(2, box_r[1] + box_r[3] - 1, f" {tui.current.name} ", txt_color=th.accent_alt, style='bold')
+        buf.puts(2, box_r[1] + box_r[3] - 1, f" {ctx.name} ", txt_color=th.accent_alt, style='bold')
         if x: buf.put(x - 1, div_y, '┴', txt_color=color)
     else:
-        buf.hline((x, div_y, w, 1), txt_color=tui.divider_color())
-        if x: buf.put(x - 1, div_y, '├', txt_color=tui.divider_color())
+        buf.hline((x, div_y, w, 1), txt_color=color)
+        if x: buf.put(x - 1, div_y, '├', txt_color=color)
 
 
 def _tui_loop(tui: TUI):
@@ -2872,13 +2940,18 @@ def _tui_loop(tui: TUI):
 
     if tui.ui_panel_stack and inpt.consume('KEY_ESCAPE'):
         tui.ui_panel_stack.pop()
-    if tui.mode == "insert" and inpt.consume('KEY_ESCAPE'):
-        tui.mode = "normal"
+    if tui.editing:
+        owner, request = tui.editing
+        if owner is not tui.current or (request and not request.pending()):
+            tui.leave_editor()
+            inpt._keys.clear()
+    if tui.mode == "insert" and not tui.request() and inpt.consume('KEY_ESCAPE'):
+        tui.leave_editor()
     if tui.keys_active():
         tui.feed_keys(inpt)
     ctx = tui.current
     ctx.last_seen = time.time()
-    input_box = ctx.get_input_box()  # a key may have switched agent
+    request = tui.request()
 
     if tui.mode == "scroll":
         if inpt._keys:
@@ -2895,44 +2968,67 @@ def _tui_loop(tui: TUI):
     x, w = left_w, term.width - left_w
     top = 0 if ctx._zoom else 1  # blank row above the list
     header_h = 1 if ctx._zoom else 3
-    input_r, box_r = _input_layout(tui, input_box, x, w, pad, main_h)
-    bx, bw = (0, term.width) if box_r else (x, w)  # big box: input + footer span the screen
-    footer_r = Region(bx, main_h - 1, bw, 1)
-    div_y = input_r[1] - 1
-    transcript_r = tui.transcript_r = Region(x + pad, top + header_h, w - pad, max(0, div_y - top - header_h))
+    panel_r = Region(x, top + header_h, w, main_h - top - header_h)
+
+    if request and tui.mode == "insert" and not tui.ui_panel_stack:
+        keys, inpt._keys = inpt._keys, []
+        for k in keys:
+            if not request.pending():
+                request.blur()
+                break
+            event = InputPass([k])
+            if event.consume('KEY_ESCAPE'):
+                request.blur()
+                break
+            if event.consume('KEY_CTRL_X'):
+                ctx.stop_early = True
+                request.blur()
+                break
+            request.panel.input(event, panel_r, request)
+            if not request.pending() or tui.editing != (ctx, request):
+                request.blur()
+                break
+        request = tui.request()
+
     focused = tui.mode == "insert" and not tui.ui_panel_stack
     focus_inpt = inpt if focused else InputPass([])  # unfocused: read-only
-
-    # Transcript first; it doesn't clip, so blank what it spilled into above/below.
-    tui.app.call("render_transcript", tui, buf, focus_inpt, transcript_r)
-    buf.fill(Region(x, 0, w, top + header_h), ' ')
-    buf.fill(Region(bx, div_y, bw, main_h - div_y), ' ')
-    if left_w:
-        list_h = (div_y if box_r else main_h) - top  # big box cuts the list short
-        tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, list_h))
-    tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
-    _draw_input_frame(tui, buf, box_r, x, w, div_y)
-
-    if ctx.ui_stack:  # needs a human: answer in place of the transcript
-        ctx.ui_stack[-1](buf, focus_inpt, transcript_r)
-        if focused and not ctx.ui_stack and tui.mode == "insert": tui.mode = "normal"
-    elif tui.app.call("render_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
-        tui.mode = "normal"
-    render_footer_and_commands(tui, buf, footer_r, ctx)
+    if request:
+        tui.transcript_r = panel_r
+        if left_w:
+            tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, main_h - top))
+        tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
+        request.panel.draw(buf, panel_r, focused)
+    else:
+        input_box = ctx.get_input_box()
+        input_r, box_r = _input_layout(input_box, x, w, pad, main_h, term.width, tui.mode == "insert")
+        bx, bw = (0, term.width) if box_r else (x, w)
+        footer_r = Region(bx, main_h - 1, bw, 1)
+        div_y = input_r[1] - 1
+        transcript_r = tui.transcript_r = Region(x + pad, top + header_h, w - pad, max(0, div_y - top - header_h))
+        # Transcript first; it doesn't clip, so blank what it spilled into above/below.
+        tui.app.call("render_transcript", tui, buf, focus_inpt, transcript_r)
+        buf.fill(Region(x, 0, w, top + header_h), ' ')
+        buf.fill(Region(bx, div_y, bw, main_h - div_y), ' ')
+        if left_w:
+            list_h = (div_y if box_r else main_h) - top
+            tui.app.call("render_list", tui, buf, inpt, Region(0, top, left_w, list_h))
+        tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
+        _draw_input_frame(ctx, buf, box_r, x, w, div_y)
+        if tui.app.call("render_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
+            tui.leave_editor()
+        render_footer_and_commands(tui, buf, footer_r, ctx)
     tui.app.call("render_status_line", tui, buf, inpt, Region(0, main_h, term.width, 1))
 
     if tui.ui_panel_stack:
         tui.ui_panel_stack[-1](buf, inpt, Region(3, 2, buf.w - 6, buf.h - 4))
     else:  # leftover keys: bare ex6 stays usable
-        page = max(1, transcript_r[3] // 2)
+        page = max(1, tui.transcript_r[3] // 2)
         if inpt.consume('KEY_PGUP'): ctx._scroll_up += page
         if inpt.consume('KEY_PGDOWN'): ctx._scroll_up = max(0, ctx._scroll_up - page)
         if inpt.consume('KEY_UP'): ctx._scroll_up += ARROW_SCROLL_SPEED
         if inpt.consume('KEY_DOWN'): ctx._scroll_up = max(0, ctx._scroll_up - ARROW_SCROLL_SPEED)
         if tui.mode == "insert":
             if inpt.consume('KEY_CTRL_X') and ctx.is_running(): ctx.stop_early = True
-        else:
-            if inpt.consume('KEY_ENTER'): tui.mode = "insert"
     if tui.mode != "scroll":  # a command may have left fullscreen this frame
         buf.flush(term, tui.app.stdout)
 

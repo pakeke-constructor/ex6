@@ -48,7 +48,7 @@ Instantiation: `Context(app, "name", model="openai/model", reasoning="low", mess
 
 Running it: `ctx.invoke("some prompt")` adds the user message and starts the LLM in a background thread. It keeps looping (LLM replies, tools run, LLM replies again) until the model stops calling tools. `ctx.stop_early = True` asks it to stop.
 
-Human panels: a tool calls `ctx.ask_human(draw)`, which blocks until `draw(buf, inpt, r)` returns a value (None on stop). Drawn over the agent's transcript; answer via space/`h`.
+Human panels: `ctx.ask_human(panel, cancel=None)` blocks until completion (None on stop/removal or `cancel()` returning true). No base class: implement `action(name, reply)`, `input(inpt, r, reply)`, and `draw(buf, r, focused)`. NORMAL routes Enter → `activate`, i/space/a → `edit`, arrows → `up`/`down`, PgUp/PgDn and ctrl-u/d → `page_up`/`page_down`. Focused input goes to `input`; core intercepts Esc (release focus) and ctrl-x (stop). `reply.focus(label="panel")`, `reply.blur()`, `reply.complete(value)` control focus/completion; False and None are valid results, and method returns have no special meaning. Drawing region covers the chat body through the footer; panel owns layout, hints, and any editor/selection/scroll state. Core owns waiting, cancellation, focus ownership, and key-spillover protection. `_ex6/tools.py` supplies the standard approval/question UI; `request_approval(ctx, tool, args, panel)` adds policy/yolo without approval state in the generic lifecycle. `h` visits in NORMAL.
 
 Which backend runs the request?
 The `ctx.get_invoker()` polls a handler to choose between models. With the default plugins in _ex6, anthropic models use claude-code backend, openai models use codex-backend, and both of these fallback to openrouter. (To force a backend, pass `invoke_llm=some_fn` when building the Context.)
@@ -82,7 +82,7 @@ Rendering / input:
 - `WrapWriter`: char writer that wraps at width (`buf.writer(x, y, w)`).
 - `Region`: represents (x,y,w,h) tuple; used for immediate-mode layout.
 - `InputPass`: cleared every frame; handles input management/blocking (`inpt.consume(key)`).
-- `InputBox`: text input widget (cursor, word nav, image paste). `draw` returns the submitted InputValue (also passed to optional on_submit).
+- `InputBox`: text input widget (cursor, word nav, image paste). `handle(inpt, width)` processes input; `render(buf, r, txt_color, cursor)` only draws. `draw` combines both, returning submitted InputValue (also passed to optional on_submit).
 
 Plugin decorators:
 - `@ex6.command`: `/name` command, `fn(tui, args...)`; args coerced from type hints.
@@ -166,12 +166,12 @@ Left panel - list of named contexts (agents); select one to work in.
 Right panel - The chat window. Contains the selected agent: header (name, model, provider, budget, ctx bar, tool count), its full transcript (scrollable), and its input box + footer (/command autocomplete).
 
 Follows a vim-like style:
-NORMAL = list focused, keys active. Core keymap: j k, space/a (prompt the selected agent), / (command), h (answer agent needing a human), g go, z yolo, w zoom, ctrl-u/d scroll, s/ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc (yank), p dd da cc cp ca, ?. `?` and /help list them (`ex6.text_panel`).
-INSERT = typing in the selected agent's input box. `space`/`a`/Enter focus the input; Esc (or submitting) returns to the list.
+NORMAL = navigate and act. Core keymap: j k, i/space/a (edit request or prompt), Enter (submit request, otherwise edit prompt), / (command), h (visit waiting request in NORMAL), g go, z yolo, w zoom, ctrl-u/d scroll, s/ctrl-x stop, f/o fork, n new (from `tui.favorite`), yy yr yc (yank), p dd da cc cp ca, ?. `?` and /help list them (`ex6.text_panel`).
+INSERT = edit a specific request or prompt in the regular input area. Esc keeps the draft and returns to NORMAL; submitting returns to NORMAL. Incoming requests never steal editing focus. Status names the input owner.
 
-Arrows and PgUp/PgDn always scroll the transcript (any mode); `<C-u>`/`<C-d>` in NORMAL. Only j/k switch agents.
+Arrows scroll content; with choices, up/down selects in NORMAL. PgUp/PgDn scroll request content or transcript; `<C-u>`/`<C-d>` in NORMAL. Only j/k switch agents. Digits are counts, not choice shortcuts.
 List shows relative numbers and markers (`?` needs a human, `●` finished while not selected, `!` yolo).
-Questions from the LLM (ctx.ui_stack panels) draw over the selected agent's transcript, so they're isolated to the context that asked; read-only until you focus (space/`h`).
+Human requests (ctx.ui_stack) replace the selected agent's transcript while inspected; their editor uses the regular input area. Enter approves an empty approval or submits its denial draft, even after Esc. Choice questions submit the selection unless a custom draft exists. Text-only questions open editing when empty. Hints reflect the current action. `/` always targets command input, not the request.
 `w` toggles zoom for the selected agent: hides the list (clean mouse-copy, long lines). Per agent; each restores its own zoom.
 Bottom row is a status line (NORMAL/INSERT/ZOOM, agent, echo, pending keys + which-key popup). `/` commands run from either focus.
 </ui-ux>
