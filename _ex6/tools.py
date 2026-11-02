@@ -1682,7 +1682,8 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
     sub.data["tools:subagent_depth"] = 1
     sub.ephemeral = True
     prompt = SUBAGENT_PROMPT_FORK if fork else SUBAGENT_PROMPT
-    sub.invoke(prompt.format(task=msg, peer_count=_count_peers(ctx)))
+    other_agents = _count_peers(ctx) - 1 # other agents dont include parent agent
+    sub.invoke(prompt.format(task=msg, peer_count=other_agents))
     if ctx.app.tui:
         ctx.app.tui.add_context(sub)
 
