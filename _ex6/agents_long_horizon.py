@@ -514,7 +514,7 @@ def default_agents(app, preset=OPUS):
     """{main, review, doc} for default_pipeline. Custom review agents must keep `review_diff`; review() reads its result."""
     main = Context(app, **{**preset, "name": "main_agent"}, yolo=True, messages=[
         TASK_SYSTEM_PROMPT.with_tools(HORIZON_MAIN_TOOLS), MAIN_PROMPT, ENV_PROMPT, AGENTS_MD])
-    main.after_tool_calls(context_usage_reminder)
+    main.after_tool_calls(context_usage_reminder())
     review = Context(app, **{**preset, "name": "review_agent"}, yolo=True, messages=[
         REVIEW_PROMPT.with_tools(READ + SHELL + [review_diff]), ENV_PROMPT, AGENTS_MD])
     doc = Context(app, **{**preset, "name": "doc_agent"}, yolo=True, messages=[
