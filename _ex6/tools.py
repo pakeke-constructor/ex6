@@ -1657,7 +1657,7 @@ Ignore your old task; your new task is this:
 <task>
 {task}
 </task>
-(There's {peer_count} other agent(s) running in the same directory as you.)
+(There's may be other agent(s) running in the same directory as you.)
 """
 
 SUBAGENT_PROMPT = """\
