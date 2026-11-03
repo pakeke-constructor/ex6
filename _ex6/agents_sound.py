@@ -360,7 +360,7 @@ def make_sound_agent(app: ex6.App, project: str, sfx_dir: str = "assets/sfx",
     """Build a Freesound sourcing agent. Needs FREESOUND_API_KEY in project .env and an audio-capable model.
     context_kwargs override Context fields (name, model, reasoning, invoke_llm, messages, ...)."""
     kwargs = dict(name="sound_agent", model=M.GEMINI_LATEST.id, reasoning="high",
-                  messages=[SOUND_PROMPT, ENV_PROMPT])
+                  messages=[SOUND_PROMPT, ENV_PROMPT], ephemeral=True)
     ctx = Context(app, **{**kwargs, **context_kwargs})
     ctx.data["sound:project"] = project
     ctx.data["sound:sfx_dir"] = sfx_dir
