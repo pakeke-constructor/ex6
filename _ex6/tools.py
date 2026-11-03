@@ -1709,9 +1709,9 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
         sub.stop_early = True
 
     def poll(wait):
-        if sub.is_running():
+        if not sub.is_settled():
             time.sleep(wait)
-        if sub.is_running():
+        if not sub.is_settled():
             return None
         if sub.llm_result and sub.llm_result.error:
             raise RuntimeError(f"subagent failed: {sub.llm_result.error}")

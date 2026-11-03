@@ -1204,6 +1204,8 @@ class Context:
     def __hash__(self): return id(self)
     def __eq__(self, other): return self is other
     def is_running(self): return self.llm_is_running
+    def is_settled(self, grace=0.3):
+        return bool(self.last_invoke_time_end) and not self.is_running() and time.time() - self.last_invoke_time_end >= grace
 
     def mark_file_read(self, path, read_line_numbers=None):
         p = self.resolve(path)
@@ -2922,7 +2924,7 @@ def _tui_loop(tui: TUI):
     buf.clear()
 
     for ctx in list(tui.contexts):
-        if ctx.ephemeral and ctx.last_invoke_time_end and not ctx.is_running():
+        if ctx.ephemeral and ctx.is_settled():
             tui.remove_context(ctx)
 
     if not tui.contexts:
