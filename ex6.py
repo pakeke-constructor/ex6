@@ -2549,10 +2549,13 @@ class TUI:
     def remove_context(self, ctx):
         if ctx not in self.contexts:
             return
+        ordered = self.context_list()
+        index = ordered.index(ctx)
         self.contexts.remove(ctx)
         ctx.ui_stack.clear()
         if self.current is ctx:
-            self.current = self.contexts[0] if self.contexts else None
+            remaining = self.context_list()
+            self.current = remaining[min(index, len(remaining) - 1)] if remaining else None
         self.app.run_context_hooks("context_removed", ctx)
 
     def __post_init__(self):
