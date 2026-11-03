@@ -944,7 +944,8 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
             selected = all_lines[start-1:end]
             ctx.mark_file_read(path, list(range(start, end + 1)))
             return _add_line_numbers("".join(selected), start=start)
-        if ex6.get_token_estimate(content) > ex6.MAX_TOOL_OUTPUT_CHARACTERS:
+        max_output = ctx.max_tool_output if ctx.max_tool_output is not None else ctx.app.max_tool_output
+        if len(content) > max_output:
             raise ValueError("File is too big!")
         ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
     if line_numbers:
@@ -1657,7 +1658,7 @@ Ignore your old task; your new task is this:
 <task>
 {task}
 </task>
-(There's may be other agent(s) running in the same directory as you.)
+(There may be other agents running in the same workspace as you.)
 """
 
 SUBAGENT_PROMPT = """\

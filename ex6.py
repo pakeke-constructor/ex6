@@ -220,9 +220,6 @@ def get_token_estimate(s: str, model: str = "") -> int:
     return math.ceil(len(s.encode("utf-8")) / 3.2)
 
 
-MAX_TOOL_OUTPUT_CHARACTERS = 150000
-
-
 @dataclass(frozen=True)
 class Attachment:
     path: str
@@ -415,6 +412,7 @@ class App:
         self.plugin_data = {}
         self.diagnostics = {}
         self.budget = DailyBudget()
+        self.max_tool_output: int = 150000  # characters per tool result
         root = Path.cwd().resolve()
         project_path = os.path.normcase(str(root))
         project_hash = hashlib.sha256(project_path.encode("utf-8")).hexdigest()[:12]
@@ -1008,8 +1006,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
                 value = _poll_operation(ctx, value)
             if not isinstance(value, ToolResult):
                 value = ToolResult(tool_result_text(value))
-            if len(value.text) > MAX_TOOL_OUTPUT_CHARACTERS:
-                value = ToolResult(f"ERROR: Tool output too large ({len(value.text)} chars, max {MAX_TOOL_OUTPUT_CHARACTERS}).")
+            max_output = ctx.max_tool_output if ctx.max_tool_output is not None else ctx.app.max_tool_output
+            if len(value.text) > max_output:
+                value = ToolResult(f"ERROR: Tool output too large ({len(value.text)} chars, max {max_output}).")
         except Exception as e:
             ctx.app.debug_print(f"tool {tc['name']} failed: {e}")
             value = ToolResult(f"ERROR: {e}")
@@ -1078,6 +1077,7 @@ class Context:
     tools: list[Callable] = field(default_factory=list)
     schema_id: Optional[str] = None
     max_tokens: int = 200000
+    max_tool_output: int | None = None  # characters per tool result; None uses app.max_tool_output
     llm_is_running: bool = False
     pending_message: Message | None = field(default=None, init=False, repr=False)
     llm_cot: str = ""
