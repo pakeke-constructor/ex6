@@ -78,6 +78,7 @@ Eg: `.plans/buffers1.md`. (This plan is called "buffers1"; Make sure the name is
 Glob/grep the `.plans/` folder if you want to see existing plans.
 
 Guidelines for writing a good plan:
+- Line 1: `# name: short title`. Line 2: `Status: active`, `Status: blocked on <plan-name or reason>`, or `Status: parked`.
 - Use the words of the user; this prevents deviation.
 - ALWAYS include the overarching motivation / reasoning from the perspective of the product or codebase
 - If neccessary, include a bulletpointed list of relevant files. This way, future agents don't need to look for them.
@@ -86,6 +87,7 @@ Guidelines for executing a plan:
 - The plan motivation and instructions from the user take precedence over plan details.
 - Plans are usually not final; if you find a smarter/more robust way to do something, do it.
 - When done, delete/remove the plan file.
+- If you stop before finishing: delete the finished parts, keep only the remaining work, and update Status. A half-done plan should read like a fresh, smaller plan.
 </plans>
 
 <subagents>
