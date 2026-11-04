@@ -277,6 +277,15 @@ class Operation:
     poll: Callable[[float], str | ToolResult | None]
 
 
+class AfterOtherTools(Exception):
+    """
+    Raise from a tool to rerun it once after the rest of its batch finishes (eg a sibling creates the file).
+    Raised again on the rerun: the message becomes the tool's ERROR.
+
+    This is useful if the agent called read_image(x), but the image hasn't been generated yet; (because it's still being made by another tool)
+    """
+
+
 def tool_result_text(value) -> str:
     if isinstance(value, ToolResult):
         return value.text
@@ -1017,8 +1026,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     tools = ctx.get_tools()
     pending = [PendingTool(tc) for tc in llm_result.tool_calls]
     threads = []
+    deferred = []  # (record, fn) that raised AfterOtherTools
 
-    def run_tool(record, fn):
+    def run_tool(record, fn, deferrable=True):
         tc = record.call
         try:
             args = tc["args"]
@@ -1032,6 +1042,11 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
             max_output = ctx.max_tool_output if ctx.max_tool_output is not None else ctx.app.max_tool_output
             if len(value.text) > max_output:
                 value = ToolResult(f"ERROR: Tool output too large ({len(value.text)} chars, max {max_output}).")
+        except AfterOtherTools as e:
+            if deferrable:
+                deferred.append((record, fn))
+                return
+            value = ToolResult(f"ERROR: {e}")
         except Exception as e:
             ctx.app.debug_print(f"tool {tc['name']} failed: {e}")
             value = ToolResult(f"ERROR: {e}")
@@ -1052,6 +1067,9 @@ def call_tools(ctx: Context, llm_result: LLMResult) -> bool:
     finally:
         for t in threads:
             t.join()
+        for record, fn in deferred:
+            if not ctx.stop_early:
+                run_tool(record, fn, deferrable=False)
         ctx.pending_tools = None
 
     with ctx._msg_lock:

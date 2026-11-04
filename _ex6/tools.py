@@ -829,7 +829,7 @@ def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
     p = ctx.resolve(path)
     _check_sensitive_image_path(p)
     if not os.path.isfile(p):
-        raise ValueError(f"'{path}' is not a file.")
+        raise ex6.AfterOtherTools(f"'{path}' is not a file.")
     source_size = os.path.getsize(p)
     if source_size > MAX_IMAGE_SOURCE_BYTES:
         raise ValueError(f"Image exceeds {MAX_IMAGE_SOURCE_BYTES // (1024 * 1024)} MB source limit.")
@@ -926,6 +926,8 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
     """
     _check_secret(path)
     p = ctx.resolve(path)
+    if not os.path.isfile(p):
+        raise ex6.AfterOtherTools(f"'{path}' is not a file.")
     with _get_file_lock(ctx, p):
         with open(p, "rb") as f:
             data = f.read()
@@ -948,6 +950,10 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
         if len(content) > max_output:
             raise ValueError("File is too big!")
         ctx.mark_file_read(path, list(range(1, len(all_lines) + 1)))
+    normalized = content.replace("\r\n", "\n").strip()
+    for m in ctx.get_messages():
+        if m.role == "system" and normalized and m.get_msg(ctx).strip() == normalized:
+            return f"{path} is already in your system prompt, unchanged. Read it there."
     if line_numbers:
         return _add_line_numbers(content)
     return content
@@ -1459,7 +1465,7 @@ CONDENSE_TAIL = 40
 
 CONDENSE_LINE_CHARS = CONDENSE_THRESHOLD  # single lines longer than this get clipped (blobs: minified js, base64)
 
-CONDENSE_FOOTER = "[condensed {before} -> {after} chars; condense=False for full output]\n"
+CONDENSE_FOOTER = "[condensed {before} -> {after} chars; full output: {path}]\n"
 # footer is prepended to condensed output, so agent knows it was condensed
 
 
@@ -1507,17 +1513,24 @@ def _condense_output(out: str) -> str:
     if not lossy:
         return text
     # add footer; if footer makes it bigger than original, condensing wasn't worth it
-    footer = CONDENSE_FOOTER.format(before=len(out), after=len(text))
-    if len(footer + text) > len(out):
+    if len(text) + 200 > len(out):
         return out
-    return footer + text
+    folder = ex6.get_folder("shell_output")
+    for old in folder.iterdir():  # keep a day of full outputs
+        if time.time() - old.stat().st_mtime > 86400:
+            old.unlink(missing_ok=True)
+    fd, path = tempfile.mkstemp(suffix=".txt", dir=folder)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+        f.write(out)
+    return CONDENSE_FOOTER.format(before=len(out), after=len(text), path=path.replace("\\", "/")) + text
 
 
-def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
+def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str | ex6.Operation:
     """Run a Bash command (Git Bash on Windows), returning stdout + stderr.
     Use for: running tests, checking git status, installing packages, etc.
+    Each call is a fresh shell, already in the project cwd; don't `cd` there.
     timeout: max seconds to wait (default 30).
-    condense: collapse repeated lines, truncate long output. False = full raw output."""
+    Long output is condensed; the full output is saved to a file named in the footer."""
     if _IS_WINDOWS:
         git_exe = shutil.which("git")
         exe = os.path.join(os.path.dirname(os.path.dirname(git_exe)), "bin", "bash.exe") if git_exe else None
@@ -1527,14 +1540,13 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = Tru
         exe = shutil.which("bash")
         if not exe:
             return "ERROR: bash not found"
-    denial = _approve_command(ctx, "bash", {"command": command, "timeout": timeout, "condense": condense})
+    denial = _approve_command(ctx, "bash", {"command": command, "timeout": timeout})
     if denial: raise ValueError(f"User denied your bash request, with reason: {denial}")
     if not _IS_WINDOWS:
         try:
             result = subprocess.run([exe, "-c", command], capture_output=True, timeout=timeout, cwd=ctx.cwd)
             out = (result.stdout + result.stderr).decode("utf-8", errors='replace')
-            if condense:
-                out = _condense_output(out)
+            out = _condense_output(out)
             if result.returncode != 0:
                 out = f"[exit code {result.returncode}]\n" + out
             return out.strip() or "(no output)"
@@ -1544,26 +1556,27 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = Tru
     # A script file has no quoting layer, so the command reaches bash byte-for-byte.
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False, encoding="utf-8", newline="") as f:
         f.write(command)
-    return _windows_shell(ctx, [exe, f.name.replace("\\", "/")], timeout, condense, "utf-8", script=f.name)
+    return _windows_shell(ctx, [exe, f.name.replace("\\", "/")], timeout, "utf-8", script=f.name)
 
 
-def powershell(ctx: ex6.Context, command: str, timeout: int = 30, condense: bool = True) -> str | ex6.Operation:
+def powershell(ctx: ex6.Context, command: str, timeout: int = 30) -> str | ex6.Operation:
     """Run a PowerShell command and return its output (stdout + stderr combined). Windows only.
     Use for: running tests, checking git status, installing packages, etc.
+    Each call is a fresh shell, already in the project cwd; don't `cd` there.
     timeout: max seconds to wait (default 30).
-    condense: collapse repeated lines, truncate long output. False = full raw output."""
+    Long output is condensed; the full output is saved to a file named in the footer."""
     if not _IS_WINDOWS:
         raise RuntimeError("powershell is Windows-only")
     exe = shutil.which("pwsh") or shutil.which("powershell")
     if not exe:
         return "ERROR: powershell not found"
-    denial = _approve_command(ctx, "powershell", {"command": command, "timeout": timeout, "condense": condense})
+    denial = _approve_command(ctx, "powershell", {"command": command, "timeout": timeout})
     if denial: raise ValueError(f"User denied your powershell request, with reason: {denial}")
     return _windows_shell(ctx, [exe, "-NoProfile", "-NonInteractive", "-Command", command],
-                          timeout, condense, locale.getpreferredencoding(False))
+                          timeout, locale.getpreferredencoding(False))
 
 
-def _windows_shell(ctx, args, timeout, condense, encoding, script=None):
+def _windows_shell(ctx, args, timeout, encoding, script=None):
     stdout, stderr = tempfile.TemporaryFile(), tempfile.TemporaryFile()
     try:
         proc = subprocess.Popen(args,
@@ -1609,8 +1622,7 @@ def _windows_shell(ctx, args, timeout, condense, encoding, script=None):
             if script: os.unlink(script)
         if timed_out:
             return f"ERROR: command timed out after {timeout}s"
-        if condense:
-            out = _condense_output(out)
+        out = _condense_output(out)
         if proc.returncode != 0:
             out = f"[exit code {proc.returncode}]\n" + out
         return out.replace('\r\n', '\n').strip() or "(no output)"
@@ -1680,7 +1692,7 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
     - I.e. the subagent is a direct copy of you, knows everything that you know.
     - Use fork=True when the task you are giving requires knowing stuff that you know.
 
-    fork=False keeps system prompts but starts fresh for an unrelated task.
+    fork=False keeps system prompts (incl. AGENTS.md; don't tell it to read that) but starts fresh for an unrelated task.
     - Use fork=False when the task is completely unrelated to your task.
     - Also use fork=False if the task will be quite long/tedious (ie a big websearch, or a broad exploration question)
 
