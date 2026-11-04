@@ -202,13 +202,26 @@ def test_caching(p, cfg, nums):
         check(p, "cache: claude process never restarted", len(set(procs)) == 1 and procs[0] != id(None), str(procs))
 
 
-TESTS = [test_basic, test_tool_args, test_tool_results, test_image, test_caching]
+def test_resume(p, cfg, nums):
+    # A fork has no backend state: history (tool calls, results, images) must be rebuilt structurally.
+    ctx = make_ctx(cfg, "t_resume", "You are a test agent. Follow instructions exactly.", [color_swatch, big_result, noop])
+    _, rs = run(ctx, "Call color_swatch, big_result and noop in parallel, then reply 'ok'. Don't mention the results.")
+    fork = ctx.fork("t_resume_fork")
+    reply, rs2 = run(fork, "Reply with only: <swatch color name> <secret code>")
+    check(p, "resume: no error", not errors(rs + rs2), str(errors(rs + rs2)))
+    check(p, "resume: tool result image seen", fork.data["test:color"] in reply.lower(), repr(reply[:100]))
+    check(p, "resume: tool result text seen", fork.data["test:nonce"] in reply, repr(reply[:100]))
+    reply, rs3 = run(fork, "Reply with only the secret code again.")  # anthropic: session file is gone by now
+    check(p, "resume: history kept on next turn", not errors(rs3) and fork.data["test:nonce"] in reply, repr(reply[:100]))
+
+
+TESTS = [test_basic, test_tool_args, test_tool_results, test_image, test_caching, test_resume]
 
 
 def run_tests(names=("anthropic", "openai")):
     global app
     app = ex6.App()
-    for mod in (provider, provider_anthropic, provider_openai):
+    for mod in (provider_openrouter, provider_anthropic, provider_openai):
         app.register_module(mod)
     checks.clear()
     for p in names:

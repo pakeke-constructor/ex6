@@ -1,5 +1,5 @@
 # rewind: agent-controlled context rewind (checkpoint / rewind)
-Status: blocked on claude_resume
+Status: active
 
 ## Motivation
 Agents can't manage their own context except via subagents (briefing cost, no shared context) and handoff (nukes everything).
@@ -31,14 +31,14 @@ Auto stub (deterministic, agent can't forget it):
 ## Risks to watch
 - Negative knowledge loss -> re-exploration loops. Tool docstring must demand "what was NOT useful"; stub list helps.
 - Models trained append-only: will under-use it. Nudge via `<context_usage>` reminder / ENV_PROMPT line, not more tools.
-- anthropic provider: divergence -> process restart -> `_bootstrap_prompt` flattens history to text. Context *quality* degrades after every rewind on claude backend (not just cache). Measure; may need a proper resume path.
+- anthropic provider: divergence -> process restart, resumed from a synthesized session file (`_write_session`, structured history kept). Costs a cache miss + process startup per rewind.
 - Transparency: rewindd messages vanish from UI. Option: keep them in `data_volatile["rewind:archive"]` and render a collapsed row. (invokes.db already logs them if LOG_INVOKES.)
 
 ## Files
 - `_ex6/tools.py` (handoff for pattern, render_tool_call rows)
 - `_ex6/tool_summaries.py` (`!`/`?` mutation flag)
 - `ex6.py` Context: edit_messages, after_tool_calls hook, invoke loop (~1361)
-- `_ex6/provider_anthropic.py` `new_messages` / `_bootstrap_prompt`
+- `_ex6/provider_anthropic.py` `new_messages` / `_write_session`
 
 ## Later / side ideas
 - `forget(call_ids)`: non-contiguous drop (keep c.py read, drop a/b) — needs model-visible call ids.

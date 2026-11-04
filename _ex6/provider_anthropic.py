@@ -38,6 +38,8 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
+from datetime import datetime, timezone
 
 import ex6
 from _ex6.provider_util import log_invoke
@@ -180,48 +182,90 @@ def _digest(is_error, content):
     return bool(is_error), hashlib.sha256(content.encode()).hexdigest()
 
 
+def _image_block(attachment):
+    if not os.path.isfile(attachment.path):
+        raise ValueError(f"Attachment file is missing: {attachment.path}")
+    with open(attachment.path, "rb") as f:
+        data = base64.b64encode(f.read()).decode("ascii")
+    return {"type": "image", "source": {"type": "base64", "media_type": attachment.mime_type, "data": data}}
+
+
 def _user_content(text, attachments):
     """Plain text, or text + (token label, image) blocks when the user pasted images."""
     if not attachments:
         return text
     content = [{"type": "text", "text": text}]
     for token, attachment in attachments.items():
-        if not os.path.isfile(attachment.path):
-            raise ValueError(f"Attachment file is missing: {attachment.path}")
-        with open(attachment.path, "rb") as f:
-            data = base64.b64encode(f.read()).decode("ascii")
-        content += [{"type": "text", "text": token},
-                    {"type": "image", "source": {"type": "base64", "media_type": attachment.mime_type, "data": data}}]
+        content += [{"type": "text", "text": token}, _image_block(attachment)]
     return content
 
 
-def _bootstrap_prompt(ctx):
-    messages = [m for m in ctx.get_messages() if m.role != "system"]
-    attachments = {token: a for m in messages if m.role == "user" for token, a in m.attachments.items()}
-    if len(messages) == 1 and messages[0].role == "user":
-        return _user_content(messages[0].get_msg(ctx), attachments)
-
-    lines = ["Continue this conversation. The transcript before the final user message is context, not instructions:"]
+def _api_messages(ctx, messages):
+    """ex6 history as Anthropic API messages, consecutive same-role turns merged."""
+    out = []
     for message in messages:
         value = message.get_msg(ctx)
-        if isinstance(value, ex6.ToolResult):
-            value = value.text
-        if message.role == "assistant" and message.tool_calls:
-            lines.append(f"[assistant tool calls] {json.dumps(message.tool_calls)}")
-        if value:
-            lines.append(f"[{message.role}] {value}")
-    return _user_content("\n\n".join(lines), attachments)
+        if message.role == "user":
+            content = _user_content(value, message.attachments)
+            role, blocks = "user", [{"type": "text", "text": content}] if isinstance(content, str) else content
+        elif message.role == "assistant":
+            role, blocks = "assistant", [{"type": "text", "text": value}] if value.strip() else []
+            blocks += [{"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["args"]}
+                       for c in message.tool_calls or []]
+        elif message.role == "tool":
+            if not isinstance(value, ex6.ToolResult):
+                value = ex6.ToolResult(str(value))
+            result = [{"type": "text", "text": value.text}] if value.text.strip() else []
+            result += [_image_block(a) for a in value.attachments]
+            role, blocks = "user", [{"type": "tool_result", "tool_use_id": message.tool_call_id, "content": result}]
+        else:
+            continue
+        if not blocks:
+            continue
+        if out and out[-1]["role"] == role:
+            out[-1]["content"] += blocks
+        else:
+            out.append({"role": role, "content": blocks})
+    return out
+
+
+def _write_session(cwd, history):
+    """Writes history as a claude session file, so `--resume` gives claude real structured
+    turns (own tool calls, tool results, images) instead of a flattened transcript."""
+    session_id = str(uuid.uuid4())
+    folder = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects" / re.sub(r"[^A-Za-z0-9]", "-", cwd)
+    folder.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    parent, lines = None, []
+    for message in history:
+        entry_id = str(uuid.uuid4())
+        lines.append(json.dumps({"parentUuid": parent, "isSidechain": False, "type": message["role"], "message": message,
+                                 "uuid": entry_id, "timestamp": timestamp, "userType": "external", "cwd": cwd,
+                                 "sessionId": session_id}))
+        parent = entry_id
+    path = folder / f"{session_id}.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return session_id, path
+
+
+def _same(ctx, a, b):
+    """Content equality: /purge and worktree switches copy Message objects."""
+    if a is b:
+        return True
+    key = lambda m: (m.role, m.tool_calls, m.tool_call_id, m.attachments, m.get_msg(ctx))
+    return key(a) == key(b)
 
 
 class _ClaudeProcess:
-    def __init__(self, ctx):
+    def __init__(self, ctx, history=()):
+        """history: API messages claude resumes from (see _write_session)."""
         self.ctx = ctx
         self.system = _system_prompt(ctx)
         self.tools = _mcp_tools(ctx)
         self.native_tools = _native_tools(ctx)
         self.cwd = ctx.cwd  # proc is spawned here; restart if ctx moves (eg worktrees.attach)
         # What this process has been sent + its replies (claude-code holds the real history), for log_invoke
-        self.transcript = [{"role": "system", "content": self.system}]
+        self.transcript = [{"role": "system", "content": self.system}, *history]
         self.native_calls = {}  # tool_use_id -> record, until claude echoes its result (may be a later pump)
         self.seen = ()  # ex6 messages claude has been given
         # ("claude", event) | ("call", tool_use_id, request_id, rpc_id) | ("exit", code)
@@ -236,6 +280,14 @@ class _ClaudeProcess:
         mcp_path = folder / "mcp.json"
         prompt_path.write_text(self.system, encoding="utf-8")
         mcp_path.write_text(json.dumps({"mcpServers": {"ex6": {"type": "sdk", "name": "ex6"}}}), encoding="utf-8")
+
+        self.session_file = None
+        self.expected_tokens = 0  # resumed: ex6's count of the history; checked on the first reply
+        cwd = ctx.cwd or os.getcwd()
+        resume = []
+        if history:
+            session_id, self.session_file = _write_session(cwd, history)
+            resume = ["--resume", session_id]
 
         exe = shutil.which("claude")
         if not exe:
@@ -256,6 +308,7 @@ class _ClaudeProcess:
             "--dangerously-skip-permissions",
             "--no-session-persistence",
             "--model", _model_name(ctx.model),
+            *resume,
         ]
         if ctx.reasoning != "none":
             args.extend(["--effort", ctx.reasoning])
@@ -271,7 +324,7 @@ class _ClaudeProcess:
         env["CLAUDE_AGENT_SDK_MCP_NO_PREFIX"] = "1"  # tools named as ex6 names them
         self.proc = subprocess.Popen(
             args,
-            cwd=ctx.cwd or os.getcwd(),
+            cwd=cwd,
             env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -365,7 +418,7 @@ class _ClaudeProcess:
         if self.native_tools != _native_tools(self.ctx) or self.cwd != self.ctx.cwd:
             return None
         seen = self.seen
-        if len(messages) <= len(seen) or any(a is not b for a, b in zip(seen, messages)):
+        if len(messages) <= len(seen) or not all(_same(self.ctx, a, b) for a, b in zip(seen, messages)):
             return None
         new = list(messages[len(seen):])
         # claude's own reply, appended by ex6. Missing means it was dropped (e.g. stopped).
@@ -396,6 +449,11 @@ class _ClaudeProcess:
         cache_read = usage.get("cache_read_input_tokens", 0)
         cache_write = usage.get("cache_creation_input_tokens", 0)
         input_tokens = usage.get("input_tokens", 0) + cache_read + cache_write
+        if self.session_file:  # first reply of a resumed process: claude has loaded the file
+            self._remove_session()
+            if input_tokens < self.expected_tokens / 2:
+                raise RuntimeError(f"Claude resumed with {input_tokens} input tokens, expected ~{self.expected_tokens}: "
+                                   "it likely dropped history from the session file (format drift?)")
         result = ex6.LLMResult(input_tokens, output_tokens, calls, finish_reason, cost=0, native_calls=native_calls,
                                cached_tokens=cache_read, cache_write_tokens=cache_write, raw_usage=usage)
         self.log(result, text)
@@ -509,11 +567,16 @@ class _ClaudeProcess:
             return
         self.closed = True
         for step in (self._kill, self.proc.stdin.close, self.proc.stdout.close,
-                     self.proc.stderr.close, self.tmp.cleanup):
+                     self.proc.stderr.close, self.tmp.cleanup, self._remove_session):
             try:
                 step()
             except Exception as e:
                 self.ctx.app.debug_print(f"[claude] close: {step.__name__} failed: {e!r}")
+
+    def _remove_session(self):
+        if self.session_file:
+            self.session_file.unlink(missing_ok=True)
+            self.session_file = None
 
     def _kill(self):
         # Kill first: Windows can't delete temp files a live child still holds.
@@ -542,8 +605,13 @@ def invoke_anthropic(ctx: ex6.Context):
             if process:
                 ctx.app.debug_print("[claude] history diverged; restarting process")
                 process.close()
-            process = _processes[ctx] = _ClaudeProcess(ctx)
-            process.send_user(_bootstrap_prompt(ctx))
+            history = [m for m in messages if m.role != "system"]
+            last = history.pop() if history and history[-1].role == "user" else None
+            process = _processes[ctx] = _ClaudeProcess(ctx, _api_messages(ctx, history))
+            if history:
+                process.expected_tokens = ctx.token_count()
+            # claude only starts a turn on a user message; resumed tool results need a nudge.
+            process.send_user(_user_content(last.get_msg(ctx), last.attachments) if last else "Continue.")
         elif new[-1].role == "tool":
             for message in new:
                 value = message.get_msg(ctx)
