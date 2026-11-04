@@ -15,6 +15,45 @@ Every tool is explicit. EVERYTHING, every piece of control flow -> explicit.
 
 
 
+I have a radical idea that I want to try.
+
+Currently, agents dont really have a good way of managing their context well. They can launch subagents and do handoff; but that is all.
+
+Consider scenario:
+
+agent tool log:
+[... tools, 34k toks]
+read a.py [4k toks]
+read b.py [3k toks]
+search ".auth_token()" [1k toks]
+read c.py [3k toks]
+cot: "Ah, I didn't need to read a.py or b.py here. i could have just read a short snippet of c.py".
+
+currently, there's no way for agent to "undo" it's calls.
+but what if there was?
+What if agents could do this:
+
+agent tool log:
+[... tools, 34k toks]
+checkpoint("Starting on fixing auth refresh...")
+read a.py [4k toks]
+read b.py [3k toks]
+search ".auth_token()" [1k toks]
+read c.py [3k toks]
+cot: "Ah, I didn't need to read a.py or b.py here. i could have just read a short snippet of c.py".
+purge("api for doing xyz is in c.py, lines (114-150). It's a SSOT through this file, a.py and b.py call it.")
+--> This here prunes the messages up until the checkpoint. pretty friendly and efficient.
+
+
+YOUR TASK:
+evaluate this idea. How well do you think it will work?
+do you see any glaring issues?
+any side-ideas that are related?
+go, lets plan
+
+
+
+
 notice the way the `invokes.db` works.
 There is another project of mine that wants to customize the `invokes.db`.
 they have a few requirements:
