@@ -40,16 +40,30 @@ def _codex_auth():
     return tokens["access_token"], tokens["account_id"]
 
 
-def _refresh_codex_token(debug):
+def _refresh_codex_token(stale, debug):
     """Exchange the refresh token for a fresh access token and write the rotated
     tokens back to auth.json. Returns the new access token.
 
-    The refresh token is single-use, so we re-read auth.json here (Codex may have
-    rotated it already) and persist the new one atomically."""
+    The refresh token is single-use and auth.json may be shared by several processes:
+    hold a file lock, re-read auth.json, and adopt its token if another process already
+    replaced `stale` (the access token that just got a 401)."""
+    path = _auth_path()
+    with open(path.with_name(path.name + ".lock"), "a") as lock:
+        try:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)  # released on close
+        except ImportError:  # Windows: single-process use only
+            pass
+        data = json.loads(path.read_text())
+        if data["tokens"]["access_token"] != stale:
+            debug("[codex] adopted token refreshed by another process")
+            return data["tokens"]["access_token"]
+        return _refresh_locked(path, data, debug)
+
+
+def _refresh_locked(path, data, debug):
     import httpx
     from datetime import datetime, timezone
-    path = _auth_path()
-    data = json.loads(path.read_text())
     tokens = data["tokens"]
     resp = httpx.post(
         "https://auth.openai.com/oauth/token",
@@ -211,7 +225,7 @@ def invoke_openai(ctx: ex6.Context):
         except openai.AuthenticationError:
             # Access token expired — refresh via the OAuth refresh token and retry once.
             ctx.app.debug_print("[codex] 401 — refreshing token")
-            stream = start(_refresh_codex_token(ctx.app.debug_print))
+            stream = start(_refresh_codex_token(access_token, ctx.app.debug_print))
     except Exception as e:
         ctx.app.debug_print(f"[codex] API EXCEPTION: {e}")
         result = ex6.LLMResult(error=str(e))
