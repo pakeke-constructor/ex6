@@ -1269,15 +1269,13 @@ class Context:
         base = self.cwd or os.getcwd()
         return os.path.normpath(os.path.join(base, path))
 
-    def has_read_file(self, path):
+    def file_changed_since_read(self, path):
+        """True if this ctx read/wrote the file and it has changed since. Unseen files: False."""
         p = self.resolve(path)
         if p not in self._read_hashes:
             return False
         with open(p, "rb") as f:
-            return self._read_hashes[p] == hashlib.md5(f.read()).hexdigest()
-
-    def get_read_files(self):
-        return list(self._read_hashes.keys())
+            return self._read_hashes[p] != hashlib.md5(f.read()).hexdigest()
 
     def with_tools(self, tools: list[Callable]) -> 'Context':
         for fn in tools:

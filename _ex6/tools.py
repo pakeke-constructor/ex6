@@ -117,9 +117,9 @@ def _check_secret(path):
     if any(fnmatch.fnmatch(name, pat) for pat in _SECRET_PATTERNS):
         raise ValueError(f"Refused: '{path}' may contain secrets.")
 
-def _check_read(ctx, path):
-    if not ctx.has_read_file(path):
-        raise ValueError(f"Must read file '{path}' before editing it.")
+def _check_stale(ctx, path):
+    if ctx.file_changed_since_read(path):
+        raise ValueError(f"'{path}' changed since you last read/wrote it (bash, user or another agent). Re-read it.")
 
 
 
@@ -227,11 +227,106 @@ def _signature_lua(node, source):
     sig = source[node.start_byte:node.end_byte].decode().split('\n')[0]
     if node.type != 'function_declaration' and node.end_point[0] > node.start_point[0]:
         sig = sig.rstrip() + ' ...'
-    sb, _ = _node_range_lua(node, source)
-    if sb < node.start_byte:
-        annotations = source[sb:node.start_byte].decode().rstrip('\n')
-        return annotations + '\n' + sig
     return sig
+
+
+def _lua_split_type(s):
+    """Split '<type> <desc>' with a bracket-balanced scan (types may contain spaces). None if unbalanced."""
+    depth = 0
+    quote = None
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if quote:
+            if c == quote:
+                quote = None
+        elif c in '"\'':
+            quote = c
+        elif c in '(<[{':
+            depth += 1
+        elif c in ')>]}':
+            depth -= 1
+        elif c == ' ' and depth == 0:
+            prev = s[:i].rstrip()[-1:]
+            nxt = s[i:].lstrip()[:1]
+            if prev not in ':,|' and nxt != '|':
+                break
+        i += 1
+    if depth != 0 or quote or i == 0:
+        return None
+    return s[:i], s[i:].strip()
+
+
+def _lua_typed_sig(lines, sig):
+    """Fold ---@ annotation lines into a Luau-style signature.
+    Returns [(i, text)]: i indexes lines (len(lines) = the sig). Anything not understood stays verbatim."""
+    out = []
+    params = {}  # name -> (i, type)
+    returns = []  # (i, type)
+    desc = None
+    cls = None  # [i, header, fields, desc]
+
+    def flush_class():
+        if cls:
+            text = 'typedef ' + cls[1]
+            if cls[2]:
+                text += ' { ' + ', '.join(cls[2]) + ' }'
+            if cls[3]:
+                text += '  -- ' + cls[3]
+            out.append((cls[0], text))
+
+    for i, raw in enumerate(lines):
+        line = raw.strip()
+        m = re.match(r'---@(param|field|return|class)\s+(.*)', line)
+        if not line:
+            flush_class()
+            cls = None
+        elif m and m.group(1) == 'class':
+            flush_class()
+            h = re.match(r'((?:\(exact\)\s*)?[\w.]+(?:\s*:\s*[\w.]+(?:\s*,\s*[\w.]+)*)?)\s*(.*)', m.group(2))
+            cls = [i, h.group(1), [], h.group(2) or desc]
+            desc = None
+        elif m and m.group(1) == 'field' and cls and re.match(r'([\w]+\??)\s+(.*)', m.group(2)):
+            name, rest = re.match(r'([\w]+\??)\s+(.*)', m.group(2)).groups()
+            split = _lua_split_type(rest)
+            if split:
+                cls[2].append(f'{name}: {split[0]}')
+            else:
+                out.append((i, raw))
+        elif m and m.group(1) == 'param' and re.match(r'([\w]+\??|\.\.\.)\s+(.*)', m.group(2)):
+            name, rest = re.match(r'([\w]+\??|\.\.\.)\s+(.*)', m.group(2)).groups()
+            split = _lua_split_type(rest)
+            if split and name.rstrip('?') not in params:
+                typ = split[0] + '?' if name.endswith('?') and not split[0].endswith('?') else split[0]
+                params[name.rstrip('?')] = (i, typ)
+            else:
+                out.append((i, raw))
+        elif m and m.group(1) == 'return' and _lua_split_type(m.group(2)):
+            returns.append((i, _lua_split_type(m.group(2))[0]))
+        elif line.startswith('---') and line[3:4] not in ('@', '|'):
+            if desc is None and line[3:].strip():
+                desc = line[3:].strip()
+        else:
+            out.append((i, raw))
+    flush_class()
+
+    fm = re.search(r'\bfunction\b[^(]*\(([^)]*)\)', sig)
+    if fm:
+        names = [n.strip() for n in fm.group(1).split(',') if n.strip()]
+        typed = [f'{n}: {params.pop(n)[1]}' if n in params else n for n in names]
+        ret = ''
+        if len(returns) == 1:
+            ret = ': ' + returns[0][1]
+        elif returns:
+            ret = ': (' + ', '.join(t for _, t in returns) + ')'
+        returns = []
+        sig = sig[:fm.start(1)] + ', '.join(typed) + ')' + ret + sig[fm.end():]
+    for i, _ in list(params.values()) + returns:
+        out.append((i, lines[i]))
+    if desc:
+        sig += '  -- ' + desc
+    out.append((len(lines), sig))
+    return sorted(out)
 
 
 def _signature_kotlin(node, source):
@@ -283,11 +378,11 @@ def _signature(node, source, mod_name):
 
 
 def write_file(ctx: ex6.Context, file: str, content: str) -> str:
-    """Write content to a file, creating it if needed. Existing files must be read first."""
+    """Write content to a file, creating it if needed."""
     p = ctx.resolve(file)
     with _get_file_lock(ctx, p):
         if os.path.exists(p):
-            _check_read(ctx, file)
+            _check_stale(ctx, file)
             old, newline = _read_text(p)
         else:
             old, newline = "", "\n"
@@ -400,7 +495,7 @@ def patch_file(ctx: ex6.Context, file: str, patch: str) -> str:
     """
     p = ctx.resolve(file)
     with _get_file_lock(ctx, p):
-        _check_read(ctx, file)
+        _check_stale(ctx, file)
         with open(p, "r", encoding="utf-8", newline="") as f:
             old = f.read()
         updated = _apply_file_patch(old, patch)
@@ -437,21 +532,20 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     with _get_file_lock(ctx, p):
         content, newline = _read_text(p)
 
-        def do_edit(original):
+        def do_edit(original, note=""):
             new_content = content.replace(original, replace, 1)
             diff = _make_diff(original, replace)
             denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", lines=diff, filename=file)
             if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
             _write_text(p, new_content, newline)
             ctx.mark_file_read(file)
-            return f"Updated {file}"
+            return f"Updated {file}{note}"
 
         # 1. exact match
         if search in content:
             if content.count(search) > 1:
                 raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
             return do_edit(search)
-        _check_read(ctx, file)  # exact match proves knowledge; non-exact requires a prior read
         search_lines = search.splitlines()
         content_lines = content.splitlines()
         n = len(search_lines)
@@ -463,8 +557,9 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
             if [_ws_normalize(l) for l in content_lines[i:i + n]] == search_ws:
                 ws_matches.append(i)
         if len(ws_matches) == 1:
-            original = "\n".join(content_lines[ws_matches[0]:ws_matches[0] + n])
-            return do_edit(original)
+            i = ws_matches[0]
+            original = "\n".join(content_lines[i:i + n])
+            return do_edit(original, f" (whitespace-insensitive match at lines {i + 1}-{i + n})")
         if len(ws_matches) > 1:
             raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
 
@@ -479,7 +574,7 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
         if len(matches) == 1:
             ratio, start = matches[0]
             original = "\n".join(content_lines[start:start + n])
-            return do_edit(original)
+            return do_edit(original, f" (fuzzy {ratio:.0%} match at lines {start + 1}-{start + n})")
         if len(matches) > 1:
             raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
         best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
@@ -524,7 +619,7 @@ def edit_file_lines(ctx: ex6.Context, file: str, start: int, end: int, content: 
     If you have not read the lines or headers, your edits will automatically be rejected.
     Use this in conjunction with read_headers and/or read_body to replace/rewrite entire functions or classes.
     """
-    _check_read(ctx, file)
+    _check_stale(ctx, file)
     p = ctx.resolve(file)
 
     with _get_file_lock(ctx, p):
@@ -658,18 +753,14 @@ def _read_headers_lua(tree, source, line_numbers=False):
     for child in tree.root_node.children:
         if child.type not in def_types:
             continue
-        if out:
-            out.append("")
         sb, _ = _node_range_lua(child, source)
+        if sb == child.start_byte and re.match(r'local [\w, ]+=\s*require\b', child.text.decode()):
+            continue
         line_no = source[:sb].count(b'\n') + 1
-        sig_line_nos.append(line_no)
-        sig = _signature_lua(child, source)
-        if line_numbers:
-            sig_lines = sig.split('\n')
-            for i, sl in enumerate(sig_lines):
-                out.append(f"{line_no + i}: {sl}")
-        else:
-            out.append(sig)
+        annotations = source[sb:child.start_byte].decode().split('\n')[:-1]
+        for i, text in _lua_typed_sig(annotations, _signature_lua(child, source)):
+            sig_line_nos.append(line_no + i)
+            out.append(f"{line_no + i}: {text}" if line_numbers else text)
 
     text = "\n".join(out) if out else "No classes/functions found."
     return text, sig_line_nos
