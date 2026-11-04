@@ -1,4 +1,5 @@
 # remap: vim-style key remaps, eg `kj` -> Esc
+Status: active
 
 ## Motivation
 User: "is it possible to do `@key("kj")` bind to escape?" "regular vim allows for `nnoremap kj esc`. we want that too." Wants it done "the proper way", not as a hack.
@@ -13,5 +14,4 @@ There's no way to map one key sequence to another key, like Esc. Today:
 Open questions: which modes a remap applies in (vim: `nnoremap` vs `inoremap`; here NORMAL vs INSERT), how ambiguous prefixes resolve, and what happens to typed text that might be the start of a remap (INSERT `k` must show up as you type it, then get removed if `j` follows; vim uses a timeout, ex6 has none).
 
 ## Files
-- `ex6.py`: `key`, `split_keys`, `key_token`, `App.bind`, `TUI._resolve_keys`/`feed_keys`/`keys_active`, `InputPass`, `InputBox.draw`, `_tui_loop` Esc handling
-- `_ex6/vim.py`
+- `ex6.py`: `key`, `split_keys`, `key_token`, `App.bind`, `TUI._resolve_keys`/`feed_keys`/`keys_active`, `InputPass`, `InputBox.draw`, `_tui_loop` Esc handling, core keymap
