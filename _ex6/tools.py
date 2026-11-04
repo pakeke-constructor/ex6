@@ -1216,7 +1216,7 @@ class _HumanPanel:
             self.scroll = max(0, self.scroll + (-self.page if name == "page_up" else self.page))
 
     def input(self, inpt, r, reply):
-        if inpt.consume("KEY_ENTER"):
+        if not inpt.is_paste and inpt.consume("KEY_ENTER"):  # pasted newlines go to the editor
             self.editor.flush()
             self.action("activate", reply)
         elif inpt.consume("KEY_PGUP"):

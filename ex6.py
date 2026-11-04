@@ -121,15 +121,13 @@ def key_token(k) -> str:
 def token_key(tok: str):
     """Keymap token -> blessed keystroke (inverse of key_token), eg for remap targets."""
     from blessed.keyboard import Keystroke, get_keyboard_codes
-    if tok == '<Esc>': return Keystroke('\x1b', 361, 'KEY_ESCAPE')
-    if tok == '<CR>': return Keystroke('\r', 343, 'KEY_ENTER')
-    if tok == '<Tab>': return Keystroke('\t')
     if len(tok) == 1: return Keystroke(tok)
     if re.fullmatch(r"<C-[a-z]>", tok): return Keystroke(chr(ord(tok[3]) - 96))
-    codes = {name: code for code, name in get_keyboard_codes().items()}
-    name = "KEY_" + tok[1:-1]
-    if name in codes: return Keystroke('', codes[name], name)
-    raise ValueError(f"unknown key token {tok!r}")
+    special = {"<Esc>": ("KEY_ESCAPE", "\x1b"), "<CR>": ("KEY_ENTER", "\r"), "<Tab>": ("KEY_TAB", "\t")}
+    name, ucs = special.get(tok, ("KEY_" + tok[1:-1], ""))
+    codes = {n: c for c, n in get_keyboard_codes().items()}
+    if name not in codes: raise ValueError(f"unknown key token {tok!r}")
+    return Keystroke(ucs, codes[name], name)
 
 
 
@@ -1842,8 +1840,16 @@ class InputPass:
         '\x1bv': ('KEY_ALT_V',),
     }
 
-    def __init__(self, keys: list):
+    def __init__(self, keys: list, n_printable=None):
         self._keys = list(keys)
+        # Whole-frame count; per-key sub-passes inherit it. >1 printable keys in one frame = unbracketed paste.
+        if n_printable is None:
+            n_printable = sum(1 for k in keys if not k.is_sequence and str(k).isprintable())
+        self.n_printable = n_printable
+
+    @property
+    def is_paste(self):
+        return self.n_printable > 1
 
     def _candidates(self, k):
         s = str(k)
@@ -1867,23 +1873,15 @@ class InputPass:
                 return True
         return False
 
-    def consume_text(self) -> str:
-        n_printable = sum(1 for k in self._keys if not k.is_sequence and str(k).isprintable())
-        is_paste = n_printable > 1
-        text = ""
-        remaining = []
-        for k in self._keys:
-            s = str(k)
-            if k.name == 'BRACKETED_PASTE':
-                text += k.text.replace('\r\n', '\n').replace('\r', '\n')
-            elif not k.is_sequence and s.isprintable():
-                text += s
-            elif is_paste and (s == '\n' or k.name == 'KEY_ENTER'):
-                text += '\n'
-            else:
-                remaining.append(k)
-        self._keys[:] = remaining
-        return text
+    def split_at(self, *names: str):
+        """Remove the first matching key and everything after it; returns the keys after it, or None if absent."""
+        wanted = set(names)
+        for i, k in enumerate(self._keys):
+            if self._candidates(k) & wanted:
+                rest = self._keys[i + 1:]
+                del self._keys[i:]
+                return rest
+        return None
 
 
 
@@ -1956,9 +1954,8 @@ class InputBox:
         """Apply keys in order; insert remaps resolve here. Unhandled keys stay in inpt.
         Stops at Esc (left in inpt with everything after it) and on submit (returns the InputValue)."""
         keys, inpt._keys = inpt._keys, []
-        n_printable = sum(1 for k in keys if not k.is_sequence and str(k).isprintable())
-        is_paste = n_printable > 1
-        remappable = n_printable <= max(map(len, self.remaps), default=0)  # fast typing can land a whole lhs in one frame
+        is_paste = inpt.is_paste
+        remappable = inpt.n_printable <= max(map(len, self.remaps), default=0)  # fast typing can land a whole lhs in one frame
         queue = [(k, remappable) for k in keys]
         if not remappable:  # no remaps inside pasted text
             queue[:0] = [(k, False) for k in self.pending]
@@ -3069,7 +3066,7 @@ def _tui_loop(tui: TUI):
             if not request.pending():
                 request.blur()
                 break
-            event = InputPass([k])
+            event = InputPass([k], inpt.n_printable)
             if event.consume('KEY_CTRL_X'):
                 ctx.stop_early = True
                 request.blur()
@@ -3110,11 +3107,11 @@ def _tui_loop(tui: TUI):
         _draw_input_frame(ctx, buf, box_r, x, w, div_y)
         if tui.app.call("render_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
             tui.leave_editor()
-        elif focused and inpt.peek('KEY_ESCAPE'):  # the box stops at Esc (typed or remapped)
-            i = next(i for i, k in enumerate(inpt._keys) if InputPass([k]).peek('KEY_ESCAPE'))
-            tui.keyls[:0] = inpt._keys[i + 1:]  # rest runs in NORMAL next frame
-            del inpt._keys[i:]
-            tui.leave_editor()
+        elif focused:  # the box stops at Esc (typed or remapped)
+            rest = inpt.split_at('KEY_ESCAPE')
+            if rest is not None:
+                tui.keyls[:0] = rest  # runs in NORMAL next frame
+                tui.leave_editor()
         render_footer_and_commands(tui, buf, footer_r, ctx)
     tui.app.call("render_status_line", tui, buf, inpt, Region(0, main_h, term.width, 1))
 
