@@ -10,6 +10,11 @@ import time
 import ex6
 
 
+def setup(app):
+    app.remap("jk", "<Esc>")
+    app.remap("kj", "<Esc>")
+
+
 @ex6.command
 def clr(tui, name: Optional[str]):
     'Clear context messages.'

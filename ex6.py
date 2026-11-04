@@ -118,6 +118,20 @@ def key_token(k) -> str:
     return s
 
 
+def token_key(tok: str):
+    """Keymap token -> blessed keystroke (inverse of key_token), eg for remap targets."""
+    from blessed.keyboard import Keystroke, get_keyboard_codes
+    if tok == '<Esc>': return Keystroke('\x1b', 361, 'KEY_ESCAPE')
+    if tok == '<CR>': return Keystroke('\r', 343, 'KEY_ENTER')
+    if tok == '<Tab>': return Keystroke('\t')
+    if len(tok) == 1: return Keystroke(tok)
+    if re.fullmatch(r"<C-[a-z]>", tok): return Keystroke(chr(ord(tok[3]) - 96))
+    codes = {name: code for code, name in get_keyboard_codes().items()}
+    name = "KEY_" + tok[1:-1]
+    if name in codes: return Keystroke('', codes[name], name)
+    raise ValueError(f"unknown key token {tok!r}")
+
+
 
 
 
@@ -401,6 +415,7 @@ class App:
     def __init__(self):
         self.commands = {}
         self.keys = {}  # token tuple (see split_keys) -> fn(tui, count)
+        self.remaps = {"insert": {}}  # mode -> {lhs token tuple: rhs token tuple}
         self.context_hooks = {kind: [] for kind in CONTEXT_HOOK_KINDS}
         self.overrides = {}
         self.default_implementations = {}
@@ -463,6 +478,16 @@ class App:
                 raise RuntimeError(f"key {seq!r} conflicts with {''.join(other)!r}")
         self.keys[toks] = fn
         return fn
+
+    def remap(self, lhs, rhs, mode="insert"):
+        """Map keys to keys (noremap), eg app.remap("kj", "<Esc>"). Only "insert" for now; resolved by InputBox. No timeouts: a held prefix shows at the cursor until the next key."""
+        lhs, rhs = split_keys(lhs), split_keys(rhs)
+        for t in rhs: token_key(t)  # raise early on unknown tokens
+        for other in self.remaps[mode]:
+            n = min(len(other), len(lhs))
+            if other != lhs and other[:n] == lhs[:n]:
+                raise RuntimeError(f"remap {''.join(lhs)!r} conflicts with {''.join(other)!r}")
+        self.remaps[mode][lhs] = rhs
 
     def add_context_hook(self, kind, fn):
         self.context_hooks[kind].append(fn)
@@ -1187,7 +1212,7 @@ class Context:
 
     def get_input_box(self):
         if self._input_box is None:
-            self._input_box = InputBox(self.submit_input, allow_images=True,
+            self._input_box = InputBox(self.submit_input, allow_images=True, remaps=self.app.remaps["insert"],
                                        transform=lambda t: self.app.pipeline("transform_user_prompt", t, self))
         return self._input_box
 
@@ -1863,14 +1888,16 @@ class InputPass:
 
 
 class InputBox:
-    def __init__(self, on_submit=None, allow_images=False, transform=None):
+    def __init__(self, on_submit=None, allow_images=False, transform=None, remaps=None):
         self.on_submit = on_submit
         self.allow_images = allow_images
         self.transform = transform  # fn(text) -> text on Enter; a change is shown first, next Enter sends
+        self.remaps = remaps if remaps is not None else {}  # app.remaps["insert"]
         self._shown = None  # last transform result, sent as-is
         self.text = ""
         self.cursor = 0
         self.attachments = {}
+        self.pending = []  # keys held as a remap prefix; drawn at the cursor, not in text
 
     def _prev_word(self, i):
         t = self.text
@@ -1904,10 +1931,15 @@ class InputBox:
                 lines.extend(part[i:i + w] for i in range(0, len(part), w))
         return lines
 
-    def _cursor_visual(self, w):
-        lines = self._wrap(self.text[:self.cursor], w)
+    def _cursor_visual(self, w, text, cursor):
+        lines = self._wrap(text[:cursor], w)
         if not lines: return 0, 0
         return len(lines) - 1, len(lines[-1])
+
+    def _display(self):
+        """(text, cursor) with held remap keys shown at the cursor."""
+        pre = "".join(s for s in map(str, self.pending) if s.isprintable())
+        return self.text[:self.cursor] + pre + self.text[self.cursor:], self.cursor + len(pre)
 
     def __call__(self, buf: ScreenBuffer, inpt, r, txt_color='white', cursor=True):
         return self.draw(buf, inpt, r, txt_color=txt_color, cursor=cursor)
@@ -1921,63 +1953,115 @@ class InputBox:
         self.render(buf, r, txt_color, cursor)
 
     def handle(self, inpt, inner_w):
-        if self.allow_images and inpt.consume('KEY_ALT_V'):
-            attachment = clipboard_image_attachment()
-            if attachment:
-                self._insert_attachment(attachment)
+        """Apply keys in order; insert remaps resolve here. Unhandled keys stay in inpt.
+        Stops at Esc (left in inpt with everything after it) and on submit (returns the InputValue)."""
+        keys, inpt._keys = inpt._keys, []
+        n_printable = sum(1 for k in keys if not k.is_sequence and str(k).isprintable())
+        is_paste = n_printable > 1
+        remappable = n_printable <= max(map(len, self.remaps), default=0)  # fast typing can land a whole lhs in one frame
+        queue = [(k, remappable) for k in keys]
+        if not remappable:  # no remaps inside pasted text
+            queue[:0] = [(k, False) for k in self.pending]
+            self.pending = []
+        while queue:
+            k, remappable = queue.pop(0)
+            if remappable and self.remaps:
+                self.pending.append(k)
+                seq = tuple(key_token(p) for p in self.pending)
+                if seq in self.remaps:
+                    queue[:0] = [(token_key(t), False) for t in self.remaps[seq]]
+                elif any(lhs[:len(seq)] == seq for lhs in self.remaps):
+                    continue
+                else:  # no match: first held key is literal, the rest may start another remap
+                    queue[:0] = [(self.pending[0], False)] + [(p, True) for p in self.pending[1:]]
+                self.pending = []
+                continue
+            event = InputPass([k])
+            if event.peek('KEY_ESCAPE'):
+                inpt._keys += [k] + [q for q, _ in queue]
+                return None
+            result = self._edit(event, k, is_paste, inner_w)
+            if isinstance(result, InputValue):
+                inpt._keys += [q for q, _ in queue]
+                return result
+            if not result: inpt._keys.append(k)
+        return None
 
-        typed = inpt.consume_text()
-        if typed:
-            self.text = self.text[:self.cursor] + typed + self.text[self.cursor:]
-            self.cursor += len(typed)
-        for i, k in enumerate(inpt._keys):
-            if k.name == 'KEY_ALT_ENTER' or str(k) == '\n':
-                self.text = self.text[:self.cursor] + '\n' + self.text[self.cursor:]
-                self.cursor += 1
-                inpt._keys.pop(i)
-                break
-        if inpt.consume('KEY_LEFT') and self.cursor > 0: self.cursor -= 1
-        if inpt.consume('KEY_RIGHT') and self.cursor < len(self.text): self.cursor += 1
-        if inpt.consume('KEY_BACKSPACE') and self.cursor > 0:
-            self.text = self.text[:self.cursor-1] + self.text[self.cursor:]
-            self.cursor -= 1
-        if inpt.consume('KEY_DELETE') and self.cursor < len(self.text):
+    def flush(self):
+        """Commit held remap keys as typed (for callers that take a key before handle sees it)."""
+        self.text, self.cursor = self._display()
+        self.pending = []
+
+    def _insert(self, s):
+        self.text = self.text[:self.cursor] + s + self.text[self.cursor:]
+        self.cursor += len(s)
+
+    def _edit(self, ev, k, is_paste, inner_w):
+        """One key: True if handled, InputValue on submit, False if not ours."""
+        s = str(k)
+        if k.name == 'BRACKETED_PASTE':
+            self._insert(k.text.replace('\r\n', '\n').replace('\r', '\n'))
+        elif not k.is_sequence and s.isprintable():
+            self._insert(s)
+        elif k.name == 'KEY_ALT_ENTER' or s == '\n' or (is_paste and k.name == 'KEY_ENTER'):
+            self._insert('\n')
+        elif self.allow_images and ev.consume('KEY_ALT_V'):
+            attachment = clipboard_image_attachment()
+            if attachment: self._insert_attachment(attachment)
+        elif ev.consume('KEY_LEFT'):
+            self.cursor = max(0, self.cursor - 1)
+        elif ev.consume('KEY_RIGHT'):
+            self.cursor = min(len(self.text), self.cursor + 1)
+        elif ev.consume('KEY_BACKSPACE'):
+            if self.cursor > 0:
+                self.text = self.text[:self.cursor-1] + self.text[self.cursor:]
+                self.cursor -= 1
+        elif ev.consume('KEY_DELETE'):
             self.text = self.text[:self.cursor] + self.text[self.cursor+1:]
-        if inpt.consume('KEY_CTRL_BACKSPACE') and self.cursor > 0:
+        elif ev.consume('KEY_CTRL_BACKSPACE'):
             nc = self._prev_word(self.cursor)
             self.text = self.text[:nc] + self.text[self.cursor:]
             self.cursor = nc
-        if inpt.consume('KEY_CTRL_DELETE') and self.cursor < len(self.text):
+        elif ev.consume('KEY_CTRL_DELETE'):
             self.text = self.text[:self.cursor] + self.text[self._next_word(self.cursor):]
-        if inpt.consume('KEY_CTRL_LEFT'): self.cursor = self._prev_word(self.cursor)
-        if inpt.consume('KEY_CTRL_RIGHT'): self.cursor = self._next_word(self.cursor)
-        if inpt.consume('KEY_HOME'):
-            cy, cx = self._cursor_visual(inner_w)
+        elif ev.consume('KEY_CTRL_LEFT'):
+            self.cursor = self._prev_word(self.cursor)
+        elif ev.consume('KEY_CTRL_RIGHT'):
+            self.cursor = self._next_word(self.cursor)
+        elif ev.consume('KEY_HOME'):
+            cy, cx = self._cursor_visual(inner_w, self.text, self.cursor)
             self.cursor -= cx
-        if inpt.consume('KEY_END'):
-            cy, cx = self._cursor_visual(inner_w)
+        elif ev.consume('KEY_END'):
+            cy, cx = self._cursor_visual(inner_w, self.text, self.cursor)
             line = self._wrap(self.text, inner_w)[cy]
             self.cursor += len(line) - cx
-        if self.text and inpt.consume('KEY_ENTER'):
-            if self.transform and self.text != self._shown:
-                new = self.transform(self.text)
-                if new != self.text:
-                    self.text = self._shown = new
-                    self.cursor = len(new)
-                    return None
-            attachments = {token: attachment for token, attachment in self.attachments.items()
-                           if token in self.text}
-            value = InputValue(self.text, attachments)
-            self.text, self.cursor, self.attachments, self._shown = "", 0, {}, None
-            if self.on_submit: self.on_submit(value)
-            return value
+        elif self.text and ev.consume('KEY_ENTER'):
+            return self._submit()
+        else:
+            return False
+        return True
+
+    def _submit(self):
+        if self.transform and self.text != self._shown:
+            new = self.transform(self.text)
+            if new != self.text:
+                self.text = self._shown = new
+                self.cursor = len(new)
+                return True
+        attachments = {token: attachment for token, attachment in self.attachments.items()
+                       if token in self.text}
+        value = InputValue(self.text, attachments)
+        self.text, self.cursor, self.attachments, self._shown = "", 0, {}, None
+        if self.on_submit: self.on_submit(value)
+        return value
 
     def render(self, buf, r, txt_color='white', cursor=True):
         inner_w = r[2]
         if inner_w < 1: return
         cursor_char = "█" if cursor else ""
-        cy, cx = self._cursor_visual(inner_w)
-        visual_lines = self._wrap(self.text, inner_w)
+        text, cur = self._display()
+        cy, cx = self._cursor_visual(inner_w, text, cur)
+        visual_lines = self._wrap(text, inner_w)
         if not visual_lines: visual_lines = ['']
 
         max_visible = r[3]
@@ -1990,21 +2074,23 @@ class InputBox:
                 buf.puts(r[0], r[1]+i, line, txt_color=txt_color)
 
     def get_height(self, width):
+        text = self._display()[0]
         if width < 1: return 1
-        return len(self._wrap(self.text, width)) if self.text else 1
+        return len(self._wrap(text, width)) if text else 1
 
     def set_text(self, t):
         self.text = t
         self.cursor = len(t)
         self.attachments = {}
+        self.pending = []
 
     def get_text(self):
         return self.text.strip()
 
 
 @_overridable
-def make_input(on_submit=None):
-    return InputBox(on_submit)
+def make_input(app, on_submit=None):
+    return InputBox(on_submit, remaps=app.remaps["insert"])
 
 
 
@@ -2954,8 +3040,6 @@ def _tui_loop(tui: TUI):
         if owner is not tui.current or (request and not request.pending()):
             tui.leave_editor()
             inpt._keys.clear()
-    if tui.mode == "insert" and not tui.request() and inpt.consume('KEY_ESCAPE'):
-        tui.leave_editor()
     if tui.keys_active():
         tui.feed_keys(inpt)
     ctx = tui.current
@@ -2981,19 +3065,20 @@ def _tui_loop(tui: TUI):
 
     if request and tui.mode == "insert" and not tui.ui_panel_stack:
         keys, inpt._keys = inpt._keys, []
-        for k in keys:
+        for i, k in enumerate(keys):
             if not request.pending():
                 request.blur()
                 break
             event = InputPass([k])
-            if event.consume('KEY_ESCAPE'):
-                request.blur()
-                break
             if event.consume('KEY_CTRL_X'):
                 ctx.stop_early = True
                 request.blur()
                 break
             request.panel.input(event, panel_r, request)
+            if event.consume('KEY_ESCAPE'):  # after input: the editor may flush held keys or emit Esc via a remap
+                request.blur()
+                tui.keyls[:0] = keys[i + 1:]  # rest runs in NORMAL next frame
+                break
             if not request.pending() or tui.editing != (ctx, request):
                 request.blur()
                 break
@@ -3024,6 +3109,11 @@ def _tui_loop(tui: TUI):
         tui.app.call("render_header", tui, buf, Region(x, top, w, header_h))
         _draw_input_frame(ctx, buf, box_r, x, w, div_y)
         if tui.app.call("render_input", tui, buf, focus_inpt, input_r, input_box) and tui.mode == "insert":
+            tui.leave_editor()
+        elif focused and inpt.peek('KEY_ESCAPE'):  # the box stops at Esc (typed or remapped)
+            i = next(i for i, k in enumerate(inpt._keys) if InputPass([k]).peek('KEY_ESCAPE'))
+            tui.keyls[:0] = inpt._keys[i + 1:]  # rest runs in NORMAL next frame
+            del inpt._keys[i:]
             tui.leave_editor()
         render_footer_and_commands(tui, buf, footer_r, ctx)
     tui.app.call("render_status_line", tui, buf, inpt, Region(0, main_h, term.width, 1))

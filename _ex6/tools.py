@@ -1192,7 +1192,7 @@ def handoff(ctx: ex6.Context, txt: str, ready: bool=False) -> str:
 class _HumanPanel:
     def __init__(self, ctx, title, lines, options=(), approval=False, filename=None):
         self.ctx, self.title, self.lines = ctx, title, lines
-        self.editor = ctx.app.call("make_input")
+        self.editor = ctx.app.call("make_input", ctx.app)
         self.options, self.selected = options, 0
         self.approval, self.filename = approval, filename
         self.editor_label = "custom answer" if options else "answer"
@@ -1217,6 +1217,7 @@ class _HumanPanel:
 
     def input(self, inpt, r, reply):
         if inpt.consume("KEY_ENTER"):
+            self.editor.flush()
             self.action("activate", reply)
         elif inpt.consume("KEY_PGUP"):
             self.action("page_up", reply)
