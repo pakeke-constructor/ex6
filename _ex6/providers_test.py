@@ -43,6 +43,9 @@ PROVIDERS = {
 CANARIES = ["invalid output", "unexpected control request", "stalled", "exception", "diverged", "malformed", "failed:"]
 TRICKY_TEXT = 'héllo "wörld" \\ back\\slash, ünïcode ✓ 日本語'
 TRICKY_ITEMS = ["a b", "{json: 1}", "line1\nline2"]
+COLORS = {"red": (255, 0, 0), "green": (0, 200, 0), "blue": (0, 0, 255),
+          "magenta": (255, 0, 255), "yellow": (255, 255, 0), "aqua": (0, 255, 255)}
+COLOR_LIST = ", ".join(COLORS)
 
 app = None  # isolated App, built by run_tests
 checks = []  # (provider, name, status, detail)
@@ -95,7 +98,7 @@ def _png(size, rgb=None):
 def color_swatch(ctx: ex6.Context):
     """Returns an image of a solid color swatch."""
     _record(ctx, "color_swatch", {})
-    rgb = {"red": (255, 0, 0), "green": (0, 200, 0), "blue": (0, 0, 255)}[ctx.data["test:color"]]
+    rgb = COLORS[ctx.data["test:color"]]
     return ex6.ToolResult("Here is the swatch.", (_png(64, rgb),))
 
 
@@ -115,7 +118,7 @@ def make_ctx(cfg, name, system, tools=()):
     ctx = ex6.Context(app, name, model=cfg["model"], invoke_llm=recorded(cfg["invoker"]), yolo=True,
                       messages=[ex6.Message("system", system, tools=list(tools))])
     ctx.data["test:nonce"] = f"{random.randint(0, 16**8):08x}"
-    ctx.data["test:color"] = random.choice(["red", "green", "blue"])
+    ctx.data["test:color"] = random.choice(list(COLORS))
     return ctx
 
 
@@ -175,7 +178,7 @@ def test_tool_results(p, cfg, nums):
 
 def test_image(p, cfg, nums):
     ctx = make_ctx(cfg, "t_image", "You are a test agent. Follow instructions exactly.", [color_swatch])
-    reply, rs = run(ctx, "Call color_swatch, then reply with only the color name (red, green or blue).")
+    reply, rs = run(ctx, f"Call color_swatch, then reply with only the color name, one of: {COLOR_LIST}.")
     check(p, "image in tool result: no error", not errors(rs), str(errors(rs)))
     check(p, "image in tool result: seen", ctx.data["test:color"] in reply.lower(), f"want {ctx.data['test:color']}, got {reply[:100]!r}")
 
@@ -222,7 +225,7 @@ def test_resume(p, cfg, nums):
     ctx = make_ctx(cfg, "t_resume", "You are a test agent. Follow instructions exactly.", [color_swatch, big_result, noop])
     _, rs = run(ctx, "Call color_swatch, big_result and noop in parallel, then reply 'ok'. Don't mention the results.")
     fork = ctx.fork("t_resume_fork")
-    reply, rs2 = run(fork, "Reply with only: <swatch color name> <secret code>")
+    reply, rs2 = run(fork, f"Reply with only: <swatch color, one of: {COLOR_LIST}> <secret code>")
     check(p, "resume: no error", not errors(rs + rs2), str(errors(rs + rs2)))
     check(p, "resume: tool result image seen", fork.data["test:color"] in reply.lower(), repr(reply[:100]))
     check(p, "resume: tool result text seen", fork.data["test:nonce"] in reply, repr(reply[:100]))
