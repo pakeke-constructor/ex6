@@ -79,18 +79,24 @@ def noop(ctx: ex6.Context):
     return ""
 
 
-def color_swatch(ctx: ex6.Context):
-    """Returns an image of a solid color swatch."""
-    _record(ctx, "color_swatch", {})
-    rgb = {"red": (255, 0, 0), "green": (0, 200, 0), "blue": (0, 0, 255)}[ctx.data["test:color"]]
-    raw = b"".join(b"\x00" + bytes(rgb) * 64 for _ in range(64))
+def _png(size, rgb=None):
+    """Solid color, or random noise (incompressible, ~3 bytes/pixel) when rgb is None."""
+    row = lambda: b"\x00" + (bytes(rgb) * size if rgb else random.randbytes(size * 3))
+    raw = b"".join(row() for _ in range(size))
     chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
-    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 2, 0, 0, 0))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
     path = tempfile.mktemp(suffix=".png")
     with open(path, "wb") as f:
         f.write(png)
-    return ex6.ToolResult("Here is the swatch.", (ex6.ImageAttachment(path, "image/png", 64, 64),))
+    return ex6.ImageAttachment(path, "image/png", size, size)
+
+
+def color_swatch(ctx: ex6.Context):
+    """Returns an image of a solid color swatch."""
+    _record(ctx, "color_swatch", {})
+    rgb = {"red": (255, 0, 0), "green": (0, 200, 0), "blue": (0, 0, 255)}[ctx.data["test:color"]]
+    return ex6.ToolResult("Here is the swatch.", (_png(64, rgb),))
 
 
 # --- harness ---
@@ -113,10 +119,10 @@ def make_ctx(cfg, name, system, tools=()):
     return ctx
 
 
-def run(ctx, prompt, timeout=300):
+def run(ctx, prompt, timeout=300, attachments=None):
     """Returns (reply text, LLMResults of this turn)."""
     start = len(ctx.data_volatile.get("results", []))
-    ctx.invoke(prompt)
+    ctx.invoke(prompt, attachments=attachments)
     t = time.time()
     while ctx.is_running():
         if time.time() - t > timeout:
@@ -174,6 +180,15 @@ def test_image(p, cfg, nums):
     check(p, "image in tool result: seen", ctx.data["test:color"] in reply.lower(), f"want {ctx.data['test:color']}, got {reply[:100]!r}")
 
 
+def test_big_images(p, cfg, nums):
+    # ~1MB each: big stdin writes once deadlocked the claude pipe (stall, no error).
+    ctx = make_ctx(cfg, "t_big_images", "You are a test agent. Follow instructions exactly.")
+    images = {"[image1]": _png(600), "[image2]": _png(600)}
+    reply, rs = run(ctx, "How many images did I send? Reply with only the number.", timeout=90, attachments=images)
+    check(p, "big user images: no error", not errors(rs), str(errors(rs)))
+    check(p, "big user images: both seen", "2" in reply, repr(reply[:100]))
+
+
 def test_caching(p, cfg, nums):
     pad = "".join(f"Reference entry {i:04d}: code {i * 7919 % 10007:05d}, unused.\n" for i in range(700))  # ~7k tokens
     ctx = make_ctx(cfg, "t_cache", f"Run {random.random()}. You are a test agent; be brief.\n\n{pad}", [noop])
@@ -215,7 +230,7 @@ def test_resume(p, cfg, nums):
     check(p, "resume: history kept on next turn", not errors(rs3) and fork.data["test:nonce"] in reply, repr(reply[:100]))
 
 
-TESTS = [test_basic, test_tool_args, test_tool_results, test_image, test_caching, test_resume]
+TESTS = [test_basic, test_tool_args, test_tool_results, test_image, test_big_images, test_caching, test_resume]
 
 
 def run_tests(names=("anthropic", "openai")):

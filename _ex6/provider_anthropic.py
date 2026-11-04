@@ -271,7 +271,9 @@ class _ClaudeProcess:
         # ("claude", event) | ("call", tool_use_id, request_id, rpc_id) | ("exit", code)
         self.events = queue.Queue()
         self.waiting = {}  # tool_use_id -> (request_id, rpc_id) of a tools/call that arrived before ex6's result
-        self.write_lock = threading.Lock()  # stdin is written by the reader thread and by invoke_anthropic
+        # stdin lines, written by one thread: a big write (images) must never block the stdout reader,
+        # or claude blocks on stdout, stops reading stdin, and both sides deadlock.
+        self.outbox = queue.Queue()
         self.closed = False
 
         self.tmp = tempfile.TemporaryDirectory(prefix="ex6-claude-", ignore_cleanup_errors=True)
@@ -336,6 +338,7 @@ class _ClaudeProcess:
         )
         threading.Thread(target=self._read_stdout, daemon=True).start()
         threading.Thread(target=self._read_stderr, daemon=True).start()
+        threading.Thread(target=self._write_stdin, daemon=True).start()
         self._send_event({"type": "control_request", "request_id": "init",
                           "request": {"subtype": "initialize", "hooks": None}})
 
@@ -404,9 +407,16 @@ class _ClaudeProcess:
             "subtype": "success", "request_id": request_id, "response": {"mcp_response": reply}}})
 
     def _send_event(self, event):
-        with self.write_lock:
-            self.proc.stdin.write(json.dumps(event) + "\n")
-            self.proc.stdin.flush()
+        self.outbox.put(json.dumps(event) + "\n")
+
+    def _write_stdin(self):
+        try:
+            for line in iter(self.outbox.get, None):
+                self.proc.stdin.write(line)
+                self.proc.stdin.flush()
+        except Exception as e:  # claude exited; the stdout reader reports it
+            if not self.closed:
+                self.ctx.app.debug_print(f"[claude] stdin write failed: {e!r}")
 
     def new_messages(self, messages):
         """Messages ex6 added since claude's last turn, or None if the histories
@@ -566,6 +576,7 @@ class _ClaudeProcess:
         if self.closed:
             return
         self.closed = True
+        self.outbox.put(None)
         for step in (self._kill, self.proc.stdin.close, self.proc.stdout.close,
                      self.proc.stderr.close, self.tmp.cleanup, self._remove_session):
             try:
