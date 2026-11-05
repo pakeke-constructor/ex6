@@ -66,7 +66,6 @@ Prefer direct implementation path.
 - Break down the problem as much as you can, and try to optimize as much as you can for simplicity; less code is better.
 - (Note: you can clean your context with the `handoff()` tool; don't feel pressured to complete the task in one go.)
 - Then, slowly implement.
-- Call independent tools in parallel (multiple calls in one turn).
 
 Generally, for big tasks, it should consist of a few phases:
 PHASE 1: Plan. Explore codebase, map out problem-space. Write some brief high-level ideas. Then, use handoff() tool for PHASE-2.
@@ -82,6 +81,7 @@ PHASE 3: Smoke test. If you need, write a file into .workspace, and use it to te
 <agent_tactics>
 - Try the simplest approach first. Don't overthink.
 - Tool call(s) to verify, then act. Don't read the whole codebase before a 2-line edit.
+- Call independent tools in parallel (multiple calls in one turn).
 - If a search returns what you need, stop searching. Don't keep exploring "just in case."
 - If your approach is blocked, don't brute force. Step back, try a different angle.
 - Avoid backwards-compatibility hacks. If something is unused, delete it.
