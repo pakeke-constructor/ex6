@@ -514,6 +514,47 @@ def _ws_normalize(s):
     return re.sub(r'[ \t]+', ' ', s).strip()
 
 
+def _find_unique(content, search):
+    """-> (original substring of content that search matches, note). Raises if zero or multiple matches.
+    Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold)."""
+    # 1. exact match
+    if search in content:
+        if content.count(search) > 1:
+            raise ValueError(f"{content.count(search)} matches; must be unique")
+        return search, ""
+    search_lines = search.splitlines()
+    content_lines = content.splitlines()
+    n = len(search_lines)
+
+    # 2. whitespace-insensitive match
+    search_ws = [_ws_normalize(l) for l in search_lines]
+    ws_matches = []
+    for i in range(len(content_lines) - n + 1):
+        if [_ws_normalize(l) for l in content_lines[i:i + n]] == search_ws:
+            ws_matches.append(i)
+    if len(ws_matches) == 1:
+        i = ws_matches[0]
+        return "\n".join(content_lines[i:i + n]), f"whitespace-insensitive match at lines {i + 1}-{i + n}"
+    if len(ws_matches) > 1:
+        raise ValueError(f"{len(ws_matches)} whitespace-normalized matches; must be unique")
+
+    # 3. fuzzy line-level match
+    THRESHOLD = 0.8
+    matches = []
+    for i in range(len(content_lines) - n + 1):
+        ratio = difflib.SequenceMatcher(None, search_lines, content_lines[i:i + n]).ratio()
+        if ratio >= THRESHOLD:
+            matches.append((ratio, i))
+    if len(matches) == 1:
+        ratio, i = matches[0]
+        return "\n".join(content_lines[i:i + n]), f"fuzzy {ratio:.0%} match at lines {i + 1}-{i + n}"
+    if len(matches) > 1:
+        raise ValueError(f"{len(matches)} fuzzy matches; must be unique. Add more context to disambiguate.")
+    best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
+                for i in range(len(content_lines) - n + 1)), default=0)
+    raise ValueError(f"not found (best match: {best:.0%})")
+
+
 def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
     """Edit a file by searching and replacing a unique string.
     Tries exact match, then whitespace-insensitive, then fuzzy (80% threshold).
@@ -531,55 +572,15 @@ def edit_file(ctx: ex6.Context, file: str, search: str, replace: str) -> str:
 
     with _get_file_lock(ctx, p):
         content, newline = _read_text(p)
-
-        def do_edit(original, note=""):
-            new_content = content.replace(original, replace, 1)
-            diff = _make_diff(original, replace)
-            denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", lines=diff, filename=file)
-            if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
-            _write_text(p, new_content, newline)
-            ctx.mark_file_read(file)
-            return f"Updated {file}{note}"
-
-        # 1. exact match
-        if search in content:
-            if content.count(search) > 1:
-                raise ValueError(f"search string has {content.count(search)} matches in {file}; must be unique")
-            return do_edit(search)
-        search_lines = search.splitlines()
-        content_lines = content.splitlines()
-        n = len(search_lines)
-
-        # 2. whitespace-insensitive match
-        search_ws = [_ws_normalize(l) for l in search_lines]
-        ws_matches = []
-        for i in range(len(content_lines) - n + 1):
-            if [_ws_normalize(l) for l in content_lines[i:i + n]] == search_ws:
-                ws_matches.append(i)
-        if len(ws_matches) == 1:
-            i = ws_matches[0]
-            original = "\n".join(content_lines[i:i + n])
-            return do_edit(original, f" (whitespace-insensitive match at lines {i + 1}-{i + n})")
-        if len(ws_matches) > 1:
-            raise ValueError(f"{len(ws_matches)} whitespace-normalized matches in {file}; must be unique")
-
-        # 3. fuzzy line-level match
-        THRESHOLD = 0.8
-        matches = []
-        for i in range(len(content_lines) - n + 1):
-            chunk = content_lines[i:i + n]
-            ratio = difflib.SequenceMatcher(None, search_lines, chunk).ratio()
-            if ratio >= THRESHOLD:
-                matches.append((ratio, i))
-        if len(matches) == 1:
-            ratio, start = matches[0]
-            original = "\n".join(content_lines[start:start + n])
-            return do_edit(original, f" (fuzzy {ratio:.0%} match at lines {start + 1}-{start + n})")
-        if len(matches) > 1:
-            raise ValueError(f"{len(matches)} fuzzy matches in {file}; must be unique. Add more context to disambiguate.")
-        best = max((difflib.SequenceMatcher(None, search_lines, content_lines[i:i+n]).ratio()
-                    for i in range(len(content_lines) - n + 1)), default=0)
-        raise ValueError(f"search string not found in {file} (best match: {best:.0%})")
+        try:
+            original, note = _find_unique(content, search)
+        except ValueError as err:
+            raise ValueError(f"search string in {file}: {err}")
+        denial = _approve(ctx, "edit_file", {"file": file, "search": search, "replace": replace}, f"Edit file: {file}", lines=_make_diff(original, replace), filename=file)
+        if denial: raise ValueError(f"User denied your edit_file request, with reason: {denial}")
+        _write_text(p, content.replace(original, replace, 1), newline)
+        ctx.mark_file_read(file)
+        return f"Updated {file}" + (f" ({note})" if note else "")
 
 
 

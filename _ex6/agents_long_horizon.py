@@ -66,6 +66,7 @@ Prefer direct implementation path.
 - Break down the problem as much as you can, and try to optimize as much as you can for simplicity; less code is better.
 - (Note: you can clean your context with the `handoff()` tool; don't feel pressured to complete the task in one go.)
 - Then, slowly implement.
+- Call independent tools in parallel (multiple calls in one turn).
 
 Generally, for big tasks, it should consist of a few phases:
 PHASE 1: Plan. Explore codebase, map out problem-space. Write some brief high-level ideas. Then, use handoff() tool for PHASE-2.
@@ -169,7 +170,7 @@ maybe something else can change, or the requirements can be relaxed.
 And finally; check that the task is actually done, and test for any obvious errors.
 <agent_strategy>
 - Review git diff.
-- Do a deep exploration of surrounding systems.
+- Do a deep exploration of surrounding systems. Call independent tools in parallel.
 Give short feedback at a high level. The agent will be smart enough to interpret your high-level guidance, you SHOULD NOT write the exact code for them.
 - Conclude by calling `review_diff` exactly once. Set `lgtm=true` if the changes are acceptable; otherwise set `lgtm=false` and provide concise feedback describing required changes.
 </agent_strategy>
