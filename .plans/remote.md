@@ -18,36 +18,72 @@ Core principles (these keep the error surface low and make desync impossible by 
 ```python
 app.side            # "server" | "client". Use sparingly: setup-time and machine effects only.
 
+# Agent registry lives on App (it's agent state, server-authoritative), not on TUI:
+app.contexts  app.add_context(ctx)  app.remove_context(ctx)  app.get_context(name)  app.context_list()  app.favorite
+# Server: real. Client: a mirror, filled by the snapshot applier (roster).
+# Every site using tui.contexts/add_context/... is renamed; no delegates are kept.
+app.echo(msg, error=False)   # client: status line. server: sent to the client. For background code (tools, threads).
+
 # Commands / keys: run on BOTH sides, same args.
 @ex6.command
-def clr(tui): tui.current.clear()           # client: no-op. server: clears. (No branching.)
-
+def clr(tui): tui.current.clear()
 @ex6.key("dd")
-def key_delete(tui, n): ...                  # same: runs on both
+def key_delete(tui, n): ...
+
+# UI-only commands/keys: client only, no event sent.
+@ex6.command_client          # alone (no server half): result is None
+def theme(tui, result, name): ...
+@ex6.key_client("j")
+def key_down(tui, n): ...
 
 # Split command: server half touches the machine, client half does UI with the server's result.
 @ex6.command_server
 def plans(tui, *args):                       # server only; return JSON-able
     return _plans()
 @ex6.command_client
-def plans(tui, result, *args):               # client only; result = server half's return (None if no server half)
+def plans(tui, result, *args):               # client only; result = server half's return
     _panel(tui, result)
-# Registering the same name as @command AND as a split half raises. Either half alone is fine:
-# client-only = pure UI (/theme, /help, /dbg); server-only = no UI.
+# Registering a name as @command AND as a split half raises. Same for @key and @key_client on one sequence.
 
 # UI-originated state changes (from panels on ui_panel_stack) go through commands:
-tui.run_command("/plans run foo")            # runs locally and sends a command event
+tui.run_command("/plans run foo")            # same path as typing it: run locally, then send the event
+```
 
-# UI API: real on the client, no-op on the server during event handling.
-tui.echo(msg)  tui.open_input(text, request)  tui.push_panel(draw)  tui.yank(text, what)  ex6.text_panel(tui, lines)
-# Echo from server background threads (outside event handling) is broadcast to clients instead
-# (provider warnings, thread crashes).
+### Event flow: who sends what
+`ctx.clear()` on the client really is a pure no-op; it doesn't send. What gets sent is the command itself, and the server runs the command again.
+This is the only way it can work. If the method also sent, the server would apply it twice (once from the method, once from re-running the command). For clear that's harmless; for fork/invoke it's not.
 
-# Context API: real on the server, no-op on the client.
+`/clr` typed on the client:
+1. Core `dispatch_command` (client) opens an event scope and runs `clr(tui)` locally. `ctx.clear()` is a no-op because an event scope is active. Any contexts added get stand-ins and their names are recorded.
+2. If the local run raised: show the error, send nothing ("failed locally = nothing happened"). Otherwise send `{command "/clr", current "a", names [...]}`.
+3. Server: opens an event scope, builds `EventTUI(app, current=app.get_context("a"))`, pins the names, runs `clr(event_tui)`. `ctx.clear()` is real. The revision bumps and the snapshot goes back.
+
+Keys work the same way (`@ex6.key`). `@ex6.key_client` / client-only commands skip steps 2-3.
+
+Event scope = the robustness boundary. Mutations are only allowed (as no-ops) where they're re-run on the server:
+- Client: Context mutators and synced-field writes are no-ops inside an event scope. Outside one, they raise: "agent state can only change via a command/key/submit/reply". That catches code that would silently drop an action, e.g. a panel calling `ctx.invoke` directly instead of `tui.run_command`.
+- Client-local plugins (not on the server) never get an event scope, so their mutations always raise.
+- Server: no `app.tui`. `app.tui is None` outside events, so background server code that touches UI crashes loudly. Inside an event, the handler gets an `EventTUI`.
+
+### EventTUI (server side of `tui`)
+A narrow, strict stand-in, constructed per event and discarded after:
+- `current`: a plain attribute, settable (e.g. key fns that move selection). Changes are discarded.
+- `app`.
+- UI methods as no-ops (the client already did them): `echo`, `open_input`, `push_panel`, `yank`, `run_command`, `leave_editor`.
+- Anything else (`mode`, `editing`, `ui_panel_stack`, `term`, `buf`, `transcript_r`, `pending_keys`, ...) raises AttributeError. A both-sides handler reading UI state is a bug: the value would differ per side. Make it `@key_client`/`@command_client`, or split it.
+
+Core key classification (ex6.py ~2773-2950):
+- key_client: down, up, prompt, submit (the request part sends a reply event, prompt editing is UI), zoom, scroll_up/down, command, human, help, yank_*.
+- both: go, yolo, stop, fork, fork_prompt, new, pop, delete, delete_spawned, clear, change, change_append. Their UI parts (`_open_input` -> `tui.open_input`) are no-ops on the server.
+- Ctrl-x in `_tui_loop` (~3087, ~3143) calls the stop key path instead of setting `stop_early` directly.
+
+Other client-side entry points (not commands/keys): input Enter -> submit event (server runs `ctx.submit_input`); `reply.complete` -> reply event; `app.send`. Those are the only ways agent state changes.
+
+```python
+# Context API: real on the server; no-op on the client inside an event scope, raises outside one.
 ctx.invoke / fork / clear / truncate / edit_messages / append_message / schedule / submit_input
-tui.add_context / tui.remove_context
-ctx.yolo = ...; ctx.stop_early = True; ctx.data[k] = v   # direct writes to synced fields: ignored on the client
-                                                          # (mirror __setattr__ / data __setitem__), real on the server
+app.add_context / app.remove_context
+ctx.yolo = ...; ctx.stop_early = True; ctx.data[k] = v   # synced-field writes: same rule
 
 # Human requests: panel class + JSON args; core builds the panel on the client.
 ctx.ask_human(_HumanPanel, "AGENT QUESTION", lines, options=[...], cancel=lambda: ctx.yolo)
@@ -62,7 +98,7 @@ def setup(app):
 app.shared["plugin:key"] = value             # server writes; synced to every client (read-only there: client writes ignored,
                                              # like ctx.data). JSON values (dicts/lists ok), strict encoder. Part of the app
                                              # snapshot, so it survives reconnects and needs no resend logic.
-app.send("plugin:topic", data)               # one-way JSON message. client -> server, or server -> all clients.
+app.send("plugin:topic", data)               # one-way JSON message. client <-> server.
 @ex6.receive("plugin:topic")
 def on_topic(app, data): ...                 # server: runs on the event thread, in order with other events.
                                              # client: runs on the TUI thread between frames (UI-safe).
@@ -70,7 +106,7 @@ def on_topic(app, data): ...                 # server: runs on the event thread,
 ```
 
 Messaging rules (robustness):
-- Messages are lossy by design. While disconnected, sends raise (client) or skip that client (server). Anything that must survive a reconnect goes in `app.shared` or `ctx.data`.
+- Messages are lossy by design. While disconnected, sends raise (client) or drop (server). Anything that must survive a reconnect goes in `app.shared` or `ctx.data`.
 - A topic with no receiver on the other side raises an error echo, never a silent drop. Receiver exceptions are caught and sent back as an error echo.
 - `app.send` inside a run-on-both handler runs twice, in opposite directions. Send from a split half (`command_server`/`command_client`) or a side-guarded block instead. If a run-on-both handler calls send, log a warning.
 
@@ -96,7 +132,7 @@ Every `Context` dataclass field is in exactly one of SYNCED / CLIENT_LOCAL / SER
 - Revision: `ctx._rev` is bumped automatically by the `__setattr__` hook on SYNCED fields and by every message mutator (append/edit/truncate/clear).
   - Safety net: every ~2s the server re-serializes each context and compares it to the last snapshot sent. If it differs while `_rev` didn't change, it logs "MISSED REV BUMP <field>" loudly and sends the snapshot anyway. This catches in-place mutations like ToolCall status and self-heals.
 - Streaming: `pending_message` text and `llm_cot` growth go as `(rev, field, offset, append)`. The client applies one only if the offset equals its current length; otherwise it ignores it and the next snapshot heals it.
-- Pusher: one thread per client, ~20Hz. Per context, it compares `_rev` against what was last sent and sends a snapshot or a stream append. This is state-based polling, so there are no missed notifications.
+- Pusher: one thread, ~20Hz. Per context, it compares `_rev` against what was last sent and sends a snapshot or a stream append. This is state-based polling, so there are no missed notifications.
 - App snapshot (also by revision): roster (ordered context names = list order), budget cost/limit, favorite name, fatal_error.
   - Removal is a roster diff, never a "removed" event, so a missed event can't leave a zombie context.
 - Self-check: each snapshot carries `hash`. The client re-serializes its mirror after applying and compares. On a mismatch (applier bug) it logs loudly and asks for a resync.
@@ -112,7 +148,7 @@ Exactly six kinds (the sixth is send: `{topic, data}`):
 
 Rules:
 - Core-loop direct mutations become key events. Ctrl-x stop is currently at ex6.py ~3087 and ~3143; it goes through the stop binding.
-- The server keeps one stand-in TUI, with no term. Per event it sets `current` from the event and runs the same function the client ran. An unknown `current` makes the event fail loudly.
+- Per event the server builds an EventTUI with `current` from the event (see above). An unknown `current` makes the event fail loudly.
 - The server applies events in TCP order. Exceptions are caught per event, sent back as an error echo, and the traceback goes to the server log. An event never kills the server.
 - Name pinning (determinism): while the client runs an event handler, it records the name of each context it adds (via `_unique_name`, fork, or Context()). It sends them as `names`.
   - On the server, `add_context` during that event takes the next pinned name. If that name already exists on the server, the event fails loudly. Both sides now agree on new agents' names.
@@ -151,12 +187,12 @@ Rules:
 Keep the old in-process path working until phase 2 lands, then delete it.
 
 1. Read-only sync:
-   - `app.side`; `--server` (headless load_plugins plus the stand-in TUI); `--client`.
+   - `app.side`; move the context registry from TUI to App (+ `app.echo`); `--server` (headless load_plugins, `app.tui = None`); `--client`.
    - Field classification and its assert; snapshot, strict encoder and applier; `_rev` with the `__setattr__` hook; audit safety net; streaming appends; app snapshot (roster, `app.shared`); hash self-check and `/sync`.
    - hello with code identity (plugin shipping); local auto-spawn and discovery; heartbeat and reconnect.
    - Smoke test: spawn a server with a fake invoke_llm generator (chunks plus one tool call). Connect a headless client. Assert client and server hashes match after settling, including across a forced disconnect.
 2. Events:
-   - command/key/submit events; client Context no-ops (methods, `__setattr__`, data); server UI no-ops plus background echo broadcast.
+   - event scopes, EventTUI, `@key_client` and the core key classification; command/key/submit events; client Context no-ops (methods, `__setattr__`, data); server UI no-ops; `app.echo` from server background code goes to the client.
    - `app.send`/`@ex6.receive`; origin tracking for client-local plugins; name pinning and greyed stand-ins; ctrl-x stop through the key path. Delete the single-process path.
 3. ask_human: change the signature to (cls, *args, cancel, **kwargs), add synced requests and reply events, update the `_ex6/tools.py` call sites (~1412, 1420, 1439) and `request_approval` (ex6.py ~2349).
 4. Split commands and the plugin inventory:
@@ -177,6 +213,22 @@ Keep the old in-process path working until phase 2 lands, then delete it.
    - Restore on boot after setup, via the existing schema_id template mechanism (`clone_with_context`; core lacks a format-1 writer, so add `Context.serialize`). Contexts without a schema_id are dropped with a log. Running agents come back stopped; pending requests are dropped.
    - Attachments: pasted bytes go base64 in the submit event and the server stores them; the client shows names only.
    - `/restart`.
+
+## Scope: one client at a time
+Not designing for multiple clients, and not forbidding them. Build for one connected client: one socket, one pusher, no per-client bookkeeping. A second connection is refused with "already connected" for now. Revisit later if needed.
+
+## Crashes: server crash = client crash, loudly
+Same as today: a thread crash sets `app.fatal_error` and the TUI loop raises `FATAL`. The split must keep that, not turn it into a silent hang.
+- Server: `--server` main is wrapped in one `try/except BaseException`. On any fatal error (main-loop exception, or `threading.excepthook` setting `app.fatal_error`):
+  1. Format the traceback and write it to `server.log`, plus `crash.txt` next to `server.json`.
+  2. Send `{op: "fatal", error: traceback}` to the client, then flush and close.
+  3. Delete `server.json`, exit non-zero.
+- Exceptions inside an event handler are NOT fatal (caught per event, shown as an error echo, as above). Only genuine crashes kill the server.
+- Client: on `fatal`, set `app.fatal_error = "SERVER: " + error`. The existing loop check raises it, the TUI exits, and the server traceback is printed to the terminal.
+- Crashed without managing to send (hard kill, segfault, OOM):
+  - Local: the heartbeat timeout checks the server pid. If it's dead, that's fatal too, and `crash.txt` is printed if it exists.
+  - Remote: can't tell a crash from a network drop. Show DISCONNECTED and reconnect. On reconnect, if `crash.txt` exists, hello returns it and the client crashes with it. A restarted server deletes `crash.txt` only after the client has seen it.
+- The reverse doesn't apply: a client crash or disconnect never touches the server. That's the point.
 
 ## Relevant files
 - ex6.py: Context (~1110), invoke/_read_llm_stream (~1331-1416), ask_human/_HumanReply (~1498-1550), clone_with_context/_clone (~1451-1493), App.dispatch_command (~571), run_tui (~616), TUI (~2536), add_context/remove_context, core keys (~2773-2950), _tui_loop (~2994).
