@@ -7,7 +7,6 @@ import os
 import re
 import time
 import subprocess
-import sys
 import textwrap
 from typing import Optional
 import ex6
@@ -98,11 +97,6 @@ def _panel(tui, plans):
             tui.ui_panel_stack.remove(draw)
             _spawn(tui, "triage-" + p["name"]).invoke(TRIAGE_PROMPT.format(target=f"`.plans/{p['name']}.md`"))
             return
-        if inpt.consume('e'):
-            if os.name == "nt":
-                os.startfile(p["path"])
-            else:
-                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", p["path"]])
         if not st["d"] and inpt.consume('d'):
             st["d"] = True
             tui.echo(f"d again to delete .plans/{p['name']}.md")
@@ -119,7 +113,7 @@ def _panel(tui, plans):
         buf.fill(r, ' ')
         buf.rect_line(r, txt_color=th.accent)
         buf.puts(x + 2, y, f" plans ({len(plans)}) ", style='bold', txt_color=th.accent)
-        hint = " j/k  pgup/pgdn scroll  g run  a/i ask  e edit  t triage  dd delete  esc "
+        hint = " j/k  pgup/pgdn scroll  g run  a/i ask  t triage  dd delete  esc "
         buf.puts(x + w - 2 - len(hint), y, hint, txt_color=th.muted)
         lh = (h - 6) // 2  # list on top, preview below; blank row above each
         st["top"] = min(max(st["top"], st["sel"] - lh + 1), st["sel"])
