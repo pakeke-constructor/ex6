@@ -1622,7 +1622,11 @@ def bash(ctx: ex6.Context, command: str, timeout: int = 30) -> str | ex6.Operati
     Use for: running tests, checking git status, installing packages, etc.
     Each call is a fresh shell, already in the project cwd; don't `cd` there.
     timeout: max seconds to wait (default 30).
-    Long output is condensed; the full output is saved to a file named in the footer."""
+    Long output is condensed; the full output is saved to a file named in the footer.
+    
+    IMPORTANT: Before running destructive commands (e.g. `rm -rf`, `git reset --hard`, `git clean -fd`), verify their targets and scope.
+    Never delete files or discard uncommitted work unless the user explicitly authorized it.
+    """
     if _IS_WINDOWS:
         git_exe = shutil.which("git")
         exe = os.path.join(os.path.dirname(os.path.dirname(git_exe)), "bin", "bash.exe") if git_exe else None
