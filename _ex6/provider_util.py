@@ -1,9 +1,12 @@
-# Shared provider helpers: invoke logging (invokes.db) and /usage.
+# Shared provider helpers: invoke logging (invokes2.db) and /usage.
 
 import json
 import hashlib
 import os
 import sqlite3
+import time
+import uuid
+import zlib
 from pathlib import Path
 import ex6
 
@@ -31,7 +34,7 @@ def _log_safe(value):
 
 LOG_INVOKES = False
 _DB_PATH = None
-_DB_LIMIT = 1_000_000_000  # bytes of live data in invokes.db; oldest invokes are culled past this
+_DB_LIMIT = 1_000_000_000  # bytes of live data in invokes2.db; oldest invokes are culled past this
 
 
 def configure_invoke_logging(enabled: bool, *, path: str | os.PathLike | None = None):
@@ -43,23 +46,23 @@ def configure_invoke_logging(enabled: bool, *, path: str | os.PathLike | None = 
 
 
 def _db():
-    path = _DB_PATH if _DB_PATH is not None else ex6.get_folder("provider_util") / "invokes.db"
+    path = _DB_PATH if _DB_PATH is not None else ex6.get_folder("provider_util") / "invokes2.db"
     path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(path, timeout=30)
     db.execute("PRAGMA journal_mode=WAL")
     db.executescript("""
-        CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, data TEXT);
-        CREATE TABLE IF NOT EXISTS invokes(id INTEGER PRIMARY KEY, ts, cwd, ctx, model, provider,
+        CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, data BLOB);  -- data = zlib(json)
+        CREATE TABLE IF NOT EXISTS invokes(id INTEGER PRIMARY KEY, ts, cwd, ctx, ctx_id, model, provider,
             input_tokens, output_tokens, cached_tokens, cache_write_tokens, cost, finish_reason, error,
-            messages TEXT, tools TEXT, output TEXT);
+            duration_ms, messages TEXT, tools TEXT, output TEXT);
     """)
     return db
 
 
 def _blob(db, value):
     data = json.dumps(_log_safe(value), sort_keys=True)
-    h = hashlib.sha256(data.encode()).hexdigest()
-    db.execute("INSERT OR IGNORE INTO blobs VALUES (?, ?)", (h, data))
+    h = hashlib.sha256(data.encode()).hexdigest()[:16]
+    db.execute("INSERT OR IGNORE INTO blobs VALUES (?, ?)", (h, zlib.compress(data.encode())))
     return h
 
 
@@ -84,18 +87,21 @@ def log_invoke(ctx, provider, messages, tools, result, text=""):
     if not LOG_INVOKES: return
     from datetime import datetime
     output = {"text": text, "tool_calls": result.tool_calls, "native_calls": result.native_calls}
+    duration_ms = int((time.time() - ctx.last_invoke_time_start) * 1000) if ctx.last_invoke_time_start else None
+    if "provider_util:ctx_id" not in ctx.data:
+        ctx.data["provider_util:ctx_id"] = uuid.uuid4().hex
     db = _db()
     try:
         with db:  # one transaction per invoke
             hashes = [_blob(db, m) for m in messages]
             db.execute(
-                "INSERT INTO invokes (ts, cwd, ctx, model, provider, input_tokens, output_tokens, cached_tokens,"
-                " cache_write_tokens, cost, finish_reason, error, messages, tools, output)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (datetime.now().isoformat(timespec="seconds"), ctx.cwd or os.getcwd(), ctx.name, ctx.model,
-                 provider, result.input_tokens, result.output_tokens, result.cached_tokens,
-                 result.cache_write_tokens, result.cost, result.finish_reason, result.error,
-                 json.dumps(hashes), _blob(db, tools or []), json.dumps(_log_safe(output))))
+                "INSERT INTO invokes (ts, cwd, ctx, ctx_id, model, provider, input_tokens, output_tokens, cached_tokens,"
+                " cache_write_tokens, cost, finish_reason, error, duration_ms, messages, tools, output)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (datetime.now().isoformat(timespec="seconds"), ctx.cwd or os.getcwd(), ctx.name,
+                 ctx.data["provider_util:ctx_id"], ctx.model, provider, result.input_tokens, result.output_tokens,
+                 result.cached_tokens, result.cache_write_tokens, result.cost, result.finish_reason, result.error,
+                 duration_ms, json.dumps(hashes), _blob(db, tools or []), json.dumps(_log_safe(output))))
             _cull(db)
     finally:
         db.close()

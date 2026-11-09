@@ -135,7 +135,7 @@ Tools / agents:
 - _ex6/sigils.py - `;ssot`, `;git`, `;fast`, etc. in a prompt expand to `<user_reminder>` blocks on Enter (transform_user_prompt handler)
 
 Providers / models:
-- _ex6/provider_util.py - shared provider helpers: `log_invoke` (opt-in via `LOG_INVOKES = True`; every invoke -> `<get_folder("provider_util")>/invokes.db`, deduped message blobs, auto-culled past 1GB), /usage.
+- _ex6/provider_util.py - shared provider helpers: `log_invoke` (opt-in via `LOG_INVOKES = True`; every invoke -> `<get_folder("provider_util")>/invokes2.db`, deduped message blobs, auto-culled past 1GB), /usage.
 - _ex6/provider_openrouter.py - openrouter provider, fallback invoke_llm handler (order=100) for every model. Also cache_manually, supports_audio handler.
 - _ex6/provider_openai.py - openai provider, via ChatGPT subscription. invoke_llm handler for `openai/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH
 - _ex6/provider_anthropic.py - anthropic provider, via long-lived `claude -p` process. invoke_llm handler for `anthropic/` ids (no `:` suffix). `WEB_TOOLS`: WEB_SEARCH, WEB_FETCH

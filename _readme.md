@@ -42,7 +42,7 @@ configure_invoke_logging(True)   # resume at the same path
 
 Configuration is process-wide, shared by all contexts/providers. In a plugin, make the same calls from `setup(app)`. Changes apply to subsequent `log_invoke` calls; an already-started write may finish.
 
-`path` accepts a filename as a string or `Path`. Relative paths are resolved when configured; parent directories and the DB are created lazily on the first enabled write. Omitting `path` (or passing `None`) retains the chosen location. Without a custom path, the default is `ex6.get_folder("provider_util") / "invokes.db"`.
+`path` accepts a filename as a string or `Path`. Relative paths are resolved when configured; parent directories and the DB are created lazily on the first enabled write. Omitting `path` (or passing `None`) retains the chosen location. Without a custom path, the default is `ex6.get_folder("provider_util") / "invokes2.db"`.
 
 Custom providers can call `log_invoke(ctx, provider, messages, tools, result, text="")` from `_ex6.provider_util` directly: `ctx` is an `ex6.Context`, `result` is an `ex6.LLMResult`, and messages/tools are the provider-format payload sent. No TUI is needed. Existing blob deduplication, base64 redaction, WAL transactions, and automatic culling above 1 GB are unchanged.
 
