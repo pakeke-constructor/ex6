@@ -823,6 +823,9 @@ def _coerce_to_type_hint(val, type_hint):
         except Exception:
             return val, False
 
+    if type_hint is float and type(val) is int:
+        return float(val), True
+
     if (origin is list or type_hint is list) and isinstance(val, tuple):
         val = list(val)
         return val, _strong_isinstance(val, type_hint)
