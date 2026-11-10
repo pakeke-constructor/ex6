@@ -1,5 +1,9 @@
 # remote: ex6 as client-server (server-authoritative sync)
-Status: active
+Status: parked
+
+
+# HUMAN NOTE: I tried implementing this in a new branch, `dev/remote`. I won't lie; it feels kiiindof bad. It feels like this is too complicated for what ex6 should be.  So right now, im parking the plan
+
 
 ## Motivation
 I want to keep my agents running after I quit the TUI, long-form on a VPS, without the keypress lag of tmux/ssh.
