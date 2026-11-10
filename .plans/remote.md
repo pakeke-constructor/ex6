@@ -62,13 +62,31 @@ def snapshot(ctx):
         out[f.name] = v
     return out
 ```
-- Revisions: in-place mutations must bump the revision explicitly. Examples are ToolCall status changes and `ctx.data[k] = v`, which tool_summaries writes often.
-  - Any periodic audit or hash compare is only a bug detector, never the normal path.
-- Bandwidth: long transcripts over ssh can't be resent in full on every change (e.g. send only the changed tail).
-- Streaming text goes as offset-checked appends; a mismatch is healed by the next snapshot.
+- Knowing when to send: the server has to notice whenever a context changes, so the client sees it.
+  - The obvious way is to catch every write as it happens (a `__setattr__` hook plus a revision counter). That misses changes made inside a field, like `ctx.data[k] = v` or a ToolCall's status changing, because those never go through `__setattr__`. Each such spot would need a manual "this changed" call, and forgetting one means the client silently shows stale state.
+  - So instead, the server just looks: about 10 times a second, it rebuilds each context's snapshot and compares it with the last one it sent. If they differ, it sends it.
+  - This can't miss a change, because it compares the result, not the writes. No revision numbers, no hooks, nothing to forget.
+  - It's cheap because the snapshot holds no message contents: just the simple fields, `data`, tool rows, and the list of message hashes.
+  - The app snapshot (roster, budget, favorite, `app.shared`, `fatal_error`) works the same way.
+- Messages are content-addressed. A snapshot always carries the full message list, but as hashes; content is sent only for hashes the client doesn't have yet.
+  - The hash is a sha of the message's encoded JSON (role, content, tool calls, attachments, system-prompt tool schemas): whatever gets sent is what gets hashed, so there's no second field list to maintain.
+  - Hashes ignore which context a message belongs to, so forks and shared system prompts cost almost nothing to sync.
+  - Edits need no special handling: changed content means a new hash.
+  - The client keeps a hash -> message store. A hash it doesn't have is a bug, so it fails loudly and resyncs (no holes in the transcript).
+  - Hashing every message on every poll is too slow for long conversations, so the hash is cached on the Message. This is the only cache that can go stale: `edit_messages` hands plugins the raw list, so a message can change without anyone clearing the cache.
+    - Fix: like `_render_cache`, remember which content object the hash was computed from, and recompute when `self.content` is a different object. Replacing a message's content then rehashes automatically. Only a change inside a ToolResult object would be missed, which is rare enough to accept.
+- Streaming text uses the same comparison: if the new text starts with the text already sent, send just the new part with its offset; otherwise send it whole. The client applies an append only if the offset matches its current length; a mismatch is healed by the next snapshot.
 - Snapshotting must not freeze callable message content: `Message.get_msg` caches `_snapshot`.
 - Removal shows up as a roster diff, never as a "removed" event, so a missed event can't leave a zombie.
-- Client and server can compare state hashes; `/sync` shows them.
+- `/sync` compares the client's and server's message hash lists per context.
+
+## Connection
+`Connection` (server side) represents one remote party interacting with ex6: one socket, from hello to disconnect.
+- It owns all per-client state: the socket and send lock, the set of message hashes already sent, the last snapshot sent per context and for the app, and the request reader.
+- When the socket closes, the object is thrown away, and so is all of its state. A reconnect starts from an empty sent-set, and the client clears its message store to match. Nothing can go stale across reconnects.
+  - Within one connection, TCP is reliable, so the server's sent-set always matches the client's store.
+- Agent state (contexts, `app.shared`) lives on App, never on a Connection. A Connection only tracks what it has sent.
+- Only one Connection exists at a time, and a second is refused. Multiple clients later would just mean more Connection objects.
 
 ## Process / connection
 - Default `ex6`: look up `get_folder("server")/<project>-<path-hash>/server.json` `{pid, port, token}`. Connect if alive; otherwise spawn `ex6 --server` detached.
@@ -76,7 +94,6 @@ def snapshot(ctx):
 - `ex6 --client host:port --token T` connects remotely over an ssh tunnel. Also `ex6 --stop` and `/restart`.
 - The server binds to 127.0.0.1 only and checks a random token on hello.
 - The client shows DISCONNECTED and reconnects automatically. While disconnected, requests are refused rather than queued.
-- One client at a time; a second connection is refused.
 - Idle auto-exit: the server exits once no client is connected and no agent is running or waiting on a human for `app.server_idle_exit` seconds.
   - Default is 600. Plugins set it in `setup`; None disables it (e.g. on a VPS).
   - On exit, delete `server.json` and release the lock.
