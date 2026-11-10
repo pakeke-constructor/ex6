@@ -1,8 +1,5 @@
-﻿# Dependencies: watchfiles (via inline.py), plus the imported plugins below.
-# Install: python -m pip install watchfiles
-# Also install dependencies documented in tools.py, skills.py, provider_openrouter.py,
+﻿# Dependencies: install those documented in tools.py, skills.py, provider_openrouter.py,
 # provider_openai.py, and provider_anthropic.py (including CLI prerequisites).
-# External: Git for the inline watcher.
 
 
 from _ex6 import provider_openai, provider_anthropic
@@ -288,9 +285,4 @@ def custom_setup(app: ex6.App, messages: list):
 def setup(app):
     if os.getcwd() == os.path.dirname(os.path.abspath(ex6.__file__)):
         auto_setup(app)
-
-    # Inline prompts: write a line ending in ;;; to launch a coding agent
-    from _ex6.inline import setup_inline_watcher
-    if app.tui and app.tui.current:
-        setup_inline_watcher(app, app.tui.current.fork("_inline"))
 
