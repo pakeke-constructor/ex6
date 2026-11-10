@@ -109,7 +109,7 @@ def snapshot(ctx):
 
 ## Phases
 Keep the in-process path working until phase 2, then delete it.
-1. Read-only sync: move the registry to App, add `--server`/`--client`, snapshots, handshake with code shipping, spawn/discovery, and reconnect.
+1. Read-only sync: move the registry to App, add `--server`/`--client`, snapshots, handshake with code shipping, spawn/discovery, and reconnect. Keep this human-readable, with well-named functions and a clear top-level flow.
    - Smoke test: a fake invoke_llm (chunks plus a tool call) plus a headless client. Hashes must match, including after a forced disconnect.
 2. Requests: commands, keys, and submits go to the server; mark client-only keys and commands; the ctrl-x stop in `_tui_loop` goes through the stop key. Delete the in-process path.
 3. ask_human as synced state, plus reply requests. Update the `_ex6/tools.py` call sites and `request_approval`.
