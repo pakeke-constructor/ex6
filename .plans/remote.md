@@ -16,28 +16,71 @@ Robust, simple, stateless code is best. When in doubt, pick the option with less
 - Server: contexts, messages, LLM loops, tools, files, git, plugin data, budget, ask_human waiting, and command logic.
 - The server is the single writer of agent state. Client mirrors are read-only, and writing to one raises.
 - State flows server -> client as snapshots. They're idempotent and last write wins, so a missed one is healed by the next.
-- Requests flow client -> server: commands, keys, prompt submits, and human replies.
+- Requests flow client -> server: commands, prompt submits, and human replies. Keys are client-side and send requests.
 - Nothing runs on both sides.
-- No client-side prediction. Agent changes appear after a round trip; UI changes are instant.
-  - E.g. pressing `f` sends the fork to the server, and the new agent appears when its snapshot arrives.
+- Selection is client-only. The server has no "current agent": every request carries the client's selected agent name.
+- Keys never wait on the network. The only client-side prediction is in-flight requests (pending forks, hidden deletes), and it lasts exactly as long as the request (see "Requests").
 - Only data crosses the wire, never code references.
 - Fail loudly: non-JSON data, a code mismatch, or an unclassified field raises right where the bug is.
 
 ## Shape
 This section is a sketch, not a spec. Pick the simplest thing that works.
 - The context registry (`contexts`, `add_context`, `remove_context`, `favorite`) moves from TUI to App. It's real on the server and a mirror on the client.
-- Commands and keys run on the server by default. UI-only ones (j/k, zoom, scroll, help, yank, theme, ...) are marked client-only.
-- A command that needs both sides: the server part does the work and returns JSON, then the client part does UI with that result.
-  - E.g. fork returns the new name and the client selects it. `change` returns the popped text and the client opens the input with it.
-- Requests carry `current` (the client's selected agent). Server code never touches UI; `app.tui` is None on the server.
-- Ordering: the server sends any resulting state before it answers a request, so client follow-ups see it.
-  - Keys typed while a request is in flight must not act on stale selection (e.g. `f` then `dd` must not delete the parent).
+- Keys always run on the client. Commands run on the server by default; UI-only commands (theme, help, ...) are marked client-only. One name lives on one side; registering it on both raises.
+- Server code never touches UI; `app.tui` is None on the server.
 - ask_human: pending requests are synced state on the server (panel class plus JSON args). The client builds panels from that state and sends replies back as requests.
   - This makes it reconnect-safe: a lost reply makes the panel reappear.
 - Server background code reaches the user via `app.echo`, which is sent to the client.
 - Plugin data the client needs for rendering is synced as state (e.g. `app.shared`). One-shot messages are only for things that don't need to survive a reconnect.
 - Both sides run the same plugin code. On handshake the server ships its plugin sources and the ex6.py hash.
   - Client-local plugins (from the client's user folder) can only do client things.
+
+## Requests (client -> server)
+A request is `{id, current, args}`, with the command name as `args[0]` (`tui.request("fork", name)` -> `{id="command", args = ["fork", "foo.2"]}`). `current` is the client's selected agent name (or None); the server resolves it per request and fails loudly if it's unknown. Nothing on the server stores a selection.
+
+```python
+# server: commands get the requesting client's selected agent
+@ex6.command
+def fork(ctx, name: str): ctx.fork(name)
+
+@ex6.command
+def delete(ctx, names: list[str]): ...      # explicit names, never "whatever is spawned now"
+
+# client: keys are UI; they send requests and never block
+@ex6.key("f")
+def key_fork(tui, n):
+    name = tui.unique_name(tui.current_name)    # checks mirror + pending names
+    tui.request("fork", name, pending=[name])
+    tui.select(name)
+
+@ex6.key("dd")
+def key_delete(tui, n):
+    tui.request("delete", [tui.current_name], hide=[tui.current_name])
+
+@ex6.command_client                             # client-only command fronting a server one
+def plans(tui):
+    tui.request("plans_list", on_reply=lambda r: tui.push_panel(_PlansPanel(r)))
+```
+- Typed `/x args`: a client-only command runs locally; otherwise it's sent as a request.
+- Every request gets exactly one reply: ok + JSON result, or an error (echoed). `on_reply` is optional.
+- The server handles requests in TCP order, so follow-ups never overtake: `f` then `o`/submit/`dd` on the new name always lands after the fork.
+- After running a request, the server runs the diff pass right away and pushes the resulting state, then replies, on the same socket. No waiting for the next poll, so locally the round trip is ~1-2ms.
+- Request handlers must return quickly; long work goes in a thread (`ctx.invoke` already does). A request unanswered for 10s is a loud error, and the client drops and reopens the connection.
+
+Client-chosen names: `f`, `o`, `n` pick the new name on the client (`unique_name` over mirror + pending names) and select it immediately. Selection is stored as a name, so it can point at an agent that doesn't exist yet. The list shows it as pending, and the chat pane shows "pending..." until the snapshot arrives. If the name was taken on the server in the meantime (e.g. a subagent), the fork fails loudly.
+
+`p`/`cp`/`ca` don't wait either: the client finds the cut and the text in its mirror, opens the input with the text, and sends `truncate(cut, expect=<hash of message at cut>)`. The server refuses if the hash differs or the agent is running. The draft is local, so a refusal loses nothing.
+
+### Pending and hidden: can never drift
+`pending` (forks not confirmed yet) and `hide` (deletes not confirmed yet) are not sets the client maintains. They're derived from the connection's in-flight requests:
+`visible list = server roster - hide names of in-flight requests + pending names of in-flight requests not yet in the roster`
+- A request leaves in-flight only when its reply arrives. The server pushes state before replying, so at that moment the roster is already the truth.
+  - Delete succeeded: the name is gone from the roster. Delete failed, or the server didn't actually delete: the agent reappears. Either way the list matches the server.
+  - Fork failed: the pending row disappears.
+- In-flight requests belong to the client Connection. A disconnect drops them all, so nothing survives a reconnect.
+- The 10s request timeout bounds a hung server: in-flight can't outlive it.
+- So no hidden/pending entry can ever outlive its request, and no separate cleanup or timeout logic exists.
+- Selection fallback: if the selected name is neither in the visible list nor pending, select its nearest neighbour by last list position. `dd` and failed forks both land there.
 
 ## Sync concerns (must be handled; method is open)
 - Field sync: unmarked Context fields are synced implicitly, but only if the value is a primitive (str/int/float/bool/None).
@@ -76,7 +119,8 @@ def snapshot(ctx):
   - Hashing every message on every poll is too slow for long conversations, so the hash is cached on the Message. This is the only cache that can go stale: `edit_messages` hands plugins the raw list, so a message can change without anyone clearing the cache.
     - Fix: like `_render_cache`, remember which content object the hash was computed from, and recompute when `self.content` is a different object. Replacing a message's content then rehashes automatically. Only a change inside a ToolResult object would be missed, which is rare enough to accept.
 - Streaming text uses the same comparison: if the new text starts with the text already sent, send just the new part with its offset; otherwise send it whole. The client applies an append only if the offset matches its current length; a mismatch is healed by the next snapshot.
-- Snapshotting must not freeze callable message content: `Message.get_msg` caches `_snapshot`.
+- Callable message content: the snapshot uses `get_msg`, which freezes `_snapshot`, the same as viewing the transcript already does. Don't avoid this: evaluating callables on every poll would run e.g. `_env_content`'s `git branch` 10x/s.
+- Tool schemas: cache `tool_to_schema` per tool fn, so the poll doesn't rebuild them every time.
 - Removal shows up as a roster diff, never as a "removed" event, so a missed event can't leave a zombie.
 - `/sync` compares the client's and server's message hash lists per context.
 
@@ -111,7 +155,7 @@ def snapshot(ctx):
 Keep the in-process path working until phase 2, then delete it.
 1. Read-only sync: move the registry to App, add `--server`/`--client`, snapshots, handshake with code shipping, spawn/discovery, and reconnect. Keep this human-readable, with well-named functions and a clear top-level flow.
    - Smoke test: a fake invoke_llm (chunks plus a tool call) plus a headless client. Hashes must match, including after a forced disconnect.
-2. Requests: commands, keys, and submits go to the server; mark client-only keys and commands; the ctrl-x stop in `_tui_loop` goes through the stop key. Delete the in-process path.
+2. Requests: `tui.request` with pending/hide, server commands get `(ctx, *args)`, client-chosen names, push-before-reply, request timeout. Core keys become client keys sending requests (go, yolo, stop, fork, new, pop, delete, clear, change). Move `tui.current`/`tui.favorite` users to names (`tui.favorite` -> `app.favorite`, a synced name). The ctrl-x stop in `_tui_loop` goes through the stop key. Delete the in-process path.
 3. ask_human as synced state, plus reply requests. Update the `_ex6/tools.py` call sites and `request_approval`.
 4. Plugin inventory: go through every plugin and decide which side each part runs on. Known sites:
    - tool_summaries.py: it currently triggers from `render_tool_call`. It must trigger server-side when ToolCall rows are created.
