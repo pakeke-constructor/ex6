@@ -2822,8 +2822,8 @@ def key_scroll_down(tui, n):
 
 @key("/")
 def key_command(tui, n):
-    'Run a /command.'
-    _open_input(tui, "/")
+    'Start typing a /command by opening input box.'
+    _open_input(tui, None if tui.current.get_input_box().text else "/")
 
 
 @key("h")
