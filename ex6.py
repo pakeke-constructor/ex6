@@ -1127,7 +1127,8 @@ class Context:
     llm_cot: str = ""
     llm_output_type: str = ""
     last_invoke_time_end: float = 0
-    last_invoke_time_start: float = 0
+    last_invoke_time_start: float = 0  # start of the latest LLM call
+    invoke_time_start: float = 0  # start of the latest invoke() run (spans all LLM calls + tools)
     last_seen: float = 0  # last frame this context was selected
     llm_result: Optional[LLMResult] = None
     ui_stack: list = field(default_factory=list)
@@ -1369,6 +1370,7 @@ class Context:
             if self.llm_is_running:
                 raise RuntimeError("Context is already running or draining")
             self.llm_is_running = True
+            self.invoke_time_start = time.time()
             self.stop_early = False
             self.llm_result = None
             self.pending_message = None
@@ -1447,6 +1449,7 @@ class Context:
             self.llm_cot = self.llm_output_type = ""
             self.last_invoke_time_start = 0
             self.last_invoke_time_end = 0
+            self.invoke_time_start = 0
             self._read_hashes = {}
             self._line_snapshots = {}
             self.data_volatile = {}
@@ -1488,7 +1491,7 @@ class Context:
         cpy.ui_stack = []
         cpy._input_box = None
         cpy.llm_is_running = False
-        cpy.last_invoke_time_start = cpy.last_invoke_time_end = cpy.last_seen = 0
+        cpy.last_invoke_time_start = cpy.last_invoke_time_end = cpy.invoke_time_start = cpy.last_seen = 0
         cpy._zoom = False
         cpy.name = new_name
         cpy.parent = self.name

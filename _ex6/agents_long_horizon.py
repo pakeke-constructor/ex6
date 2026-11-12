@@ -8,7 +8,8 @@
 
 from _ex6.tools import handoff, AGENTS_MD, ENV_PROMPT
 from _ex6.skills import load_skill, refresh_skill_doc
-from _ex6.agents import OPUS, READ, WRITE, SHELL, SUBAGENTS, context_usage_reminder
+from _ex6.agents import OPUS, READ, WRITE, SHELL, SUBAGENTS
+from _ex6.reminders import context_usage_reminder
 from _ex6.commands import format_context
 import ex6
 from ex6 import Context, Message

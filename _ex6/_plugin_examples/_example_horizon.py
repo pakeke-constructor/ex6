@@ -1,7 +1,8 @@
 import ex6
 from ex6 import Context
 import _ex6.agents_long_horizon as h
-from _ex6.agents import SOL, context_usage_reminder
+from _ex6.agents import SOL
+from _ex6.reminders import context_usage_reminder
 from _ex6.tools import ENV_PROMPT, AGENTS_MD
 
 

@@ -7,35 +7,12 @@ from _ex6.models import M
 from _ex6.tools import read_headers, read_body, glob, search, write_file, read_file, read_image, ask_user_question, handoff, COMMANDLINE_TOOL, git_working_tree, explore_agent, subagent, AGENTS_MD, ENV_PROMPT, edit_file
 from _ex6.skills import load_skill
 from _ex6.web_tools import websearch_agent
+from _ex6.reminders import context_usage_reminder, time_reminder
 import ex6
 from ex6 import Context, Message
 
 import os
 from typing import Any, Optional
-
-
-def context_usage_reminder(remind: Optional[int] = 100_000, require: Optional[int] = 150_000):
-    """after_tool_calls hook factory: appends `<context_usage>` to the last tool result each 10% step; nags handoff() past `remind`, demands it every call past `require`.
-    ctx.data["agents:handoff_remind"] / ["agents:handoff_require"] override the thresholds at runtime (None disables)."""
-    def hook(ctx: Context):
-        msgs = ctx.get_messages()
-        if not msgs or msgs[-1].role != "tool": return
-        rem = ctx.data.get("agents:handoff_remind", remind)
-        req = ctx.data.get("agents:handoff_require", require)
-        used = ctx.token_count()
-        bucket = used * 10 // ctx.max_tokens
-        last = ctx.data_volatile.get("context_usage_bucket", 0)
-        ctx.data_volatile["context_usage_bucket"] = bucket # tracks downward too, so dd/p re-arms it
-        if bucket <= last and (req is None or used < req): return
-        note = f"{round(used/1000)}k/{round(ctx.max_tokens/1000)}k tokens used."
-        if req is not None and used >= req:
-            note += " YOU MUST call handoff() now."
-        elif rem is not None and used >= rem:
-            note += " Consider finishing your current step, then calling handoff()."
-        r = msgs[-1].content
-        msgs[-1].content = ex6.ToolResult(f"{r.text}\n\n<context_usage>{note}</context_usage>", r.attachments)
-    return hook
-
 
 
 MAIN_SYSTEM_PROMPT = ex6.Message(
@@ -239,6 +216,7 @@ def setup_ex6_specialist(app):
     ctx = Context(app, **{**SOL, "name": "ex6_agent", "reasoning": "medium"}, messages=messages)
     add_native_webtools(ctx)
     ctx.after_tool_calls(context_usage_reminder())
+    ctx.after_tool_calls(time_reminder())
     app.tui.add_context(ctx)
 
 
@@ -273,6 +251,7 @@ def custom_setup(app: ex6.App, messages: list):
         ctx = Context(app, **preset, messages=messages)
         add_native_webtools(ctx)
         ctx.after_tool_calls(context_usage_reminder())
+        ctx.after_tool_calls(time_reminder())
         tui.add_context(ctx)
     tui.current = tui.get_context(OPUS["name"])
     tui.favorite = tui.current
