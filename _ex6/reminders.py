@@ -43,7 +43,7 @@ def time_reminder(soft_limit: int = 5 * 60, subagent_limit: int = 2 * 60, interv
         last = ctx.data_volatile.get("reminders:time_reminder_at", 0)
         if last >= ctx.invoke_time_start and now - last < interval: return
         ctx.data_volatile["reminders:time_reminder_at"] = now
-        note = f"Running for {int(elapsed // 60)}m{int(elapsed % 60):02d}s (soft limit {int(limit // 60)}m{int(limit % 60):02d}s). Wrap up: finish your current step and report back."
+        note = f"Running for {int(elapsed // 60)}m{int(elapsed % 60):02d}s (soft limit {int(limit // 60)}m{int(limit % 60):02d}s). Be wary that the human might be waiting."
         r = msgs[-1].content
         msgs[-1].content = ex6.ToolResult(f"{r.text}\n\n<time_reminder>{note}</time_reminder>", r.attachments)
     return hook
