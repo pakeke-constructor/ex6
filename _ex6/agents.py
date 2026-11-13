@@ -119,14 +119,14 @@ GOOD: "Bug in auth middleware. Token expiry check use `<` not `<=`. Fix:"
 
 
 # Partial contexts: Context(app, **OPUS)
-SONNET: dict[str, Any] = dict(name="anth_SONNET", model=M.SONNET_LATEST.id, reasoning="high")
-OPUS: dict[str, Any]   = dict(name="anth_OPUS", model=M.OPUS_LATEST.id, reasoning="high")
+SONNET: dict[str, Any] = dict(name="SONNET", model=M.SONNET_LATEST.id, reasoning="high")
+OPUS: dict[str, Any]   = dict(name="OPUS", model=M.OPUS_LATEST.id, reasoning="high")
 
-LUNA: dict[str, Any]   = dict(name="oai_LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high")
-TERRA: dict[str, Any]  = dict(name="oai_TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high")
+LUNA: dict[str, Any]   = dict(name="LUNA", model=M.GPT_LUNA_LATEST.id, reasoning="high")
+TERRA: dict[str, Any]  = dict(name="TERRA", model=M.GPT_TERRA_LATEST.id, reasoning="high")
 # right now, GPT_56_SOL is stronger that GPT-6.
-SOL: dict[str, Any]    = dict(name="oai_SOL", model=M.GPT_56_SOL.id, reasoning="high")
-ASTRA: dict[str, Any]  = dict(name="oai_ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high")
+SOL: dict[str, Any]    = dict(name="SOL", model=M.GPT_56_SOL.id, reasoning="high")
+ASTRA: dict[str, Any]  = dict(name="ASTRA", model=M.GPT_ASTRA_LATEST.id, reasoning="high")
 
 
 
@@ -213,7 +213,7 @@ def setup_ex6_specialist(app):
     ]
     if os.getcwd() != EX6_DIR: # in ex6 repo itself, AGENTS_MD is already ex6's and the rules would conflict
         messages += [EX6_AGENTS_MD, EX6_RULES]
-    ctx = Context(app, **{**SOL, "name": "ex6_agent", "reasoning": "medium"}, messages=messages)
+    ctx = Context(app, **{**SOL, "name": "ex6a", "reasoning": "medium"}, messages=messages)
     add_native_webtools(ctx)
     ctx.after_tool_calls(context_usage_reminder())
     ctx.after_tool_calls(time_reminder())
