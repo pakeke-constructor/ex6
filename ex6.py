@@ -1148,7 +1148,7 @@ class Context:
     _context_hooks: dict = field(default_factory=lambda: {kind: [] for kind in CONTEXT_HOOK_KINDS}, init=False, repr=False)
     _messages: list = field(default_factory=list, init=False, repr=False)
     _msg_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
-    _read_hashes: dict[str,str] = field(default_factory=dict) # file read tracking
+    _read_snapshots: dict[str,bytes] = field(default_factory=dict) # path -> contents at last read/write
     _line_snapshots: dict = field(default_factory=dict) # path -> {line_no: line_content}
     _prev_height: int = 0 # how many lines were used in rendering last frame
     pending_tools: list[PendingTool] | None = field(default=None, init=False, repr=False)
@@ -1256,7 +1256,7 @@ class Context:
         p = self.resolve(path)
         with open(p, "rb") as f:
             data = f.read()
-        self._read_hashes[p] = hashlib.md5(data).hexdigest()
+        self._read_snapshots[p] = data
         if read_line_numbers is not None:
             lines = data.decode().splitlines()
             if p not in self._line_snapshots:
@@ -1276,10 +1276,27 @@ class Context:
     def file_changed_since_read(self, path):
         """True if this ctx read/wrote the file and it has changed since. Unseen files: False."""
         p = self.resolve(path)
-        if p not in self._read_hashes:
+        if p not in self._read_snapshots:
             return False
         with open(p, "rb") as f:
-            return self._read_hashes[p] != hashlib.md5(f.read()).hexdigest()
+            return self._read_snapshots[p] != f.read()
+
+    def read_snapshot(self, path) -> bytes | None:
+        """File contents as of this ctx's last read/write, or None if unseen."""
+        return self._read_snapshots.get(self.resolve(path))
+
+    def changed_files(self) -> list[tuple[str, bytes, bytes | None]]:
+        """(path, contents at last read/write, current contents or None if deleted) for every seen file that changed since."""
+        out = []
+        for p, old in list(self._read_snapshots.items()):
+            try:
+                with open(p, "rb") as f:
+                    new = f.read()
+            except FileNotFoundError:
+                new = None
+            if new != old:
+                out.append((p, old, new))
+        return out
 
     def with_tools(self, tools: list[Callable]) -> 'Context':
         for fn in tools:
@@ -1450,7 +1467,7 @@ class Context:
             self.last_invoke_time_start = 0
             self.last_invoke_time_end = 0
             self.invoke_time_start = 0
-            self._read_hashes = {}
+            self._read_snapshots = {}
             self._line_snapshots = {}
             self.data_volatile = {}
 
@@ -1478,7 +1495,7 @@ class Context:
         cpy._pending_inputs = []
         cpy._context_hooks = {kind: list(fns) for kind, fns in self._context_hooks.items()}
         cpy._messages = messages
-        cpy._read_hashes = dict(self._read_hashes)
+        cpy._read_snapshots = dict(self._read_snapshots)
         cpy._line_snapshots = {k: dict(v) for k, v in self._line_snapshots.items()}
         cpy.data = StrictDataDict(self.data)
         cpy.data_volatile = {}

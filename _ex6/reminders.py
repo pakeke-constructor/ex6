@@ -1,7 +1,9 @@
 import ex6
 from ex6 import Context
 
+import os
 import time
+import difflib
 from typing import Optional
 
 
@@ -46,4 +48,37 @@ def time_reminder(soft_limit: int = 5 * 60, subagent_limit: int = 2 * 60, interv
         note = f"Running for {int(elapsed // 60)}m{int(elapsed % 60):02d}s (soft limit {int(limit // 60)}m{int(limit % 60):02d}s). Be wary that the human might be waiting."
         r = msgs[-1].content
         msgs[-1].content = ex6.ToolResult(f"{r.text}\n\n<time_reminder>{note}</time_reminder>", r.attachments)
+    return hook
+
+
+def files_changed_reminder(max_files: int = 10):
+    """after_tool_calls hook factory: appends `<files_changed>a.py (+3 -1), ...</files_changed>` to the last tool result when files this ctx read/wrote were changed by someone else.
+    Paths and line counts only, never diffs; agent uses read_file(since_last_read=True) to see them. Each change is reported once."""
+    def hook(ctx: Context):
+        msgs = ctx.get_messages()
+        if not msgs or msgs[-1].role != "tool": return
+        seen = ctx.data_volatile.setdefault("reminders:files_changed_seen", {})
+        items = []
+        for p, old, new in ctx.changed_files():
+            if seen.get(p) == hash(new): continue
+            seen[p] = hash(new)
+            try:
+                rel = os.path.relpath(p, ctx.cwd or os.getcwd())
+            except ValueError: # other drive
+                rel = p
+            if new is None:
+                items.append(f"{rel} (deleted)")
+                continue
+            diff = difflib.unified_diff(old.decode(errors="replace").splitlines(), new.decode(errors="replace").splitlines(), lineterm="", n=0)
+            plus = minus = 0
+            for line in diff:
+                if line.startswith("+") and not line.startswith("+++"): plus += 1
+                elif line.startswith("-") and not line.startswith("---"): minus += 1
+            items.append(f"{rel} (+{plus} -{minus})")
+        if not items: return
+        note = ", ".join(items[:max_files])
+        if len(items) > max_files:
+            note += f", ...and {len(items) - max_files} more"
+        r = msgs[-1].content
+        msgs[-1].content = ex6.ToolResult(f"{r.text}\n\n<files_changed>{note}</files_changed>", r.attachments)
     return hook

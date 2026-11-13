@@ -119,7 +119,7 @@ def _check_secret(path):
 
 def _check_stale(ctx, path):
     if ctx.file_changed_since_read(path):
-        raise ValueError(f"'{path}' changed since you last read/wrote it (bash, user or another agent). Re-read it.")
+        raise ValueError(f"'{path}' changed since you last read/wrote it (bash, user or another agent). Re-read it (read_file since_last_read=True shows just the diff).")
 
 
 
@@ -1008,13 +1008,14 @@ def read_audio(ctx: ex6.Context, path: str) -> ex6.ToolResult:
     return ex6.ToolResult(f"Loaded audio {path}\n{mime_type} · {_format_bytes(size)}", (attachment,))
 
 
-def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = None, line_numbers: Optional[bool] = False) -> str:
+def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = None, line_numbers: Optional[bool] = False, since_last_read: Optional[bool] = False) -> str:
     """
     Read and return text contents of a file.
     - Prefer line_numbers=False to avoid bloat.
     - Use line_numbers=True if you are doing deep work with this file.
     - It's okay to use this tool liberally if the files are small (e.g less than 100 lines)
     - lines=(start,end) to read a subset (1-indexed, inclusive). (Forces line_numbers=True)
+    - since_last_read=True returns a diff since you last read/wrote the file, instead of the whole file.
     """
     _check_secret(path)
     p = ctx.resolve(path)
@@ -1032,6 +1033,17 @@ def read_file(ctx: ex6.Context, path: str, lines: Optional[tuple[int,int]] = Non
         if "\x00" in content:
             raise ValueError(f"'{path}' is a binary file and cannot be read as text.")
         all_lines = content.splitlines(keepends=True)
+        old = ctx.read_snapshot(path)
+        if since_last_read and old is not None:
+            if old == data:
+                return f"{path} is unchanged since your last read."
+            diff = "\n".join(_make_diff(old.decode("utf-8", errors="replace"), content))
+            max_output = ctx.max_tool_output if ctx.max_tool_output is not None else ctx.app.max_tool_output
+            if len(diff) > max_output:
+                raise ValueError("Diff is too big! Read the file normally.")
+            ctx.mark_file_read(path)
+            ctx.get_line_snapshot(path).clear() # line numbers may have shifted
+            return diff
         if lines:
             start, end = lines
             end = min(end, len(all_lines)) # end-line can't go beyond file
