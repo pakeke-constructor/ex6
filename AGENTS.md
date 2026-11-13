@@ -171,7 +171,7 @@ NORMAL = navigate and act. Core keymap: j k, i/space/a (edit request or prompt),
 INSERT = edit a specific request or prompt in the regular input area. Esc keeps the draft and returns to NORMAL; submitting returns to NORMAL. Incoming requests never steal editing focus. Status names the input owner.
 
 Arrows scroll content; with choices, up/down selects in NORMAL. PgUp/PgDn scroll request content or transcript; `<C-u>`/`<C-d>` in NORMAL. Only j/k switch agents. Digits are counts, not choice shortcuts.
-List shows relative numbers and markers (`?` needs a human, `●` finished while not selected, `!` yolo).
+List is in insertion order (plugins set it); forks/new agents go right under their source, browser-tab style. List shows relative numbers and markers (`?` needs a human, `●` finished while not selected, `!` yolo).
 Human requests (ctx.ui_stack) replace the selected agent's transcript while inspected; their editor uses the regular input area. Enter approves an empty approval or submits its denial draft, even after Esc. Choice questions submit the selection unless a custom draft exists. Text-only questions open editing when empty. Hints reflect the current action. `/` always targets command input, not the request.
 `w` toggles zoom for the selected agent: hides the list (clean mouse-copy, long lines). Per agent; each restores its own zoom.
 Bottom row is a status line (NORMAL/INSERT/ZOOM, agent, echo, pending keys + which-key popup). `/` commands run from either focus.

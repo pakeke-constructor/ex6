@@ -2558,11 +2558,13 @@ class TUI:
     log_keys: bool = False
     editing: Any = None  # (context, request or None for prompt/command)
 
-    def add_context(self, ctx):
+    def add_context(self, ctx, after=None):
+        """Append ctx, or insert it right after `after` (browser-tab style)."""
         if ctx.app is not self.app:
             raise RuntimeError("Context belongs to another app")
         if ctx not in self.contexts:
-            self.contexts.append(ctx)
+            i = self.contexts.index(after) + 1 if after in self.contexts else len(self.contexts)
+            self.contexts.insert(i, ctx)
         if self.current is None:
             self.current = ctx
         return ctx
@@ -2572,7 +2574,7 @@ class TUI:
 
     def context_list(self):
         """Contexts in display order (agents list, `j/k`)."""
-        return sorted(self.contexts, key=lambda c: c.name)
+        return list(self.contexts)
 
     def is_unseen(self, ctx):
         return not ctx.is_running() and ctx.last_invoke_time_end > ctx.last_seen
@@ -2747,8 +2749,8 @@ def _unique_name(tui, base):
     return f"{base}.{n}"
 
 
-def _add(tui, ctx):
-    tui.add_context(ctx)
+def _add(tui, ctx, after=None):
+    tui.add_context(ctx, after)
     tui.current = ctx
     return ctx
 
@@ -2867,7 +2869,7 @@ def key_stop(tui, n):
 def key_fork(tui, n):
     'Fork the agent.'
     ctx = tui.current
-    _add(tui, ctx.fork(_unique_name(tui, ctx.name)))
+    _add(tui, ctx.fork(_unique_name(tui, ctx.name)), after=ctx)
 
 
 @key("o")
@@ -2883,7 +2885,7 @@ def key_new(tui, n):
     fav = tui.favorite or tui.current
     ctx = fav.fork(_unique_name(tui, fav.name))
     ctx.clear()
-    _add(tui, ctx)
+    _add(tui, ctx, after=fav)
     _open_input(tui, "")
 
 

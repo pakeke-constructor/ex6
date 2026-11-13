@@ -245,14 +245,13 @@ def custom_setup(app: ex6.App, messages: list):
     tui = app.tui
     assert tui
 
-    setup_ex6_specialist(app)
-
-    for preset in [SONNET, OPUS, LUNA, TERRA, SOL, ASTRA]:
+    for preset in [OPUS, ASTRA, SOL, SONNET, TERRA, LUNA]: # strongest first
         ctx = Context(app, **preset, messages=messages)
         add_native_webtools(ctx)
         ctx.after_tool_calls(context_usage_reminder())
         ctx.after_tool_calls(time_reminder())
         tui.add_context(ctx)
+    setup_ex6_specialist(app)
     tui.current = tui.get_context(OPUS["name"])
     tui.favorite = tui.current
 
