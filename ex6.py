@@ -2576,9 +2576,11 @@ class TUI:
     editing: Any = None  # (context, request or None for prompt/command)
 
     def add_context(self, ctx, after=None):
-        """Append ctx, or insert it right after `after` (browser-tab style)."""
+        """Insert ctx right after `after` (default: its parent, browser-tab style), else append."""
         if ctx.app is not self.app:
             raise RuntimeError("Context belongs to another app")
+        if after is None and ctx.parent:
+            after = self.get_context(ctx.parent)
         if ctx not in self.contexts:
             i = self.contexts.index(after) + 1 if after in self.contexts else len(self.contexts)
             self.contexts.insert(i, ctx)
@@ -2766,8 +2768,8 @@ def _unique_name(tui, base):
     return f"{base}.{n}"
 
 
-def _add(tui, ctx, after=None):
-    tui.add_context(ctx, after)
+def _add(tui, ctx):
+    tui.add_context(ctx)
     tui.current = ctx
     return ctx
 
@@ -2886,7 +2888,7 @@ def key_stop(tui, n):
 def key_fork(tui, n):
     'Fork the agent.'
     ctx = tui.current
-    _add(tui, ctx.fork(_unique_name(tui, ctx.name)), after=ctx)
+    _add(tui, ctx.fork(_unique_name(tui, ctx.name)))
 
 
 @key("o")
@@ -2902,7 +2904,7 @@ def key_new(tui, n):
     fav = tui.favorite or tui.current
     ctx = fav.fork(_unique_name(tui, fav.name))
     ctx.clear()
-    _add(tui, ctx, after=fav)
+    _add(tui, ctx)
     _open_input(tui, "")
 
 
