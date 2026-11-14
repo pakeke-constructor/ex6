@@ -7,6 +7,11 @@ import difflib
 from typing import Optional
 
 
+@ex6.handler
+def transform_queued_prompt(text, ctx):
+    return f"<system>The user interrupted you:</system>\n{text}"
+
+
 def context_usage_reminder(remind: Optional[int] = 100_000, require: Optional[int] = 150_000):
     """after_tool_calls hook factory: appends `<context_usage>` to the last tool result every 10k tokens; nags handoff() past `remind`, demands it every call past `require`.
     ctx.data["reminders:handoff_remind"] / ["reminders:handoff_require"] override the thresholds at runtime (None disables)."""

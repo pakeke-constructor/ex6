@@ -1424,6 +1424,7 @@ class Context:
                     self.last_invoke_time_end = time.time()
                     scheduled = self._scheduled
                     self._scheduled = None
+                    stopped = self.stop_early
                     if self._clear_pending:
                         self.clear()
                         scheduled = None
@@ -1431,8 +1432,9 @@ class Context:
                     fn, args, kwargs = scheduled
                     fn(*args, **kwargs)
                 elif self._pending_inputs:
-                    next_input = self._pending_inputs.pop(0)
-                    self.submit_input(next_input)
+                    nxt = self._pending_inputs.pop(0)
+                    nxt_text = app.pipeline("transform_queued_prompt", nxt.text, self) if stopped else nxt.text
+                    self.invoke(nxt_text, attachments=nxt.attachments)
 
         threading.Thread(target=run, daemon=True).start()
     
@@ -2366,6 +2368,12 @@ def render_input(tui, buf, inpt, input_r, input_box):
 @_handleable
 def transform_user_prompt(text, ctx):
     """Pipeline, run on input box Enter. A changed prompt is shown to the user first; the next Enter sends it."""
+    return text
+
+
+@_handleable
+def transform_queued_prompt(text, ctx):
+    """Pipeline, run when a prompt queued mid-run is sent after that run was stopped (interrupted) by it."""
     return text
 
 
