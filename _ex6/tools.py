@@ -689,11 +689,12 @@ _BINARY_EXTENSIONS = {
 
 def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results: int = 15, page: int = 1) -> str:
     """Search file contents for a regex pattern, filtered by glob.
-    Returns matching lines with file:line: prefix.
+    Returns matching lines grouped under a `file:` header, each as `line: text`.
     Pagination: page is 1-indexed and returns at most max_results matches for that page.
     When you just want to check whether a pattern exists, (e.g. after a refactor) use max_results=1 to save context.
     - Make sure to use regex patterns correctly. WRONG: search("func("), malformed regex pattern. CORRECT: search("func\\(")
     - A common mistake is to search(pattern, "*.py"). This will only search files next to root, e.g. src/a.py will be missed. You should generally use search(pattern, "**/*.py") if you want to do a proper codebase search.
+    - Prefer using `search` over `grep`, since grep isn't token optimized.
     """
     if page < 1:
         raise ValueError("page must be >= 1")
@@ -708,6 +709,7 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
     end_idx = start_idx + max_results
     seen = 0
     results = []
+    last_file = None
 
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
@@ -736,8 +738,10 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
                             continue
                         if seen >= end_idx:
                             return "\n".join(results) + f"\n... (page {page}, max_results {max_results})"
-                        prefix = f"{f}:{i}: "
-                        results.append(f"{prefix}{line.rstrip()}")
+                        if last_file != f:
+                            results.append(f"{f}:")
+                            last_file = f
+                        results.append(f"  {i}: {line.strip()}")
                         seen += 1
             except (OSError, UnicodeDecodeError):
                 continue
