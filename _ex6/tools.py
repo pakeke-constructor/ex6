@@ -686,11 +686,57 @@ _BINARY_EXTENSIONS = {
     '.pyc', '.class', '.jar', '.woff', '.woff2', '.ttf', '.otf', '.sqlite', '.db',
 }
 
+_GENERATED_FILES = {
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock', 'uv.lock',
+    'Cargo.lock', 'Pipfile.lock', 'composer.lock', 'Gemfile.lock',
+}
+_GENERATED_SUFFIXES = ('.min.js', '.min.css', '.map')
+_SEARCH_PER_FILE = 5
+_SEARCH_LINE_MAX = 200
+
+
+def _is_generated(name, file_glob):
+    """Lockfiles/minified files are skipped unless the glob names them."""
+    if name in _GENERATED_FILES:
+        return name not in file_glob
+    for suffix in _GENERATED_SUFFIXES:
+        if name.endswith(suffix):
+            return suffix not in file_glob
+    return False
+
+
+def _format_search(groups):
+    out = []
+    last_dir = None
+    for f, lines in groups.items():
+        d, name = os.path.split(f)
+        if d != last_dir:
+            out.append((d or ".") + os.sep)
+            last_dir = d
+        out.append(f"{name}:")
+        out.extend(f" {line}" for line in lines)
+    return "\n".join(out)
+
+
+def _clip_line(line, m):
+    text = line.rstrip("\r\n")
+    if len(text.strip()) <= _SEARCH_LINE_MAX:
+        return text.strip()
+    start = max(0, m.start() - 80)
+    end = start + _SEARCH_LINE_MAX
+    out = text[start:end].strip()
+    if start > 0:
+        out = "..." + out
+    if end < len(text):
+        out += "..."
+    return out
+
 
 def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results: int = 15, page: int = 1) -> str:
     """Search file contents for a regex pattern, filtered by glob.
-    Returns matching lines grouped under a `file:` header, each as `line: text`.
+    Output: `dir/` header, then `file:` header, then indented ` line: text` rows.
     Pagination: page is 1-indexed and returns at most max_results matches for that page.
+    Shows max 5 matches per file unless file_glob is an exact path. Lockfiles/minified files are skipped unless file_glob names them.
     When you just want to check whether a pattern exists, (e.g. after a refactor) use max_results=1 to save context.
     - Make sure to use regex patterns correctly. WRONG: search("func("), malformed regex pattern. CORRECT: search("func\\(")
     - A common mistake is to search(pattern, "*.py"). This will only search files next to root, e.g. src/a.py will be missed. You should generally use search(pattern, "**/*.py") if you want to do a proper codebase search.
@@ -708,8 +754,8 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
     start_idx = (page - 1) * max_results
     end_idx = start_idx + max_results
     seen = 0
-    results = []
-    last_file = None
+    groups = {}  # file -> result lines, in walk order
+    cap_per_file = any(c in file_glob for c in "*?[")
 
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
@@ -724,29 +770,38 @@ def search(ctx: ex6.Context, pattern: str, file_glob: str = "**/*", max_results:
                 continue
             if os.path.splitext(name)[1].lower() in _BINARY_EXTENSIONS:
                 continue
+            if _is_generated(name, file_glob):
+                continue
             fp = os.path.join(root, f)
+            hits = []
             try:
                 with open(fp, "r", encoding="utf-8", errors="ignore") as fh:
                     if "\0" in fh.read(8192):
                         continue
                     fh.seek(0)
                     for i, line in enumerate(fh, 1):
-                        if not regex.search(line):
-                            continue
-                        if seen < start_idx:
-                            seen += 1
-                            continue
-                        if seen >= end_idx:
-                            return "\n".join(results) + f"\n... (page {page}, max_results {max_results})"
-                        if last_file != f:
-                            results.append(f"{f}:")
-                            last_file = f
-                        results.append(f"  {i}: {line.strip()}")
-                        seen += 1
+                        m = regex.search(line)
+                        if m:
+                            hits.append((i, _clip_line(line, m)))
             except (OSError, UnicodeDecodeError):
                 continue
 
-    return "\n".join(results) if results else "No matches."
+            hidden = 0
+            if cap_per_file and len(hits) > _SEARCH_PER_FILE:
+                hidden = len(hits) - _SEARCH_PER_FILE
+                hits = hits[:_SEARCH_PER_FILE]
+            for n, (i, text) in enumerate(hits):
+                if seen < start_idx:
+                    seen += 1
+                    continue
+                if seen >= end_idx:
+                    return _format_search(groups) + f"\n... more matches, use page={page + 1}"
+                groups.setdefault(f, []).append(f"{i}: {text}")
+                seen += 1
+                if hidden and n == len(hits) - 1:
+                    groups[f].append(f"... +{hidden} more in this file")
+
+    return _format_search(groups) if groups else "No matches."
 
 
 
