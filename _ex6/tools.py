@@ -964,6 +964,29 @@ def _format_bytes(size):
     return f"{size / (1024 * 1024):.1f} MB"
 
 
+def fit_image(image, use_png, limit):
+    """Encode image under limit bytes: PNG -> JPEG (if no alpha), then shrink 20% per step.
+    Returns (image, data, mime_type, suffix)."""
+    has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
+    image = image.convert("RGBA" if has_alpha else "RGB")
+    use_png = use_png or has_alpha
+    while True:
+        output = io.BytesIO()
+        if use_png:
+            image.save(output, format="PNG", optimize=True)
+            mime_type, suffix = "image/png", ".png"
+        else:
+            image.save(output, format="JPEG", quality=90, optimize=True)
+            mime_type, suffix = "image/jpeg", ".jpg"
+        data = output.getvalue()
+        if len(data) <= limit:
+            return image, data, mime_type, suffix
+        if use_png and not has_alpha:
+            use_png = False
+        else:
+            image = image.resize((int(image.width * 0.8), int(image.height * 0.8)), Image.Resampling.LANCZOS)
+
+
 def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
                detail: str = "auto") -> ex6.ToolResult:
     """
@@ -1010,22 +1033,8 @@ def read_image(ctx: ex6.Context, path: str, max_dimension: int = 3072,
 
     has_alpha = image.mode in ("RGBA", "LA") or "transparency" in image.info
     use_png = has_alpha or resized or source_format in ("PNG", "GIF", "WEBP", "BMP")
-    output = io.BytesIO()
-    if use_png:
-        if has_alpha:
-            image = image.convert("RGBA")
-        else:
-            image = image.convert("RGB")
-        image.save(output, format="PNG", optimize=True)
-        mime_type, suffix = "image/png", ".png"
-    else:
-        image = image.convert("RGB")
-        image.save(output, format="JPEG", quality=90, optimize=True)
-        mime_type, suffix = "image/jpeg", ".jpg"
-
-    data = output.getvalue()
-    if len(data) > MAX_IMAGE_OUTPUT_BYTES:
-        raise ValueError(f"Normalized image exceeds {MAX_IMAGE_OUTPUT_BYTES // (1024 * 1024)} MB limit.")
+    limit = ctx.get_max_image_bytes() or MAX_IMAGE_OUTPUT_BYTES
+    image, data, mime_type, suffix = fit_image(image, use_png, limit)
     managed_path = ex6.store_attachment(data, suffix)
     transmitted_width, transmitted_height = image.size
     dimensions = f"{source_width}x{source_height}"
@@ -1048,7 +1057,7 @@ MAX_AUDIO_BYTES = 20 * 1024 * 1024
 
 def read_audio(ctx: ex6.Context, path: str) -> ex6.ToolResult:
     """Read a local audio file (WAV, MP3, FLAC, OGG, AAC, AIFF)."""
-    if not ctx.app.call("supports_audio", ctx):
+    if not ctx.supports_audio():
         raise ValueError(f"Audio input is not supported for this context ({ctx.model}).")
     p = ctx.resolve(path)
     _check_sensitive_image_path(p)

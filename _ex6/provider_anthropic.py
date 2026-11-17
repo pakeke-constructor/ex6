@@ -161,14 +161,34 @@ def _system_prompt(ctx):
     return "\n\n".join(parts) or "You are a helpful coding assistant."
 
 
+MAX_IMAGE_BYTES = 3_700_000  # API caps base64 at 5 MB
+
+
+@ex6.handler
+def max_image_bytes(ctx: ex6.Context):
+    if ctx.get_invoker() is invoke_anthropic:
+        return MAX_IMAGE_BYTES
+
+
+def _image_data(attachment):
+    """(base64, mime) for an image file, re-encoded under MAX_IMAGE_BYTES if needed (eg pasted images)."""
+    if os.path.getsize(attachment.path) <= MAX_IMAGE_BYTES:
+        with open(attachment.path, "rb") as f:
+            return base64.b64encode(f.read()).decode("ascii"), attachment.mime_type
+    from PIL import Image
+    from _ex6.tools import fit_image
+    with Image.open(attachment.path) as image:
+        _, data, mime_type, _ = fit_image(image, image.format != "JPEG", MAX_IMAGE_BYTES)
+    return base64.b64encode(data).decode("ascii"), mime_type
+
+
 def _tool_result_payload(result):
     content = [{"type": "text", "text": result.text}]
     for attachment in result.attachments:
         if not isinstance(attachment, ex6.ImageAttachment):
             raise ValueError(f"Unsupported attachment type: {type(attachment).__name__}")
-        with open(attachment.path, "rb") as f:
-            data = base64.b64encode(f.read()).decode("ascii")
-        content.append({"type": "image", "data": data, "mimeType": attachment.mime_type})
+        data, mime_type = _image_data(attachment)
+        content.append({"type": "image", "data": data, "mimeType": mime_type})
     return {"content": content}
 
 
@@ -185,9 +205,8 @@ def _digest(is_error, content):
 def _image_block(attachment):
     if not os.path.isfile(attachment.path):
         raise ValueError(f"Attachment file is missing: {attachment.path}")
-    with open(attachment.path, "rb") as f:
-        data = base64.b64encode(f.read()).decode("ascii")
-    return {"type": "image", "source": {"type": "base64", "media_type": attachment.mime_type, "data": data}}
+    data, mime_type = _image_data(attachment)
+    return {"type": "image", "source": {"type": "base64", "media_type": mime_type, "data": data}}
 
 
 def _user_content(text, attachments):

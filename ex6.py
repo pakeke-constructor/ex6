@@ -654,6 +654,12 @@ def supports_audio(ctx):
     return False
 
 
+@_handleable
+def max_image_bytes(ctx):
+    """Provider handlers return the max raw bytes per image for ctx's backend. None = no limit."""
+    return None
+
+
 class NativeTool:
     """Provider-hosted tool (eg web search). Goes in tool lists like a normal tool, but the
     provider runs it: no schema is sent, ex6 never calls it, approve_tool is not consulted.
@@ -1378,6 +1384,13 @@ class Context:
 
     def get_invoker(self) -> Callable:
         return self.invoke_llm or self.app.call("invoke_llm", self)
+
+    def supports_audio(self) -> bool:
+        return self.app.call("supports_audio", self)
+
+    def get_max_image_bytes(self) -> Optional[int]:
+        """Max raw bytes per image for this context's backend. None = no limit."""
+        return self.app.call("max_image_bytes", self)
 
     def invoke(self, text=None, llm_fn=None, attachments=None):
         app = self.app
