@@ -1885,7 +1885,7 @@ def subagent(ctx: ex6.Context, msg: str, fork: bool = True) -> ex6.Operation:
     if "tools:subagent_depth" in ctx.data:
         raise RuntimeError("Subagents cannot create subagents")
 
-    sub = ctx.fork(f"{ctx.name}.{uuid.uuid4().hex[:5]}")
+    sub = ctx.fork(f"{ctx.name}.{uuid.uuid4().hex[:3]}")
     if not fork:
         sub.tools = list(ctx.get_tools().values())
         sub.clear()

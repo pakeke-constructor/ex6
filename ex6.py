@@ -3074,7 +3074,7 @@ def _tui_loop(tui: TUI):
     buf.clear()
 
     for ctx in list(tui.contexts):
-        if ctx.ephemeral and ctx.is_settled():
+        if ctx.ephemeral and ctx.is_settled() and ctx is not tui.current:
             tui.remove_context(ctx)
 
     if not tui.contexts:
