@@ -300,6 +300,8 @@ def store_attachment(data: bytes, suffix: str) -> str:
     digest = hashlib.sha256(data).hexdigest()
     path = os.path.join(_attachment_dir, digest + suffix)
     if not os.path.exists(path):
+        # Long sessions can outlive the temp dir (e.g. Windows Storage Sense cleans %TEMP%), so recreate it.
+        os.makedirs(_attachment_dir, exist_ok=True)
         with open(path, "wb") as f:
             f.write(data)
     return path
